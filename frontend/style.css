@@ -1,0 +1,211 @@
+/* style.css — design tokens + component styles */
+
+/* ============================================
+   FONTS: Inter (body/UI) + DM Sans (headings)
+   ============================================ */
+
+/* ============================================
+   TYPE SCALE — Fluid with clamp()
+   ============================================ */
+:root {
+  --text-xs:   clamp(0.75rem,  0.7rem  + 0.25vw, 0.875rem);
+  --text-sm:   clamp(0.875rem, 0.8rem  + 0.35vw, 1rem);
+  --text-base: clamp(1rem,     0.9rem  + 0.5vw,  1.125rem);
+  --text-lg:   clamp(1.125rem, 0.95rem + 0.85vw, 1.5rem);
+  --text-xl:   clamp(1.5rem,   1rem    + 1.5vw,  2.25rem);
+  --text-2xl:  clamp(2rem,     1.2rem  + 2.5vw,  3.5rem);
+  --text-3xl:  clamp(2.5rem,   1rem    + 4vw,    5rem);
+  --text-hero: clamp(3rem,     0.5rem  + 7vw,    8rem);
+
+  /* Spacing — 4px grid */
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+  --space-32: 8rem;
+
+  /* Font families */
+  --font-display: 'DM Sans', 'Helvetica Neue', sans-serif;
+  --font-body: 'Inter', 'Helvetica Neue', sans-serif;
+}
+
+/* ============================================
+   LIGHT MODE (default)
+   ============================================ */
+:root, [data-theme="light"] {
+  /* Surfaces — white/light gray foundation */
+  --color-bg:             #f8f9fa;
+  --color-surface:        #ffffff;
+  --color-surface-2:      #f1f3f5;
+  --color-surface-offset: #e9ecef;
+  --color-surface-offset-2: #dee2e6;
+  --color-surface-dynamic: #ced4da;
+  --color-divider:        #dee2e6;
+  --color-border:         #ced4da;
+
+  /* Text */
+  --color-text:           #1a1a2e;
+  --color-text-muted:     #6c757d;
+  --color-text-faint:     #adb5bd;
+  --color-text-inverse:   #ffffff;
+
+  /* Primary accent — warm teal */
+  --color-primary:        #0D9488;
+  --color-primary-hover:  #0b7f74;
+  --color-primary-active: #096b62;
+  --color-primary-highlight: #ccfbf1;
+
+  /* Semantic: Success */
+  --color-success:        #059669;
+  --color-success-hover:  #047857;
+  --color-success-active: #065f46;
+  --color-success-highlight: #d1fae5;
+
+  /* Semantic: Warning */
+  --color-warning:        #d97706;
+  --color-warning-hover:  #b45309;
+  --color-warning-active: #92400e;
+  --color-warning-highlight: #fef3c7;
+
+  /* Semantic: Error */
+  --color-error:          #dc2626;
+  --color-error-hover:    #b91c1c;
+  --color-error-active:   #991b1b;
+  --color-error-highlight: #fee2e2;
+
+  /* Semantic: Info / Blue */
+  --color-blue:           #2563eb;
+  --color-blue-hover:     #1d4ed8;
+  --color-blue-active:    #1e40af;
+  --color-blue-highlight: #dbeafe;
+
+  /* Source colors */
+  --color-sreality:       #e74c3c;
+  --color-bezrealitky:    #3498db;
+  --color-ulovdomov:      #f39c12;
+
+  /* Radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --transition-interactive: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Shadows — neutral-cool */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+
+  /* Content widths */
+  --content-narrow: 640px;
+  --content-default: 960px;
+  --content-wide: 1200px;
+  --content-full: 100%;
+}
+
+/* ============================================
+   DARK MODE
+   ============================================ */
+[data-theme="dark"] {
+  --color-bg:             #0f1117;
+  --color-surface:        #1a1d27;
+  --color-surface-2:      #232733;
+  --color-surface-offset: #1e2230;
+  --color-surface-offset-2: #282d3c;
+  --color-surface-dynamic: #323848;
+  --color-divider:        #2d3348;
+  --color-border:         #3d4460;
+
+  --color-text:           #e2e5eb;
+  --color-text-muted:     #8b92a5;
+  --color-text-faint:     #5a6178;
+  --color-text-inverse:   #0f1117;
+
+  --color-primary:        #2dd4bf;
+  --color-primary-hover:  #14b8a6;
+  --color-primary-active: #0d9488;
+  --color-primary-highlight: #1a332f;
+
+  --color-success:        #34d399;
+  --color-success-hover:  #10b981;
+  --color-success-active: #059669;
+  --color-success-highlight: #1a332e;
+
+  --color-warning:        #fbbf24;
+  --color-warning-hover:  #f59e0b;
+  --color-warning-active: #d97706;
+  --color-warning-highlight: #332e1a;
+
+  --color-error:          #f87171;
+  --color-error-hover:    #ef4444;
+  --color-error-active:   #dc2626;
+  --color-error-highlight: #331a1a;
+
+  --color-blue:           #60a5fa;
+  --color-blue-hover:     #3b82f6;
+  --color-blue-active:    #2563eb;
+  --color-blue-highlight: #1a2433;
+
+  --color-sreality:       #f87171;
+  --color-bezrealitky:    #60a5fa;
+  --color-ulovdomov:      #fbbf24;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* System preference fallback */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --color-bg:             #0f1117;
+    --color-surface:        #1a1d27;
+    --color-surface-2:      #232733;
+    --color-surface-offset: #1e2230;
+    --color-surface-offset-2: #282d3c;
+    --color-surface-dynamic: #323848;
+    --color-divider:        #2d3348;
+    --color-border:         #3d4460;
+    --color-text:           #e2e5eb;
+    --color-text-muted:     #8b92a5;
+    --color-text-faint:     #5a6178;
+    --color-text-inverse:   #0f1117;
+    --color-primary:        #2dd4bf;
+    --color-primary-hover:  #14b8a6;
+    --color-primary-active: #0d9488;
+    --color-primary-highlight: #1a332f;
+    --color-success:        #34d399;
+    --color-success-hover:  #10b981;
+    --color-success-active: #059669;
+    --color-success-highlight: #1a332e;
+    --color-warning:        #fbbf24;
+    --color-warning-hover:  #f59e0b;
+    --color-warning-active: #d97706;
+    --color-warning-highlight: #332e1a;
+    --color-error:          #f87171;
+    --color-error-hover:    #ef4444;
+    --color-error-active:   #dc2626;
+    --color-error-highlight: #331a1a;
+    --color-blue:           #60a5fa;
+    --color-blue-hover:     #3b82f6;
+    --color-blue-active:    #2563eb;
+    --color-blue-highlight: #1a2433;
+    --color-sreality:       #f87171;
+    --color-bezrealitky:    #60a5fa;
+    --color-ulovdomov:      #fbbf24;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+  }
+}
