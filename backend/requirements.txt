@@ -1,2 +1,21 @@
 flask==3.1.0
 flask-cors==5.0.1
+
+# ---------------------------------------------------------------------------
+# Collector (collector.py) — No additional dependencies required.
+# The collector uses only Python standard library modules:
+#
+#   - sqlite3     (database)
+#   - urllib      (HTTP requests: urllib.request, urllib.error, urllib.parse)
+#   - json        (JSON parsing)
+#   - re          (regular expressions for layout/size extraction)
+#   - logging     (structured log output)
+#   - time        (rate limiting delays)
+#   - datetime    (timestamps)
+#   - os          (environment variables, path handling)
+#   - sys         (exit codes)
+#   - argparse    (CLI argument parsing)
+#
+# Requires: Python 3.10+ (uses `dict | list | str` union type hints)
+# Tested on: Python 3.10, 3.11, 3.12
+# ---------------------------------------------------------------------------
