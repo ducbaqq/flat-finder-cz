@@ -26,6 +26,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 # ---------------------------------------------------------------------------
@@ -36,6 +37,7 @@ DB_PATH = os.environ.get("DB_PATH", "data.db")
 SREALITY_DELAY = float(os.environ.get("SREALITY_DELAY", "0.15"))    # seconds between requests
 BEZREALITKY_DELAY = float(os.environ.get("BEZREALITKY_DELAY", "0.5"))
 ULOVDOMOV_DELAY = float(os.environ.get("ULOVDOMOV_DELAY", "0.3"))
+DETAIL_CONCURRENCY = int(os.environ.get("DETAIL_CONCURRENCY", "8"))  # concurrent detail fetches for Sreality
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
 # Czech Republic bounding box for UlovDomov
@@ -374,14 +376,9 @@ def match_watchdogs(db: sqlite3.Connection, new_listing_ids: list[int]) -> int:
                 "Watchdog #%d (%s) matched %d new listings: %s",
                 wdog["id"], wdog["email"], len(matches), matches[:5],
             )
-            # TODO: Send email notification here
-            # For now just update last_notified_at
-            db.execute(
-                "UPDATE watchdogs SET last_notified_at = ? WHERE id = ?",
-                [datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), wdog["id"]],
-            )
+            # Email notifications are sent by notifier.py (time-based, SQL-driven).
+            # notifier.py owns the last_notified_at field.
 
-    db.commit()
     return total_matches
 
 
@@ -751,6 +748,8 @@ class SrealityCollector:
                 if not estates:
                     break
 
+                # Phase 1: parse all estates and identify which need detail fetches
+                parsed = []  # list of (listing, hash_id, existing_row, needs_detail)
                 for estate in estates:
                     hash_id = estate.get("hash_id")
                     if not hash_id:
@@ -766,23 +765,35 @@ class SrealityCollector:
                         error_count += 1
                         continue
 
-                    # Check if new; only fetch detail for new listings
                     existing = self.db.execute(
                         "SELECT id, is_active FROM listings WHERE external_id = ?",
                         [external_id],
                     ).fetchone()
 
-                    if existing is None:
-                        # New listing — fetch detail for enriched data
-                        try:
-                            detail = self._fetch_detail(hash_id)
-                            time.sleep(self.delay)
-                            if detail:
-                                listing = self._enrich_from_detail(listing, detail)
-                        except Exception as e:
-                            self.log.debug("Detail fetch error for %s: %s", external_id, e)
+                    parsed.append((listing, hash_id, existing, existing is None))
 
-                    # Reactivate if was deactivated
+                # Phase 2: fetch details concurrently for new listings
+                needs_detail = [(l, h) for l, h, _, nd in parsed if nd]
+                details: dict[int, dict | None] = {}
+                if needs_detail:
+                    with ThreadPoolExecutor(max_workers=DETAIL_CONCURRENCY) as pool:
+                        future_to_hash = {
+                            pool.submit(self._fetch_detail, h): h
+                            for _, h in needs_detail
+                        }
+                        for future in as_completed(future_to_hash):
+                            h = future_to_hash[future]
+                            try:
+                                details[h] = future.result()
+                            except Exception as e:
+                                self.log.debug("Detail fetch error for hash_id=%s: %s", h, e)
+                                details[h] = None
+
+                # Phase 3: enrich and upsert
+                for listing, hash_id, existing, needs in parsed:
+                    if needs and hash_id in details and details[hash_id]:
+                        listing = self._enrich_from_detail(listing, details[hash_id])
+
                     if existing and existing["is_active"] == 0:
                         listing["is_active"] = 1
                         listing["deactivated_at"] = None
@@ -794,7 +805,7 @@ class SrealityCollector:
                         else:
                             updated_count += 1
                     except Exception as e:
-                        self.log.error("DB error for %s: %s", external_id, e)
+                        self.log.error("DB error for %s: %s", listing["external_id"], e)
                         error_count += 1
 
                 # Commit every page
@@ -1565,10 +1576,52 @@ class UlovDomovCollector:
 # Main runner
 # ---------------------------------------------------------------------------
 
+def _run_source(source_name: str, collector_cls, db_path: str, started_at: str) -> dict:
+    """
+    Run a single source collector in its own thread with its own DB connection.
+    Returns a result dict with counts and timing.
+    """
+    t0 = time.time()
+    try:
+        db = get_db(db_path)
+        collector = collector_cls(db)
+        new_count, updated_count, error_count = collector.collect()
+
+        # Grab newly inserted IDs for watchdog matching later
+        rows = db.execute(
+            "SELECT id FROM listings WHERE source = ? AND created_at >= ? ORDER BY id DESC LIMIT ?",
+            [source_name, started_at[:19], new_count + 1],
+        ).fetchall()
+        new_ids = [r[0] for r in rows]
+        db.close()
+
+        elapsed = time.time() - t0
+        return {
+            "source": source_name,
+            "new": new_count,
+            "updated": updated_count,
+            "errors": error_count,
+            "elapsed_s": round(elapsed, 1),
+            "new_ids": new_ids,
+        }
+    except Exception as e:
+        elapsed = time.time() - t0
+        logger.error("Fatal error in %s collector: %s", source_name, e, exc_info=True)
+        return {
+            "source": source_name,
+            "new": 0,
+            "updated": 0,
+            "errors": 1,
+            "elapsed_s": round(elapsed, 1),
+            "fatal_error": str(e),
+            "new_ids": [],
+        }
+
+
 def run_collector(db_path: str = DB_PATH) -> dict:
     """
-    Run all collectors sequentially. Each source is independent —
-    failures in one do not affect others.
+    Run all collectors in parallel. Each source runs in its own thread
+    with its own DB connection. Failures in one do not affect others.
 
     Returns a summary dict with counts per source.
     """
@@ -1578,55 +1631,39 @@ def run_collector(db_path: str = DB_PATH) -> dict:
     logger.info("Database: %s", os.path.abspath(db_path))
     logger.info("=" * 60)
 
+    # Ensure schema exists before spawning threads
     db = get_db(db_path)
     init_db(db)
+    db.close()
 
+    started_at = datetime.now(timezone.utc).isoformat()
     summary = {
-        "started_at": datetime.now(timezone.utc).isoformat(),
+        "started_at": started_at,
         "sources": {},
     }
 
-    all_new_ids: list[int] = []
-
     sources = [
-        ("sreality",    lambda: SrealityCollector(db).collect()),
-        ("bezrealitky", lambda: BezrealitkyCollector(db).collect()),
-        ("ulovdomov",   lambda: UlovDomovCollector(db).collect()),
+        ("sreality",    SrealityCollector),
+        ("bezrealitky", BezrealitkyCollector),
+        ("ulovdomov",   UlovDomovCollector),
     ]
 
-    for source_name, collect_fn in sources:
-        t0 = time.time()
-        try:
-            new_count, updated_count, error_count = collect_fn()
+    all_new_ids: list[int] = []
 
-            # Grab newly inserted IDs for this source to check watchdogs
-            rows = db.execute(
-                "SELECT id FROM listings WHERE source = ? AND created_at >= ? ORDER BY id DESC LIMIT ?",
-                [source_name, summary["started_at"][:19], new_count + 1],
-            ).fetchall()
-            source_new_ids = [r[0] for r in rows]
-            all_new_ids.extend(source_new_ids)
+    with ThreadPoolExecutor(max_workers=len(sources)) as pool:
+        futures = {
+            pool.submit(_run_source, name, cls, db_path, started_at): name
+            for name, cls in sources
+        }
+        for future in as_completed(futures):
+            result = future.result()
+            name = result.pop("source")
+            all_new_ids.extend(result.pop("new_ids"))
+            summary["sources"][name] = result
 
-            elapsed = time.time() - t0
-            summary["sources"][source_name] = {
-                "new": new_count,
-                "updated": updated_count,
-                "errors": error_count,
-                "elapsed_s": round(elapsed, 1),
-            }
-        except Exception as e:
-            elapsed = time.time() - t0
-            logger.error("Fatal error in %s collector: %s", source_name, e, exc_info=True)
-            summary["sources"][source_name] = {
-                "new": 0,
-                "updated": 0,
-                "errors": 1,
-                "elapsed_s": round(elapsed, 1),
-                "fatal_error": str(e),
-            }
-
-    # Watchdog matching
+    # Watchdog matching (single-threaded, after all sources complete)
     if all_new_ids:
+        db = get_db(db_path)
         logger.info("Checking watchdogs for %d new listings...", len(all_new_ids))
         try:
             matches = match_watchdogs(db, all_new_ids)
@@ -1635,8 +1672,7 @@ def run_collector(db_path: str = DB_PATH) -> dict:
         except Exception as e:
             logger.error("Watchdog matching error: %s", e)
             summary["watchdog_matches"] = 0
-
-    db.close()
+        db.close()
 
     total_elapsed = time.time() - start_time
     summary["total_elapsed_s"] = round(total_elapsed, 1)
@@ -1667,6 +1703,7 @@ if __name__ == "__main__":
         epilog="""
 Examples:
   python collector.py
+  python collector.py --loop --interval 300
   python collector.py --db /path/to/data.db
   python collector.py --source sreality
   DB_PATH=/path/to/data.db LOG_LEVEL=DEBUG python collector.py
@@ -1677,6 +1714,7 @@ Environment variables:
   SREALITY_DELAY   Delay between Sreality requests in seconds (default: 0.15)
   BEZREALITKY_DELAY Delay between Bezrealitky requests (default: 0.5)
   ULOVDOMOV_DELAY  Delay between UlovDomov requests (default: 0.3)
+  DETAIL_CONCURRENCY  Concurrent detail fetches for Sreality (default: 8)
         """,
     )
     parser.add_argument("--db", default=DB_PATH, help="Path to SQLite database")
@@ -1687,6 +1725,17 @@ Environment variables:
         help="Which source to collect (default: all)",
     )
     parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="Run continuously, repeating every --interval seconds",
+    )
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=300,
+        help="Seconds between collection runs when using --loop (default: 300)",
+    )
+    parser.add_argument(
         "--json-summary",
         action="store_true",
         help="Print JSON summary to stdout after completion",
@@ -1694,28 +1743,42 @@ Environment variables:
 
     args = parser.parse_args()
 
-    if args.source != "all":
-        # Run only the specified source
-        db = get_db(args.db)
-        init_db(db)
-        source_map = {
-            "sreality":    lambda: SrealityCollector(db).collect(),
-            "bezrealitky": lambda: BezrealitkyCollector(db).collect(),
-            "ulovdomov":   lambda: UlovDomovCollector(db).collect(),
-        }
-        new_c, upd_c, err_c = source_map[args.source]()
-        db.close()
-        logger.info("Done: new=%d updated=%d errors=%d", new_c, upd_c, err_c)
-        summary = {"sources": {args.source: {"new": new_c, "updated": upd_c, "errors": err_c}}}
+    def _run_once() -> dict:
+        if args.source != "all":
+            db = get_db(args.db)
+            init_db(db)
+            source_map = {
+                "sreality":    lambda: SrealityCollector(db).collect(),
+                "bezrealitky": lambda: BezrealitkyCollector(db).collect(),
+                "ulovdomov":   lambda: UlovDomovCollector(db).collect(),
+            }
+            new_c, upd_c, err_c = source_map[args.source]()
+            db.close()
+            logger.info("Done: new=%d updated=%d errors=%d", new_c, upd_c, err_c)
+            return {"sources": {args.source: {"new": new_c, "updated": upd_c, "errors": err_c}}}
+        else:
+            return run_collector(db_path=args.db)
+
+    if args.loop:
+        logger.info("Running in loop mode (interval=%ds). Press Ctrl+C to stop.", args.interval)
+        try:
+            while True:
+                summary = _run_once()
+                if args.json_summary:
+                    print(json.dumps(summary, indent=2, ensure_ascii=False))
+                logger.info("Next run in %ds...", args.interval)
+                time.sleep(args.interval)
+        except KeyboardInterrupt:
+            logger.info("Stopped by user.")
+            sys.exit(0)
     else:
-        summary = run_collector(db_path=args.db)
+        summary = _run_once()
 
-    if args.json_summary:
-        print(json.dumps(summary, indent=2, ensure_ascii=False))
+        if args.json_summary:
+            print(json.dumps(summary, indent=2, ensure_ascii=False))
 
-    # Exit with non-zero if all sources had errors
-    has_data = any(
-        s.get("new", 0) > 0 or s.get("updated", 0) > 0
-        for s in summary["sources"].values()
-    )
-    sys.exit(0 if has_data or not any(s.get("errors", 0) for s in summary["sources"].values()) else 1)
+        has_data = any(
+            s.get("new", 0) > 0 or s.get("updated", 0) > 0
+            for s in summary["sources"].values()
+        )
+        sys.exit(0 if has_data or not any(s.get("errors", 0) for s in summary["sources"].values()) else 1)
