@@ -138,7 +138,7 @@ export default function AdvancedFilters() {
   return (
     <details className="advanced-filters">
       <summary className="advanced-toggle">
-        <span>Dal\u0161\u00ed filtry (More Filters)</span>
+        <span>Další filtry (More Filters)</span>
         <svg
           width="16"
           height="16"

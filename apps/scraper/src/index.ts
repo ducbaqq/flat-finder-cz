@@ -373,34 +373,42 @@ async function runSource(
       }
     } else if (opts.full) {
       // ----------------------------------------------------------------
-      // FULL MODE: consume everything, no early-stop, then deactivate
+      // FULL MODE: enrich + upsert per page, then deactivate stale
       // ----------------------------------------------------------------
-      const allListings: ScraperResult[] = [];
+      const seenIds = new Set<string>();
+      let totalFetched = 0;
 
       for await (const page of scraper.fetchPages()) {
-        allListings.push(...page.listings);
-      }
+        totalFetched += page.listings.length;
 
-      log(`Fetched ${allListings.length} listings (full scan)`);
-
-      if (opts.dryRun || !db) {
-        log(`[DRY RUN] Would upsert ${allListings.length} listings -- skipping DB writes`);
-        newCount = allListings.length;
-      } else {
-        // Enrich all
-        if (scraper.hasDetailPhase) {
-          await scraper.enrichListings(allListings);
+        if (opts.dryRun || !db) {
+          log(`[DRY RUN] ${page.category} page ${page.page}: ${page.listings.length} listings`);
+          newCount += page.listings.length;
+          for (const l of page.listings) seenIds.add(l.external_id);
+          continue;
         }
 
-        // Upsert all
-        const seenIds = new Set<string>();
-        const stats = await upsertBatch(db, allListings, log);
-        newCount = stats.newCount;
-        updatedCount = stats.updatedCount;
-        errorCount = stats.errorCount;
+        // Enrich this page's listings inline (not after all pages)
+        if (scraper.hasDetailPhase && page.listings.length > 0) {
+          await scraper.enrichListings(page.listings);
+        }
 
-        for (const l of allListings) seenIds.add(l.external_id);
+        // Upsert this page
+        const stats = await upsertBatch(db, page.listings, log);
+        newCount += stats.newCount;
+        updatedCount += stats.updatedCount;
+        errorCount += stats.errorCount;
 
+        for (const l of page.listings) seenIds.add(l.external_id);
+
+        if ((newCount + updatedCount) % 500 < page.listings.length) {
+          log(`Progress: ${newCount + updatedCount} upserted (new=${newCount} updated=${updatedCount})`);
+        }
+      }
+
+      log(`Fetched ${totalFetched} listings (full scan)`);
+
+      if (!opts.dryRun && db) {
         log(`Upserted: new=${newCount} updated=${updatedCount} errors=${errorCount}`);
 
         // Deactivate stale listings
@@ -416,48 +424,55 @@ async function runSource(
       }
     } else {
       // ----------------------------------------------------------------
-      // INCREMENTAL MODE (default): stop early when hitting known listings
+      // INCREMENTAL MODE (default): enrich + upsert per page, early-stop
       // ----------------------------------------------------------------
-      const allListings: ScraperResult[] = [];
       const skippedCategories = new Set<string>();
 
       for await (const page of scraper.fetchPages()) {
-        // Skip categories where we already found all-known pages
         if (skippedCategories.has(page.category)) continue;
 
-        allListings.push(...page.listings);
+        if (opts.dryRun || !db) {
+          log(`[DRY RUN] ${page.category} page ${page.page}: ${page.listings.length} listings`);
+          newCount += page.listings.length;
+          continue;
+        }
 
         // Check if all listings on this page are already known
-        if (!opts.dryRun && db) {
-          const externalIds = page.listings.map((l) => l.external_id);
-          const existing = await findExistingExternalIds(db, externalIds);
-          if (externalIds.length > 0 && existing.size === externalIds.length) {
-            log(`  ${page.category} page ${page.page}: all known, skipping rest of category`);
-            skippedCategories.add(page.category);
-          }
+        const externalIds = page.listings.map((l) => l.external_id);
+        const existing = await findExistingExternalIds(db, externalIds);
+        if (externalIds.length > 0 && existing.size === externalIds.length) {
+          log(`  ${page.category} page ${page.page}: all known, skipping rest of category`);
+          skippedCategories.add(page.category);
+          // Still upsert to refresh scraped_at
+          const stats = await upsertBatch(db, page.listings, log);
+          updatedCount += stats.updatedCount;
+          errorCount += stats.errorCount;
+          continue;
         }
+
+        // Find new listings for enrichment
+        const newListings = page.listings.filter((l) => !existing.has(l.external_id));
+
+        if (newListings.length > 0) {
+          log(`  ${page.category} page ${page.page}: ${newListings.length} new / ${page.listings.length} total`);
+        }
+
+        // Enrich only new listings (skip already-known ones for speed)
+        if (scraper.hasDetailPhase && newListings.length > 0) {
+          await scraper.enrichListings(newListings);
+        }
+
+        // Upsert the full page (new + updated)
+        const stats = await upsertBatch(db, page.listings, log);
+        newCount += stats.newCount;
+        updatedCount += stats.updatedCount;
+        errorCount += stats.errorCount;
       }
 
-      log(`Fetched ${allListings.length} listings (incremental)`);
-
-      if (opts.dryRun || !db) {
-        log(`[DRY RUN] Would upsert ${allListings.length} listings -- skipping DB writes`);
-        newCount = allListings.length;
-      } else {
-        // Enrich all collected listings
-        if (scraper.hasDetailPhase) {
-          await scraper.enrichListings(allListings);
-        }
-
-        // Upsert all
-        const stats = await upsertBatch(db, allListings, log);
-        newCount = stats.newCount;
-        updatedCount = stats.updatedCount;
-        errorCount = stats.errorCount;
-
+      if (!opts.dryRun && db) {
         log(`Upserted: new=${newCount} updated=${updatedCount} errors=${errorCount}`);
-        // No deactivation in incremental mode (didn't see everything)
       }
+      // No deactivation in incremental mode (didn't see everything)
     }
 
     // Finish the scraper run record

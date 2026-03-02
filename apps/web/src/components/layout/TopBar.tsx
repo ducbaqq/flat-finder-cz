@@ -25,8 +25,8 @@ export default function TopBar({
           aria-label="Toggle filters"
         >
           <svg
-            width="22"
-            height="22"
+            width="20"
+            height="20"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -47,41 +47,44 @@ export default function TopBar({
         <div className="logo">
           <svg
             className="logo-icon"
-            width="28"
-            height="28"
-            viewBox="0 0 28 28"
+            width="26"
+            height="26"
+            viewBox="0 0 26 26"
             fill="none"
           >
             <rect
-              x="2"
-              y="10"
-              width="24"
-              height="16"
-              rx="2"
-              fill="currentColor"
-              opacity="0.15"
+              x="3"
+              y="11"
+              width="20"
+              height="13"
+              rx="2.5"
+              fill="var(--color-primary)"
+              opacity="0.12"
             />
-            <path d="M14 2L2 12h24L14 2z" fill="var(--color-primary)" />
+            <path
+              d="M13 2L2 12h22L13 2z"
+              fill="var(--color-primary)"
+            />
             <rect
               x="10"
-              y="16"
-              width="8"
-              height="10"
+              y="15"
+              width="6"
+              height="9"
               rx="1"
               fill="var(--color-primary)"
-              opacity="0.6"
+              opacity="0.5"
             />
             <rect
-              x="12"
-              y="18"
-              width="4"
-              height="4"
+              x="11.5"
+              y="17"
+              width="3"
+              height="3"
               rx="0.5"
               fill="var(--color-text-inverse)"
             />
           </svg>
           <span className="logo-text">
-            Flat Finder <span className="logo-accent">CZ</span>
+            flat<span className="logo-accent">finder</span>
           </span>
         </div>
       </div>
@@ -92,18 +95,17 @@ export default function TopBar({
           title="Hl\u00eddac\u00ed pes (Watchdog)"
         >
           <svg
-            width="18"
-            height="18"
+            width="16"
+            height="16"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="2.5"
           >
-            <path d="M10 5.172C10 3.782 8.423 2.679 6.5 3c-2.823.47-4.113 6.006-4 7 .137 1.217 1.5 2 1.5 2s.46 1.967 1 3c.54 1.033.863 1.56 1.5 2 .637.44 3.5 1 3.5 1m0-12.828c0-1.39 1.577-2.493 3.5-2.172 2.823.47 4.113 6.006 4 7-.137 1.217-1.5 2-1.5 2s-.46 1.967-1 3c-.54 1.033-.863 1.56-1.5 2-.637.44-3.5 1-3.5 1" />
-            <path d="M6.5 20c.893.26 2.187.5 3.5.5s2.607-.24 3.5-.5" />
-            <circle cx="10" cy="10" r="1" fill="currentColor" />
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
           </svg>
-          <span className="watchdog-btn-text">Hl\u00eddac\u00ed pes</span>
+          <span className="watchdog-btn-text">Watchdog</span>
           {watchdogBadgeCount > 0 && (
             <span className="watchdog-badge">{watchdogBadgeCount}</span>
           )}
@@ -111,7 +113,7 @@ export default function TopBar({
         <div className="stats-bar">
           <span className="stat-item">
             {totalListings > 0
-              ? `${totalListings} nemovitost\u00ed`
+              ? `${totalListings.toLocaleString("cs-CZ")} nemovitost\u00ed`
               : "\u2014"}
           </span>
         </div>

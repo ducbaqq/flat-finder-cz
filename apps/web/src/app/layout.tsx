@@ -1,14 +1,22 @@
 "use client";
 
 import "./globals.css";
-import { Inter } from "next/font/google";
+import { Plus_Jakarta_Sans, DM_Sans } from "next/font/google";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
-const inter = Inter({
+const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin", "latin-ext"],
-  variable: "--font-inter",
+  variable: "--font-jakarta",
   display: "swap",
+  weight: ["400", "500", "600", "700", "800"],
+});
+
+const dmSans = DM_Sans({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-dm",
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
 });
 
 export default function RootLayout({
@@ -47,7 +55,7 @@ export default function RootLayout({
           href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
         />
       </head>
-      <body className={inter.variable}>
+      <body className={`${jakarta.variable} ${dmSans.variable}`}>
         <QueryClientProvider client={queryClient}>
           {children}
         </QueryClientProvider>

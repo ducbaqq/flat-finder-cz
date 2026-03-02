@@ -8,11 +8,34 @@ import { useFilterStore } from "@/store/filter-store";
 import { useMarkers } from "@/hooks/useMarkers";
 import ListingPopup from "./ListingPopup";
 
-const tealIcon = L.divIcon({
-  className: "custom-marker",
-  html: '<div style="width:12px;height:12px;background:var(--color-primary,#0D9488);border:2px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>',
-  iconSize: [12, 12],
-  iconAnchor: [6, 6],
+function formatMarkerPrice(price: number): string {
+  if (price >= 1_000_000) {
+    const m = price / 1_000_000;
+    return m % 1 === 0 ? `${m}M` : `${m.toFixed(1)}M`;
+  }
+  if (price >= 1_000) {
+    const k = price / 1_000;
+    return k % 1 === 0 ? `${k}K` : `${k.toFixed(0)}K`;
+  }
+  return String(price);
+}
+
+function createPriceIcon(price: number) {
+  const label = formatMarkerPrice(price);
+  return L.divIcon({
+    className: "",
+    html: `<div class="custom-marker-price">${label}</div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+    popupAnchor: [0, -12],
+  });
+}
+
+const dotIcon = L.divIcon({
+  className: "",
+  html: '<div class="custom-marker-dot"></div>',
+  iconSize: [10, 10],
+  iconAnchor: [5, 5],
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -21,13 +44,13 @@ function createClusterIcon(cluster: any) {
   let size: number;
   let className: string;
   if (count < 10) {
-    size = 36;
+    size = 34;
     className = "marker-cluster-small";
   } else if (count < 50) {
-    size = 42;
+    size = 40;
     className = "marker-cluster-medium";
   } else {
-    size = 48;
+    size = 46;
     className = "marker-cluster-large";
   }
   return L.divIcon({
@@ -77,6 +100,8 @@ function MarkerLayer() {
 
   if (!data) return null;
 
+  const showPrices = zoom >= 14;
+
   return (
     <MarkerClusterGroup
       maxClusterRadius={50}
@@ -89,15 +114,18 @@ function MarkerLayer() {
         cluster.listings.map((listing) => {
           const lat = listing.lat || cluster.lat;
           const lng = listing.lng || cluster.lng;
+          const icon = showPrices && listing.price
+            ? createPriceIcon(listing.price)
+            : dotIcon;
           return (
             <Marker
               key={listing.id}
               position={[lat, lng]}
-              icon={tealIcon}
+              icon={icon}
             >
               <Popup
-                maxWidth={260}
-                minWidth={220}
+                maxWidth={280}
+                minWidth={230}
                 className="custom-popup"
               >
                 <ListingPopup listing={listing} />
