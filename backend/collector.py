@@ -22,6 +22,7 @@ import os
 import re
 import sqlite3
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -39,6 +40,22 @@ BEZREALITKY_DELAY = float(os.environ.get("BEZREALITKY_DELAY", "0.5"))
 ULOVDOMOV_DELAY = float(os.environ.get("ULOVDOMOV_DELAY", "0.3"))
 DETAIL_CONCURRENCY = int(os.environ.get("DETAIL_CONCURRENCY", "8"))  # concurrent detail fetches for Sreality
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+
+# Per-source rate limiting and concurrency
+SREALITY_RPS         = float(os.environ.get("SREALITY_RPS", "5"))
+SREALITY_CONCURRENCY = int(os.environ.get("SREALITY_CONCURRENCY", "10"))
+BEZREALITKY_RPS         = float(os.environ.get("BEZREALITKY_RPS", "3"))
+BEZREALITKY_CONCURRENCY = int(os.environ.get("BEZREALITKY_CONCURRENCY", "5"))
+ULOVDOMOV_RPS         = float(os.environ.get("ULOVDOMOV_RPS", "5"))
+ULOVDOMOV_CONCURRENCY = int(os.environ.get("ULOVDOMOV_CONCURRENCY", "10"))
+
+# Retry settings
+MAX_RETRIES    = int(os.environ.get("MAX_RETRIES", "3"))
+RETRY_BASE_SEC = float(os.environ.get("RETRY_BASE_SEC", "1.0"))
+
+# Batch settings
+PAGE_BATCH_MULTIPLIER = int(os.environ.get("PAGE_BATCH_MULTIPLIER", "2"))
+DETAIL_BATCH_SIZE     = int(os.environ.get("DETAIL_BATCH_SIZE", "20"))
 
 # Czech Republic bounding box for UlovDomov
 CZ_BOUNDS = {
@@ -59,6 +76,50 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("collector")
+
+
+# ---------------------------------------------------------------------------
+# Rate Limiter
+# ---------------------------------------------------------------------------
+
+class RateLimiter:
+    """Thread-safe token-bucket rate limiter with concurrency control."""
+
+    def __init__(self, rps: float, max_concurrent: int, name: str = ""):
+        self._interval = 1.0 / rps if rps > 0 else 0.0
+        self._lock = threading.Lock()
+        self._last_time = 0.0
+        self._semaphore = threading.Semaphore(max_concurrent)
+        self._name = name
+        self._log = logging.getLogger(f"collector.ratelimiter.{name}")
+
+    def acquire(self):
+        """Wait for rate limit token, then acquire concurrency slot."""
+        # Rate limiting: spin until enough time has elapsed
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                wait = self._last_time + self._interval - now
+                if wait <= 0:
+                    self._last_time = now
+                    break
+            time.sleep(wait)
+        # Concurrency limiting
+        self._semaphore.acquire()
+        self._log.debug("Acquired slot")
+
+    def release(self):
+        """Release concurrency slot."""
+        self._semaphore.release()
+        self._log.debug("Released slot")
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, *exc):
+        self.release()
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +171,12 @@ def init_db(db: sqlite3.Connection) -> None:
       scraped_at TEXT DEFAULT (datetime('now')),
       created_at TEXT DEFAULT (datetime('now')),
       is_active INTEGER DEFAULT 1,
-      deactivated_at TEXT
+      deactivated_at TEXT,
+      seller_name TEXT,
+      seller_phone TEXT,
+      seller_email TEXT,
+      seller_company TEXT,
+      additional_params TEXT
     )
     """)
 
@@ -130,6 +196,11 @@ def init_db(db: sqlite3.Connection) -> None:
     for col_sql in [
         "ALTER TABLE listings ADD COLUMN is_active INTEGER DEFAULT 1",
         "ALTER TABLE listings ADD COLUMN deactivated_at TEXT",
+        "ALTER TABLE listings ADD COLUMN seller_name TEXT",
+        "ALTER TABLE listings ADD COLUMN seller_phone TEXT",
+        "ALTER TABLE listings ADD COLUMN seller_email TEXT",
+        "ALTER TABLE listings ADD COLUMN seller_company TEXT",
+        "ALTER TABLE listings ADD COLUMN additional_params TEXT",
     ]:
         try:
             db.execute(col_sql)
@@ -204,6 +275,66 @@ def http_post(url: str, body: dict, headers: dict = None, timeout: int = REQUEST
 
 
 # ---------------------------------------------------------------------------
+# Retry wrappers
+# ---------------------------------------------------------------------------
+
+_retry_log = logging.getLogger("collector.retry")
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Return True if the exception is transient and worth retrying."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code == 429 or exc.code >= 500
+    if isinstance(exc, (urllib.error.URLError, TimeoutError, OSError)):
+        return True
+    return False
+
+
+def _http_with_retry(
+    fn,
+    *args,
+    rate_limiter: RateLimiter,
+    max_retries: int = MAX_RETRIES,
+    retry_base: float = RETRY_BASE_SEC,
+    **kwargs,
+):
+    """Call *fn* with rate-limiting and exponential-backoff retry.
+
+    Retries on HTTP 429, 5xx, URLError, TimeoutError, OSError.
+    Does NOT retry on 4xx (except 429) or JSONDecodeError.
+    """
+    last_exc = None
+    for attempt in range(max_retries):
+        rate_limiter.acquire()
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:
+            last_exc = exc
+            if not _is_retryable(exc):
+                raise
+            backoff = retry_base * (2 ** attempt)
+            _retry_log.warning(
+                "Retry %d/%d after %.1fs — %s: %s",
+                attempt + 1, max_retries, backoff, type(exc).__name__, exc,
+            )
+            time.sleep(backoff)
+        finally:
+            rate_limiter.release()
+    # All retries exhausted — raise the last exception
+    raise last_exc  # type: ignore[misc]
+
+
+def http_get_with_retry(url: str, *, rate_limiter: RateLimiter, **kwargs):
+    """http_get with rate-limiting and retry."""
+    return _http_with_retry(http_get, url, rate_limiter=rate_limiter, **kwargs)
+
+
+def http_post_with_retry(url: str, body: dict, *, rate_limiter: RateLimiter, **kwargs):
+    """http_post with rate-limiting and retry."""
+    return _http_with_retry(http_post, url, body, rate_limiter=rate_limiter, **kwargs)
+
+
+# ---------------------------------------------------------------------------
 # Database upsert helpers
 # ---------------------------------------------------------------------------
 
@@ -236,6 +367,8 @@ def upsert_listing(db: sqlite3.Connection, listing: dict) -> tuple[bool, int]:
         "furnishing", "energy_rating", "amenities",
         "image_urls", "thumbnail_url", "source_url",
         "listed_at", "scraped_at", "is_active", "deactivated_at",
+        "seller_name", "seller_phone", "seller_email", "seller_company",
+        "additional_params",
     ]
 
     if is_new:
@@ -451,10 +584,37 @@ class SrealityCollector:
     # Garage sub-category code
     GARAGE_SUB_CB = 52
 
+    # Czech URL slugs
+    TRANSACTION_CZ = {"sale": "prodej", "rent": "pronajem", "auction": "drazby"}
+    PROPERTY_CZ = {"flat": "byt", "house": "dum", "land": "pozemek",
+                    "commercial": "komercni", "other": "ostatni", "garage": "garaz"}
+
+    # category_sub_cb → URL slug for the disposition/type path segment
+    SUB_SLUGS = {
+        # Flats
+        2: "1+kk", 3: "1+1", 4: "2+kk", 5: "2+1",
+        6: "3+kk", 7: "3+1", 8: "4+kk", 9: "4+1",
+        10: "5+kk", 11: "5+1", 12: "6-a-vice", 16: "atypicky", 47: "pokoj",
+        # Houses
+        33: "rodinny-dum", 35: "vila", 37: "chalupa", 39: "chata",
+        43: "pamatka", 44: "na-klic", 46: "zemedelska-usedlost",
+        # Land
+        19: "bydleni", 20: "komercni", 21: "pole", 22: "louky",
+        23: "lesy", 24: "rybniky", 25: "sady-vinice",
+        # Commercial
+        26: "kancelare", 27: "sklady", 28: "vyrobni", 29: "obchodni",
+        30: "ubytovani", 31: "restaurace", 32: "zemedelske",
+        36: "cinzovni-dum", 38: "virtualni-kancelar",
+        # Other
+        34: "ostatni", 48: "garazove-stani", 52: "garaz", 50: "vinny-sklep",
+    }
+
     def __init__(self, db: sqlite3.Connection, delay: float = SREALITY_DELAY):
         self.db = db
         self.delay = delay
         self.log = logging.getLogger("collector.sreality")
+        self.rate_limiter = RateLimiter(SREALITY_RPS, SREALITY_CONCURRENCY, "sreality")
+        self._concurrency = SREALITY_CONCURRENCY
 
     def _fetch_page(self, category_main_cb: int, category_type_cb: int, page: int) -> dict:
         url = (
@@ -469,12 +629,45 @@ class SrealityCollector:
             "X-Requested-With": "XMLHttpRequest",
         })
 
+    def _fetch_page_with_retry(self, cat_main: int, cat_type: int, page: int) -> dict:
+        """Fetch a list page with rate limiting and retry."""
+        url = (
+            f"{self.BASE_URL}/estates"
+            f"?category_main_cb={cat_main}"
+            f"&category_type_cb={cat_type}"
+            f"&per_page={self.PER_PAGE}"
+            f"&page={page}"
+        )
+        return http_get_with_retry(
+            url,
+            rate_limiter=self.rate_limiter,
+            headers={
+                "Referer": "https://www.sreality.cz/",
+                "X-Requested-With": "XMLHttpRequest",
+            },
+        )
+
     def _fetch_detail(self, hash_id: int) -> dict | None:
         url = f"{self.BASE_URL}/estates/{hash_id}"
         try:
             return http_get(url, headers={
                 "Referer": f"https://www.sreality.cz/detail/prodej/byt/{hash_id}",
             })
+        except Exception as e:
+            self.log.debug("Detail fetch failed for hash_id=%s: %s", hash_id, e)
+            return None
+
+    def _fetch_detail_with_retry(self, hash_id: int) -> dict | None:
+        """Fetch detail for a single estate with rate limiting and retry."""
+        url = f"{self.BASE_URL}/estates/{hash_id}"
+        try:
+            return http_get_with_retry(
+                url,
+                rate_limiter=self.rate_limiter,
+                headers={
+                    "Referer": f"https://www.sreality.cz/detail/prodej/byt/{hash_id}",
+                },
+            )
         except Exception as e:
             self.log.debug("Detail fetch failed for hash_id=%s: %s", hash_id, e)
             return None
@@ -547,8 +740,11 @@ class SrealityCollector:
                 image_urls.append(href)
         thumbnail_url = image_urls[0] if image_urls else None
 
-        # Source URL
-        source_url = f"https://www.sreality.cz/detail/{transaction_type}/{property_type}/{hash_id}"
+        # Source URL — needs Czech slugs and disposition in the path
+        trans_cz = self.TRANSACTION_CZ.get(transaction_type, transaction_type)
+        prop_cz = self.PROPERTY_CZ.get(property_type, property_type)
+        sub_slug = self.SUB_SLUGS.get(cat_sub, "x")
+        source_url = f"https://www.sreality.cz/detail/{trans_cz}/{prop_cz}/{sub_slug}/x/{hash_id}"
 
         return {
             "external_id": f"sreality_{hash_id}",
@@ -583,6 +779,11 @@ class SrealityCollector:
             "scraped_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
             "is_active": 1,
             "deactivated_at": None,
+            "seller_name": None,
+            "seller_phone": None,
+            "seller_email": None,
+            "seller_company": None,
+            "additional_params": None,
         }
 
     def _extract_city(self, locality: str) -> str | None:
@@ -649,7 +850,35 @@ class SrealityCollector:
             listing["image_urls"] = json.dumps(image_urls, ensure_ascii=False)
             listing["thumbnail_url"] = image_urls[0]
 
+        # Seller info
+        embedded = detail.get("_embedded", {})
+        seller = embedded.get("seller", {})
+        if seller:
+            listing["seller_name"] = seller.get("user_name") or None
+            # Phone
+            phones = seller.get("phones", [])
+            if phones and isinstance(phones, list):
+                first_phone = phones[0] if phones else {}
+                if isinstance(first_phone, dict):
+                    listing["seller_phone"] = first_phone.get("number") or first_phone.get("code") or None
+                elif isinstance(first_phone, str):
+                    listing["seller_phone"] = first_phone
+            listing["seller_email"] = seller.get("email") or None
+            # Company: try company_name first, then premise name
+            company = seller.get("company_name")
+            if not company:
+                premise = seller.get("_embedded", {}).get("premise", {})
+                if premise:
+                    company = premise.get("name")
+            listing["seller_company"] = company or None
+
         # Items array — property details
+        mapped_item_names = {
+            "Celková cena", "Cena", "Stavba", "Stav objektu", "Vlastnictví",
+            "Podlaží", "Podlaží z celku", "Užitná plocha", "Plocha",
+            "Energetická náročnost budovy", "Vybavení", "Dispozice",
+        }
+        extra_params = {}
         items = detail.get("items", [])
         for item in items:
             item_name = (item.get("name") or "").strip()
@@ -697,6 +926,12 @@ class SrealityCollector:
             elif item_name == "Dispozice":
                 layout = self._extract_layout_from_name(val_str) or val_str
                 listing["layout"] = layout
+            elif item_name and val_str:
+                # Collect unmapped items into additional_params
+                extra_params[item_name] = val_str
+
+        if extra_params:
+            listing["additional_params"] = json.dumps(extra_params, ensure_ascii=False)
 
         # listed_at from date fields (Sreality doesn't expose this cleanly)
         # Use scraped_at as listed_at if not set
@@ -704,6 +939,89 @@ class SrealityCollector:
             listing["listed_at"] = listing["scraped_at"]
 
         return listing
+
+    def _process_page_data(
+        self, data: dict, seen_ids: set[str],
+    ) -> tuple[int, int, int]:
+        """Parse estates from a page, fetch details, enrich, upsert.
+
+        Returns (new_count, updated_count, error_count) for this page.
+        """
+        new_count = 0
+        updated_count = 0
+        error_count = 0
+
+        estates = data.get("_embedded", {}).get("estates", [])
+        if not estates:
+            return 0, 0, 0
+
+        # Phase 1: parse all estates and identify which need detail fetches
+        parsed = []  # list of (listing, hash_id, existing_row, needs_detail)
+        for estate in estates:
+            hash_id = estate.get("hash_id")
+            if not hash_id:
+                continue
+
+            external_id = f"sreality_{hash_id}"
+            seen_ids.add(external_id)
+
+            try:
+                listing = self._parse_basic_listing(estate)
+            except Exception as e:
+                self.log.debug("Parse error for hash_id=%s: %s", hash_id, e)
+                error_count += 1
+                continue
+
+            existing = self.db.execute(
+                "SELECT id, is_active, description, seller_name FROM listings WHERE external_id = ?",
+                [external_id],
+            ).fetchone()
+
+            needs = existing is None or (
+                existing is not None
+                and existing["description"] is None
+                and existing["seller_name"] is None
+            )
+            parsed.append((listing, hash_id, existing, needs))
+
+        # Phase 2: fetch details concurrently for listings that need it
+        needs_detail = [(l, h) for l, h, _, nd in parsed if nd]
+        details: dict[int, dict | None] = {}
+        if needs_detail:
+            with ThreadPoolExecutor(max_workers=self._concurrency) as pool:
+                future_to_hash = {
+                    pool.submit(self._fetch_detail_with_retry, h): h
+                    for _, h in needs_detail
+                }
+                for future in as_completed(future_to_hash):
+                    h = future_to_hash[future]
+                    try:
+                        details[h] = future.result()
+                    except Exception as e:
+                        self.log.debug("Detail fetch error for hash_id=%s: %s", h, e)
+                        details[h] = None
+
+        # Phase 3: enrich and upsert
+        for listing, hash_id, existing, needs in parsed:
+            if needs and hash_id in details and details[hash_id]:
+                listing = self._enrich_from_detail(listing, details[hash_id])
+
+            if existing and existing["is_active"] == 0:
+                listing["is_active"] = 1
+                listing["deactivated_at"] = None
+
+            try:
+                is_new, _ = upsert_listing(self.db, listing)
+                if is_new:
+                    new_count += 1
+                else:
+                    updated_count += 1
+            except Exception as e:
+                self.log.error("DB error for %s: %s", listing["external_id"], e)
+                error_count += 1
+
+        self.db.commit()
+        return new_count, updated_count, error_count
 
     def collect(self) -> tuple[int, int, int]:
         """
@@ -715,105 +1033,71 @@ class SrealityCollector:
         updated_count = 0
         error_count = 0
         seen_ids: set[str] = set()
+        batch_size = PAGE_BATCH_MULTIPLIER * self._concurrency
 
         for cat_main, cat_type in self.CATEGORIES:
             cat_name = f"cat_main={cat_main} cat_type={cat_type}"
             self.log.info("Fetching Sreality: %s", cat_name)
 
-            page = 1
-            total_pages = 1
+            # --- Fetch page 1 to discover total_pages ---
+            try:
+                data = self._fetch_page_with_retry(cat_main, cat_type, 1)
+            except Exception as e:
+                self.log.error("Error fetching page 1 of %s: %s", cat_name, e)
+                error_count += 1
+                continue
 
-            while page <= total_pages:
-                try:
-                    data = self._fetch_page(cat_main, cat_type, page)
-                    time.sleep(self.delay)
-                except Exception as e:
-                    self.log.error("Error fetching page %d of %s: %s", page, cat_name, e)
-                    error_count += 1
-                    break
+            if not isinstance(data, dict):
+                self.log.error("Unexpected response type for %s page 1", cat_name)
+                continue
 
-                if not isinstance(data, dict):
-                    self.log.error("Unexpected response type for %s page %d", cat_name, page)
-                    break
+            result_size = data.get("result_size", 0)
+            total_pages = max(1, -(-result_size // self.PER_PAGE))
+            self.log.info("  %s: %d listings, %d pages", cat_name, result_size, total_pages)
 
-                result_size = data.get("result_size", 0)
-                if page == 1:
-                    total_pages = max(1, -(-result_size // self.PER_PAGE))  # ceil division
-                    self.log.info(
-                        "  %s: %d listings, %d pages",
-                        cat_name, result_size, total_pages,
-                    )
+            # Process page 1 immediately
+            n, u, e = self._process_page_data(data, seen_ids)
+            new_count += n
+            updated_count += u
+            error_count += e
 
-                estates = data.get("_embedded", {}).get("estates", [])
-                if not estates:
-                    break
+            if total_pages <= 1:
+                continue
 
-                # Phase 1: parse all estates and identify which need detail fetches
-                parsed = []  # list of (listing, hash_id, existing_row, needs_detail)
-                for estate in estates:
-                    hash_id = estate.get("hash_id")
-                    if not hash_id:
+            # --- Batch-concurrent fetching of remaining pages ---
+            remaining = list(range(2, total_pages + 1))
+
+            for batch_start in range(0, len(remaining), batch_size):
+                batch_pages = remaining[batch_start : batch_start + batch_size]
+                self.log.info(
+                    "  %s: Fetching pages %d-%d concurrently",
+                    cat_name, batch_pages[0], batch_pages[-1],
+                )
+
+                page_results: dict[int, dict | None] = {}
+                with ThreadPoolExecutor(max_workers=self._concurrency) as pool:
+                    future_to_page = {
+                        pool.submit(self._fetch_page_with_retry, cat_main, cat_type, p): p
+                        for p in batch_pages
+                    }
+                    for future in as_completed(future_to_page):
+                        pg = future_to_page[future]
+                        try:
+                            page_results[pg] = future.result()
+                        except Exception as exc:
+                            self.log.error("Error fetching page %d of %s: %s", pg, cat_name, exc)
+                            error_count += 1
+                            page_results[pg] = None
+
+                # Process in page order
+                for pg in batch_pages:
+                    pg_data = page_results.get(pg)
+                    if pg_data is None or not isinstance(pg_data, dict):
                         continue
-
-                    external_id = f"sreality_{hash_id}"
-                    seen_ids.add(external_id)
-
-                    try:
-                        listing = self._parse_basic_listing(estate)
-                    except Exception as e:
-                        self.log.debug("Parse error for hash_id=%s: %s", hash_id, e)
-                        error_count += 1
-                        continue
-
-                    existing = self.db.execute(
-                        "SELECT id, is_active FROM listings WHERE external_id = ?",
-                        [external_id],
-                    ).fetchone()
-
-                    parsed.append((listing, hash_id, existing, existing is None))
-
-                # Phase 2: fetch details concurrently for new listings
-                needs_detail = [(l, h) for l, h, _, nd in parsed if nd]
-                details: dict[int, dict | None] = {}
-                if needs_detail:
-                    with ThreadPoolExecutor(max_workers=DETAIL_CONCURRENCY) as pool:
-                        future_to_hash = {
-                            pool.submit(self._fetch_detail, h): h
-                            for _, h in needs_detail
-                        }
-                        for future in as_completed(future_to_hash):
-                            h = future_to_hash[future]
-                            try:
-                                details[h] = future.result()
-                            except Exception as e:
-                                self.log.debug("Detail fetch error for hash_id=%s: %s", h, e)
-                                details[h] = None
-
-                # Phase 3: enrich and upsert
-                for listing, hash_id, existing, needs in parsed:
-                    if needs and hash_id in details and details[hash_id]:
-                        listing = self._enrich_from_detail(listing, details[hash_id])
-
-                    if existing and existing["is_active"] == 0:
-                        listing["is_active"] = 1
-                        listing["deactivated_at"] = None
-
-                    try:
-                        is_new, _ = upsert_listing(self.db, listing)
-                        if is_new:
-                            new_count += 1
-                        else:
-                            updated_count += 1
-                    except Exception as e:
-                        self.log.error("DB error for %s: %s", listing["external_id"], e)
-                        error_count += 1
-
-                # Commit every page
-                self.db.commit()
-                page += 1
-
-                if page <= total_pages:
-                    time.sleep(self.delay)
+                    n, u, e = self._process_page_data(pg_data, seen_ids)
+                    new_count += n
+                    updated_count += u
+                    error_count += e
 
         # Deactivate stale listings
         deactivated = deactivate_stale_listings(self.db, "sreality", seen_ids)
@@ -889,6 +1173,8 @@ class BezrealitkyCollector:
         self.delay = delay
         self.log = logging.getLogger("collector.bezrealitky")
         self._build_id: str | None = None
+        self.rate_limiter = RateLimiter(BEZREALITKY_RPS, BEZREALITKY_CONCURRENCY, "bezrealitky")
+        self._concurrency = BEZREALITKY_CONCURRENCY
 
     def _get_build_id(self) -> str | None:
         """Fetch the Next.js buildId from the site HTML."""
@@ -923,6 +1209,32 @@ class BezrealitkyCollector:
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 # buildId may have changed
+                self.log.warning("404 on buildId=%s — will refresh", build_id)
+                self._build_id = None
+            else:
+                self.log.error("HTTP %d fetching %s page %d: %s", e.code, offer_slug, page, e)
+            return None
+        except Exception as e:
+            self.log.error("Error fetching %s/%s page %d: %s", offer_slug, estate_slug, page, e)
+            return None
+
+    def _fetch_next_data_with_retry(
+        self, build_id: str, offer_slug: str, estate_slug: str, page: int,
+    ) -> dict | None:
+        """Fetch a page with rate limiting and retry. Invalidates _build_id on 404."""
+        url = (
+            f"{self.BASE_URL}/_next/data/{build_id}/cs/vypis/"
+            f"{offer_slug}/{estate_slug}.json"
+            f"?slugs={offer_slug}&slugs={estate_slug}&page={page}"
+        )
+        try:
+            return http_get_with_retry(
+                url,
+                rate_limiter=self.rate_limiter,
+                headers={"Referer": f"{self.BASE_URL}/vypis/{offer_slug}/{estate_slug}"},
+            )
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
                 self.log.warning("404 on buildId=%s — will refresh", build_id)
                 self._build_id = None
             else:
@@ -1030,8 +1342,14 @@ class BezrealitkyCollector:
         if not thumbnail_url and image_urls:
             thumbnail_url = image_urls[0]
 
-        # URI / source_url
-        uri = advert.get("uri", "")
+        # URI / source_url — key may have locale suffix like uri({"locale":"CS"})
+        uri = ""
+        for k in advert:
+            if k.startswith("uri"):
+                val = advert[k]
+                if val and isinstance(val, str):
+                    uri = val
+                    break
         if uri and not uri.startswith("http"):
             if not uri.startswith("/"):
                 uri = "/" + uri
@@ -1065,6 +1383,24 @@ class BezrealitkyCollector:
             amenities = ",".join(str(t) for t in tags_raw if t)
         else:
             amenities = str(tags_raw) if tags_raw else None
+
+        # Additional params — collect extra Apollo fields not mapped to named columns
+        extra_params = {}
+        if charges:
+            extra_params["charges"] = charges
+        if surface:
+            extra_params["surface"] = surface
+        surface_land = advert.get("surfaceLand")
+        if surface_land:
+            extra_params["surfaceLand"] = surface_land
+        if disposition_raw:
+            extra_params["disposition_raw"] = disposition_raw
+        for extra_key in ("balcony", "cellar", "garage", "loggia", "terrace",
+                          "parking", "elevator", "garden"):
+            val = advert.get(extra_key)
+            if val is not None:
+                extra_params[extra_key] = val
+        additional_params = json.dumps(extra_params, ensure_ascii=False) if extra_params else None
 
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -1101,6 +1437,11 @@ class BezrealitkyCollector:
             "scraped_at": now,
             "is_active": 1,
             "deactivated_at": None,
+            "seller_name": None,
+            "seller_phone": None,
+            "seller_email": None,
+            "seller_company": None,
+            "additional_params": additional_params,
         }
 
     def _extract_image_url(self, img_obj: dict, prefer: str = "RECORD_MAIN") -> str | None:
@@ -1165,6 +1506,60 @@ class BezrealitkyCollector:
                         return qval.get("totalCount", 0)
         return 0
 
+    def _process_page_data(
+        self, data: dict, seen_ids: set[str],
+    ) -> tuple[int, int, int]:
+        """Parse adverts from a page response, upsert into DB.
+
+        Returns (new_count, updated_count, error_count) for this page.
+        """
+        new_count = 0
+        updated_count = 0
+        error_count = 0
+
+        page_props = (
+            data.get("pageProps", {})
+            or data.get("props", {}).get("pageProps", {})
+        )
+        apollo_cache = (
+            page_props.get("apolloCache")
+            or page_props.get("apolloState")
+            or {}
+        )
+
+        if not apollo_cache:
+            return 0, 0, 0
+
+        adverts = self._parse_apollo_cache(apollo_cache)
+        if not adverts:
+            return 0, 0, 0
+
+        for listing in adverts:
+            external_id = listing["external_id"]
+            seen_ids.add(external_id)
+
+            existing = self.db.execute(
+                "SELECT id, is_active FROM listings WHERE external_id = ?",
+                [external_id],
+            ).fetchone()
+
+            if existing and existing["is_active"] == 0:
+                listing["is_active"] = 1
+                listing["deactivated_at"] = None
+
+            try:
+                is_new, _ = upsert_listing(self.db, listing)
+                if is_new:
+                    new_count += 1
+                else:
+                    updated_count += 1
+            except Exception as e:
+                self.log.error("DB error for %s: %s", external_id, e)
+                error_count += 1
+
+        self.db.commit()
+        return new_count, updated_count, error_count
+
     def collect(self) -> tuple[int, int, int]:
         """
         Collect all listings from Bezrealitky.
@@ -1175,6 +1570,7 @@ class BezrealitkyCollector:
         updated_count = 0
         error_count = 0
         seen_ids: set[str] = set()
+        batch_size = PAGE_BATCH_MULTIPLIER * self._concurrency
 
         # Get fresh buildId
         self._build_id = self._get_build_id()
@@ -1188,88 +1584,95 @@ class BezrealitkyCollector:
             slug_label = f"{offer_slug}/{estate_slug}"
             self.log.info("Fetching Bezrealitky: %s", slug_label)
 
-            page = 1
-            total_pages = 999  # Will be updated from first response
+            # Refresh buildId if invalidated
+            if not self._build_id:
+                self._build_id = self._get_build_id()
+                if not self._build_id:
+                    self.log.error("Could not refresh buildId for %s", slug_label)
+                    error_count += 1
+                    continue
 
-            while page <= total_pages:
-                # Refresh buildId if invalidated
+            # --- Fetch page 1 to discover total_pages ---
+            data = self._fetch_next_data_with_retry(
+                self._build_id, offer_slug, estate_slug, 1,
+            )
+            if data is None:
+                # Check if buildId was invalidated
+                if not self._build_id:
+                    self._build_id = self._get_build_id()
+                continue
+
+            page_props = (
+                data.get("pageProps", {})
+                or data.get("props", {}).get("pageProps", {})
+            )
+            total_count = self._get_total_count(page_props)
+            if total_count > 0:
+                total_pages = max(1, -(-total_count // self.ITEMS_PER_PAGE))
+                self.log.info("  %s: %d listings, %d pages", slug_label, total_count, total_pages)
+            else:
+                total_pages = 1
+
+            # Process page 1 immediately
+            n, u, e = self._process_page_data(data, seen_ids)
+            new_count += n
+            updated_count += u
+            error_count += e
+
+            if total_pages <= 1:
+                continue
+
+            # --- Batch-concurrent fetching of remaining pages ---
+            remaining = list(range(2, total_pages + 1))
+
+            for batch_start in range(0, len(remaining), batch_size):
+                batch_pages = remaining[batch_start : batch_start + batch_size]
+                # Ensure buildId is still valid before each batch
                 if not self._build_id:
                     self._build_id = self._get_build_id()
                     if not self._build_id:
-                        self.log.error("Could not refresh buildId for %s", slug_label)
+                        self.log.error("Could not refresh buildId during %s", slug_label)
                         error_count += 1
                         break
 
-                data = self._fetch_next_data(
-                    self._build_id, offer_slug, estate_slug, page
-                )
-                time.sleep(self.delay)
-
-                if data is None:
-                    break
-
-                page_props = (
-                    data.get("pageProps", {})
-                    or data.get("props", {}).get("pageProps", {})
-                )
-                apollo_cache = (
-                    page_props.get("apolloCache")
-                    or page_props.get("apolloState")
-                    or {}
+                self.log.info(
+                    "  %s: Fetching pages %d-%d concurrently",
+                    slug_label, batch_pages[0], batch_pages[-1],
                 )
 
-                if not apollo_cache:
-                    self.log.warning("No apolloCache for %s page %d", slug_label, page)
+                current_build_id = self._build_id
+                page_results: dict[int, dict | None] = {}
+                with ThreadPoolExecutor(max_workers=self._concurrency) as pool:
+                    future_to_page = {
+                        pool.submit(
+                            self._fetch_next_data_with_retry,
+                            current_build_id, offer_slug, estate_slug, p,
+                        ): p
+                        for p in batch_pages
+                    }
+                    for future in as_completed(future_to_page):
+                        pg = future_to_page[future]
+                        try:
+                            page_results[pg] = future.result()
+                        except Exception as exc:
+                            self.log.error("Error fetching %s page %d: %s", slug_label, pg, exc)
+                            error_count += 1
+                            page_results[pg] = None
+
+                # Process in page order
+                for pg in batch_pages:
+                    pg_data = page_results.get(pg)
+                    if pg_data is None:
+                        continue
+                    n, u, e = self._process_page_data(pg_data, seen_ids)
+                    new_count += n
+                    updated_count += u
+                    error_count += e
+
+                # Check if buildId was invalidated during this batch
+                if not self._build_id:
+                    self.log.warning("buildId invalidated during %s — breaking to next category", slug_label)
                     break
-
-                # Determine total count from ROOT_QUERY on first page
-                if page == 1:
-                    total_count = self._get_total_count(page_props)
-                    if total_count > 0:
-                        total_pages = max(1, -(-total_count // self.ITEMS_PER_PAGE))
-                        self.log.info(
-                            "  %s: %d listings, %d pages",
-                            slug_label, total_count, total_pages,
-                        )
-                    else:
-                        # Could be 0 or parsing issue; try at least 1 page
-                        total_pages = 1
-
-                # Parse adverts from Apollo cache
-                adverts = self._parse_apollo_cache(apollo_cache)
-
-                if not adverts:
-                    self.log.debug("No adverts found in apolloCache for %s page %d", slug_label, page)
-                    break
-
-                for listing in adverts:
-                    external_id = listing["external_id"]
-                    seen_ids.add(external_id)
-
-                    existing = self.db.execute(
-                        "SELECT id, is_active FROM listings WHERE external_id = ?",
-                        [external_id],
-                    ).fetchone()
-
-                    if existing and existing["is_active"] == 0:
-                        listing["is_active"] = 1
-                        listing["deactivated_at"] = None
-
-                    try:
-                        is_new, _ = upsert_listing(self.db, listing)
-                        if is_new:
-                            new_count += 1
-                        else:
-                            updated_count += 1
-                    except Exception as e:
-                        self.log.error("DB error for %s: %s", external_id, e)
-                        error_count += 1
-
-                self.db.commit()
-                page += 1
-
-                if page <= total_pages:
-                    time.sleep(self.delay)
 
         deactivated = deactivate_stale_listings(self.db, "bezrealitky", seen_ids)
         self.log.info(
@@ -1340,6 +1743,8 @@ class UlovDomovCollector:
         self.db = db
         self.delay = delay
         self.log = logging.getLogger("collector.ulovdomov")
+        self.rate_limiter = RateLimiter(ULOVDOMOV_RPS, ULOVDOMOV_CONCURRENCY, "ulovdomov")
+        self._concurrency = ULOVDOMOV_CONCURRENCY
 
     def _fetch_page(self, offer_type: str, property_type: str, page: int) -> dict:
         url = f"{self.API_URL}?page={page}&perPage={self.PER_PAGE}&sorting=latest"
@@ -1477,12 +1882,191 @@ class UlovDomovCollector:
             "amenities": amenities,
             "image_urls": json.dumps(image_urls, ensure_ascii=False),
             "thumbnail_url": thumbnail_url,
-            "source_url": offer.get("absoluteUrl"),
+            "source_url": f"https://www.ulovdomov.cz/inzerat/x/{offer_id}",
             "listed_at": listed_at,
             "scraped_at": now,
             "is_active": 1,
             "deactivated_at": None,
+            "seller_name": None,
+            "seller_phone": None,
+            "seller_email": None,
+            "seller_company": None,
+            "additional_params": None,
         }
+
+    def _fetch_page_with_retry(self, offer_type: str, property_type: str, page: int) -> dict:
+        """Fetch a list page with rate limiting and retry."""
+        url = f"{self.API_URL}?page={page}&perPage={self.PER_PAGE}&sorting=latest"
+        body = {
+            "offerType": offer_type,
+            "propertyType": property_type,
+            "bounds": CZ_BOUNDS,
+        }
+        return http_post_with_retry(
+            url,
+            body,
+            rate_limiter=self.rate_limiter,
+            headers={
+                "Origin": "https://www.ulovdomov.cz",
+                "Referer": f"https://www.ulovdomov.cz/{'pronajem' if offer_type == 'rent' else 'prodej'}/byty",
+            },
+        )
+
+    def _fetch_detail(self, offer_id: int) -> dict | None:
+        """Fetch detail for a single UlovDomov offer."""
+        url = f"https://ud.api.ulovdomov.cz/v1/offer/detail?offerId={offer_id}"
+        try:
+            return http_get(url, headers={
+                "Origin": "https://www.ulovdomov.cz",
+                "Referer": f"https://www.ulovdomov.cz/inzerat/x/{offer_id}",
+            })
+        except Exception as e:
+            self.log.debug("Detail fetch failed for offer_id=%s: %s", offer_id, e)
+            return None
+
+    def _fetch_detail_with_retry(self, offer_id: int) -> dict | None:
+        """Fetch detail with rate limiting and retry."""
+        url = f"https://ud.api.ulovdomov.cz/v1/offer/detail?offerId={offer_id}"
+        try:
+            return http_get_with_retry(
+                url,
+                rate_limiter=self.rate_limiter,
+                headers={
+                    "Origin": "https://www.ulovdomov.cz",
+                    "Referer": f"https://www.ulovdomov.cz/inzerat/x/{offer_id}",
+                },
+            )
+        except Exception as e:
+            self.log.debug("Detail fetch failed for offer_id=%s: %s", offer_id, e)
+            return None
+
+    def _enrich_from_detail(self, listing: dict, detail: dict) -> dict:
+        """Enrich a listing with data from the detail endpoint."""
+        if not detail:
+            return listing
+
+        data = detail.get("data", detail)
+
+        # Seller info from owner
+        owner = data.get("owner", {}) or {}
+        if owner:
+            first = owner.get("firstName", "") or ""
+            surname = owner.get("surname", "") or ""
+            name = f"{first} {surname}".strip()
+            listing["seller_name"] = name or None
+            listing["seller_phone"] = owner.get("phone") or None
+            listing["seller_email"] = None  # UlovDomov doesn't provide email
+            listing["seller_company"] = owner.get("type") or None
+
+        # Description override from detail
+        desc = data.get("description")
+        if desc and not listing.get("description"):
+            listing["description"] = desc
+
+        # Additional params from parameters dict
+        extra_params = {}
+        parameters = data.get("parameters", {}) or {}
+        for key, param in parameters.items():
+            if not isinstance(param, dict):
+                extra_params[key] = str(param)
+                continue
+            title = param.get("title", key)
+            # Value can be direct or inside options
+            value = param.get("value")
+            if value is None:
+                options = param.get("options", [])
+                if options and isinstance(options, list):
+                    selected = [o.get("title") or o.get("value") or str(o)
+                                for o in options if isinstance(o, dict) and o.get("isActive")]
+                    if not selected:
+                        selected = [o.get("title") or o.get("value") or str(o)
+                                    for o in options if isinstance(o, dict)]
+                    value = ", ".join(selected) if selected else None
+            if value is not None:
+                extra_params[title] = str(value)
+
+        if extra_params:
+            listing["additional_params"] = json.dumps(extra_params, ensure_ascii=False)
+
+        return listing
+
+    def _process_page_data(
+        self, data: dict, offer_type: str, property_type: str, seen_ids: set[str],
+    ) -> tuple[int, int, int]:
+        """Parse offers from a page, fetch details, enrich, upsert.
+
+        Returns (new_count, updated_count, error_count) for this page.
+        """
+        new_count = 0
+        updated_count = 0
+        error_count = 0
+
+        offers = data.get("data", {}).get("offers", [])
+        if not offers:
+            return 0, 0, 0
+
+        # Phase 1: parse all offers and identify which need detail fetches
+        parsed = []  # list of (listing, offer_id, existing, needs_detail)
+        for offer in offers:
+            try:
+                listing = self._parse_offer(offer, offer_type, property_type)
+            except Exception as e:
+                self.log.debug("Parse error for offer id=%s: %s", offer.get("id"), e)
+                error_count += 1
+                continue
+
+            external_id = listing["external_id"]
+            seen_ids.add(external_id)
+            offer_id = offer["id"]
+
+            existing = self.db.execute(
+                "SELECT id, is_active, seller_name FROM listings WHERE external_id = ?",
+                [external_id],
+            ).fetchone()
+
+            needs_detail = existing is None or (
+                existing is not None and existing["seller_name"] is None
+            )
+            parsed.append((listing, offer_id, existing, needs_detail))
+
+        # Phase 2: fetch details concurrently for listings that need it
+        needs_detail_list = [(l, oid) for l, oid, _, nd in parsed if nd]
+        details: dict[int, dict | None] = {}
+        if needs_detail_list:
+            with ThreadPoolExecutor(max_workers=self._concurrency) as pool:
+                future_to_id = {
+                    pool.submit(self._fetch_detail_with_retry, oid): oid
+                    for _, oid in needs_detail_list
+                }
+                for future in as_completed(future_to_id):
+                    oid = future_to_id[future]
+                    try:
+                        details[oid] = future.result()
+                    except Exception as e:
+                        self.log.debug("Detail fetch error for offer_id=%s: %s", oid, e)
+                        details[oid] = None
+
+        # Phase 3: enrich and upsert
+        for listing, offer_id, existing, needs in parsed:
+            if needs and offer_id in details and details[offer_id]:
+                listing = self._enrich_from_detail(listing, details[offer_id])
+
+            if existing and existing["is_active"] == 0:
+                listing["is_active"] = 1
+                listing["deactivated_at"] = None
+
+            try:
+                is_new, _ = upsert_listing(self.db, listing)
+                if is_new:
+                    new_count += 1
+                else:
+                    updated_count += 1
+            except Exception as e:
+                self.log.error("DB error for %s: %s", listing["external_id"], e)
+                error_count += 1
+
+        self.db.commit()
+        return new_count, updated_count, error_count
 
     def collect(self) -> tuple[int, int, int]:
         """
@@ -1494,75 +2078,74 @@ class UlovDomovCollector:
         updated_count = 0
         error_count = 0
         seen_ids: set[str] = set()
+        batch_size = PAGE_BATCH_MULTIPLIER * self._concurrency
 
         for offer_type, property_type in self.COMBINATIONS:
             combo_label = f"offer_type={offer_type} property_type={property_type}"
             self.log.info("Fetching UlovDomov: %s", combo_label)
 
-            page = 1
-            total_pages = 1
+            # --- Fetch page 1 to discover total_pages ---
+            try:
+                data = self._fetch_page_with_retry(offer_type, property_type, 1)
+            except Exception as e:
+                self.log.error("Error fetching page 1 of %s: %s", combo_label, e)
+                error_count += 1
+                continue
 
-            while page <= total_pages:
-                try:
-                    data = self._fetch_page(offer_type, property_type, page)
-                    time.sleep(self.delay)
-                except Exception as e:
-                    self.log.error("Error fetching %s page %d: %s", combo_label, page, e)
-                    error_count += 1
-                    break
+            if not data.get("success"):
+                self.log.error("API returned success=false for %s page 1", combo_label)
+                continue
 
-                if not data.get("success"):
-                    self.log.error("API returned success=false for %s page %d", combo_label, page)
-                    break
+            extra = data.get("extraData", {})
+            total_pages = extra.get("totalPages", 1)
+            total_count = extra.get("total", 0)
+            self.log.info("  %s: %d listings, %d pages", combo_label, total_count, total_pages)
 
-                extra = data.get("extraData", {})
-                if page == 1:
-                    total_pages = extra.get("totalPages", 1)
-                    total_count = extra.get("total", 0)
-                    self.log.info(
-                        "  %s: %d listings, %d pages",
-                        combo_label, total_count, total_pages,
-                    )
+            # Process page 1 immediately
+            n, u, e = self._process_page_data(data, offer_type, property_type, seen_ids)
+            new_count += n
+            updated_count += u
+            error_count += e
 
-                offers = data.get("data", {}).get("offers", [])
-                if not offers:
-                    break
+            if total_pages <= 1:
+                continue
 
-                for offer in offers:
-                    try:
-                        listing = self._parse_offer(offer, offer_type, property_type)
-                    except Exception as e:
-                        self.log.debug("Parse error for offer id=%s: %s", offer.get("id"), e)
-                        error_count += 1
+            # --- Batch-concurrent fetching of remaining pages ---
+            remaining = list(range(2, total_pages + 1))
+
+            for batch_start in range(0, len(remaining), batch_size):
+                batch_pages = remaining[batch_start : batch_start + batch_size]
+                self.log.info(
+                    "  %s: Fetching pages %d-%d concurrently",
+                    combo_label, batch_pages[0], batch_pages[-1],
+                )
+
+                page_results: dict[int, dict | None] = {}
+                with ThreadPoolExecutor(max_workers=self._concurrency) as pool:
+                    future_to_page = {
+                        pool.submit(self._fetch_page_with_retry, offer_type, property_type, p): p
+                        for p in batch_pages
+                    }
+                    for future in as_completed(future_to_page):
+                        pg = future_to_page[future]
+                        try:
+                            page_results[pg] = future.result()
+                        except Exception as exc:
+                            self.log.error("Error fetching %s page %d: %s", combo_label, pg, exc)
+                            error_count += 1
+                            page_results[pg] = None
+
+                # Process in page order
+                for pg in batch_pages:
+                    pg_data = page_results.get(pg)
+                    if pg_data is None or not pg_data.get("success"):
+                        if pg_data is not None:
+                            self.log.error("API returned success=false for %s page %d", combo_label, pg)
                         continue
-
-                    external_id = listing["external_id"]
-                    seen_ids.add(external_id)
-
-                    existing = self.db.execute(
-                        "SELECT id, is_active FROM listings WHERE external_id = ?",
-                        [external_id],
-                    ).fetchone()
-
-                    if existing and existing["is_active"] == 0:
-                        listing["is_active"] = 1
-                        listing["deactivated_at"] = None
-
-                    try:
-                        is_new, _ = upsert_listing(self.db, listing)
-                        if is_new:
-                            new_count += 1
-                        else:
-                            updated_count += 1
-                    except Exception as e:
-                        self.log.error("DB error for %s: %s", external_id, e)
-                        error_count += 1
-
-                self.db.commit()
-                page += 1
-
-                if page <= total_pages:
-                    time.sleep(self.delay)
+                    n, u, e = self._process_page_data(pg_data, offer_type, property_type, seen_ids)
+                    new_count += n
+                    updated_count += u
+                    error_count += e
 
         deactivated = deactivate_stale_listings(self.db, "ulovdomov", seen_ids)
         self.log.info(
