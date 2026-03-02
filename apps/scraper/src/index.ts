@@ -2,26 +2,32 @@
 /**
  * Flat Finder CZ - Scraper CLI
  *
- * Runs one or all scrapers, upserts listings into the database,
- * deactivates stale listings, and tracks each run via scraper_runs.
+ * Runs one or all scrapers with parallel source execution.
+ *
+ * Modes:
+ *   (default) Incremental — stops early per category when all listings are known
+ *   --full    Full scan   — fetches everything, then deactivates stale listings
+ *   --watch   Watcher     — loops continuously, checks newest pages only, enriches inline
  *
  * Usage:
- *   tsx src/index.ts                          # run all scrapers
- *   tsx src/index.ts --source sreality         # run only Sreality
- *   tsx src/index.ts --source all --dry-run    # collect but don't save
+ *   tsx src/index.ts                             # incremental (default)
+ *   tsx src/index.ts --full                      # full scan + deactivation
+ *   tsx src/index.ts --watch --interval 60       # watcher loop
+ *   tsx src/index.ts --source sreality --dry-run # single source, no DB
  */
 
 import { getEnv } from "@flat-finder/config";
 import {
-  getDb,
-  closeDb,
+  createDb,
   upsertListing,
+  findExistingExternalIds,
   createScraperRun,
   finishScraperRun,
   type Db,
   type NewListing,
 } from "@flat-finder/db";
 import type { ScraperResult } from "@flat-finder/types";
+import type postgres from "postgres";
 
 import type { BaseScraper } from "./base-scraper.js";
 import { SrealityScraper } from "./scrapers/sreality.js";
@@ -40,6 +46,9 @@ const ALL_SOURCES: SourceName[] = ["sreality", "bezrealitky", "ulovdomov"];
 interface CliArgs {
   source: SourceName | "all";
   dryRun: boolean;
+  watch: boolean;
+  full: boolean;
+  interval: number;
 }
 
 interface SourceResult {
@@ -53,15 +62,27 @@ interface SourceResult {
   fatalError?: string;
 }
 
+interface RunSourceOpts {
+  watch: boolean;
+  full: boolean;
+  dryRun: boolean;
+  watcherMaxPages: number;
+  watcherDetailConcurrency: number;
+}
+
 // ---------------------------------------------------------------------------
 // CLI argument parsing
 // ---------------------------------------------------------------------------
 
 function parseArgs(): CliArgs {
   const args = process.argv.slice(2);
+  const env = getEnv();
   const opts: CliArgs = {
     source: "all",
     dryRun: false,
+    watch: false,
+    full: false,
+    interval: env.WATCHER_INTERVAL_S,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -77,6 +98,16 @@ function parseArgs(): CliArgs {
       opts.source = val as CliArgs["source"];
     } else if (arg === "--dry-run") {
       opts.dryRun = true;
+    } else if (arg === "--watch") {
+      opts.watch = true;
+    } else if (arg === "--full") {
+      opts.full = true;
+    } else if (arg === "--interval" && i + 1 < args.length) {
+      opts.interval = parseInt(args[++i], 10);
+      if (isNaN(opts.interval) || opts.interval < 1) {
+        console.error("Invalid --interval value. Must be a positive integer (seconds).");
+        process.exit(2);
+      }
     } else if (arg === "--help" || arg === "-h") {
       console.log(`
 Flat Finder CZ - Scraper
@@ -85,15 +116,23 @@ Usage:
   tsx src/index.ts [options]
 
 Options:
-  --source <name>   Which source to scrape: sreality | bezrealitky | ulovdomov | all (default: all)
-  --dry-run         Collect listings but do not save to database
-  --help, -h        Show this help message
+  --source <name>     Which source to scrape: sreality | bezrealitky | ulovdomov | all (default: all)
+  --dry-run           Collect listings but do not save to database
+  --watch             Run in watcher mode: loop continuously checking newest pages
+  --full              Full scan: fetch all pages + deactivate stale listings
+  --interval <secs>   Seconds between watcher cycles (default: ${env.WATCHER_INTERVAL_S})
+  --help, -h          Show this help message
 `);
       process.exit(0);
     } else {
       console.error(`Unknown argument: "${arg}". Use --help for usage.`);
       process.exit(2);
     }
+  }
+
+  if (opts.watch && opts.full) {
+    console.error("Cannot use --watch and --full together.");
+    process.exit(2);
   }
 
   return opts;
@@ -205,13 +244,45 @@ function toNewListing(result: ScraperResult): NewListing {
 }
 
 // ---------------------------------------------------------------------------
-// Run a single scraper source
+// Upsert helpers
+// ---------------------------------------------------------------------------
+
+async function upsertBatch(
+  db: Db,
+  listings: ScraperResult[],
+  log: (msg: string) => void,
+): Promise<{ newCount: number; updatedCount: number; errorCount: number }> {
+  let newCount = 0;
+  let updatedCount = 0;
+  let errorCount = 0;
+
+  for (const result of listings) {
+    try {
+      const newListing = toNewListing(result);
+      const { isNew } = await upsertListing(db, newListing);
+      if (isNew) newCount++;
+      else updatedCount++;
+    } catch (err) {
+      errorCount++;
+      if (errorCount <= 5) {
+        log(`Error upserting ${result.external_id}: ${err}`);
+      } else if (errorCount === 6) {
+        log("(suppressing further upsert error logs)");
+      }
+    }
+  }
+
+  return { newCount, updatedCount, errorCount };
+}
+
+// ---------------------------------------------------------------------------
+// Run a single source
 // ---------------------------------------------------------------------------
 
 async function runSource(
   source: SourceName,
   db: Db | null,
-  dryRun: boolean,
+  opts: RunSourceOpts,
 ): Promise<SourceResult> {
   const t0 = performance.now();
   const log = (msg: string) => console.log(`[${source}]`, msg);
@@ -220,7 +291,7 @@ async function runSource(
 
   // Create a scraper run record (skip for dry-run)
   let runId: number | null = null;
-  if (!dryRun && db) {
+  if (!opts.dryRun && db) {
     try {
       const run = await createScraperRun(db, { source, status: "running" });
       runId = run.id;
@@ -235,68 +306,164 @@ async function runSource(
   let deactivatedCount = 0;
 
   try {
-    // 1. Fetch all listings from this source
     const scraper = createScraper(source);
-    log("Fetching listings...");
-    const listings = await scraper.fetchListings();
-    log(`Fetched ${listings.length} listings`);
 
-    // 2. In dry-run mode, just report what we found and return
-    if (dryRun || !db) {
-      log(`[DRY RUN] Would upsert ${listings.length} listings -- skipping DB writes`);
-      const elapsedMs = Math.round(performance.now() - t0);
-      log(`Done in ${(elapsedMs / 1000).toFixed(1)}s (dry run)`);
-      return {
-        source,
-        newCount: listings.length,
-        updatedCount: 0,
-        errorCount: 0,
-        deactivatedCount: 0,
-        elapsedMs,
-        success: true,
-      };
-    }
+    if (opts.watch) {
+      // ----------------------------------------------------------------
+      // WATCH MODE: check newest pages only, enrich + upsert inline
+      // ----------------------------------------------------------------
+      const maxPages = opts.watcherMaxPages;
+      const skippedCategories = new Set<string>();
+      let lastCategory = "";
+      let categoryPageCount = 0;
 
-    // 3. Upsert each listing into the database
-    const seenIds = new Set<string>();
-
-    for (const result of listings) {
-      try {
-        const newListing = toNewListing(result);
-        const { isNew } = await upsertListing(db, newListing);
-        seenIds.add(result.external_id);
-        if (isNew) {
-          newCount++;
-        } else {
-          updatedCount++;
+      for await (const page of scraper.fetchPages()) {
+        // Track pages per category
+        if (page.category !== lastCategory) {
+          lastCategory = page.category;
+          categoryPageCount = 0;
         }
-      } catch (err) {
-        errorCount++;
-        if (errorCount <= 5) {
-          log(`Error upserting ${result.external_id}: ${err}`);
-        } else if (errorCount === 6) {
-          log("(suppressing further upsert error logs)");
+        categoryPageCount++;
+
+        // Skip categories we've already decided to skip
+        if (skippedCategories.has(page.category)) continue;
+
+        // Limit pages per category in watch mode
+        if (categoryPageCount > maxPages) {
+          skippedCategories.add(page.category);
+          continue;
         }
+
+        if (opts.dryRun || !db) {
+          log(`[DRY RUN] Page ${page.page}/${page.totalPages} of ${page.category}: ${page.listings.length} listings`);
+          newCount += page.listings.length;
+          continue;
+        }
+
+        // Check which listings are already known
+        const externalIds = page.listings.map((l) => l.external_id);
+        const existing = await findExistingExternalIds(db, externalIds);
+        const newListings = page.listings.filter((l) => !existing.has(l.external_id));
+
+        // All known on this page → skip rest of this category
+        if (newListings.length === 0) {
+          log(`  ${page.category} page ${page.page}: all known, skipping rest`);
+          skippedCategories.add(page.category);
+          // Still upsert the page to update scraped_at etc.
+          const stats = await upsertBatch(db, page.listings, log);
+          updatedCount += stats.updatedCount;
+          errorCount += stats.errorCount;
+          continue;
+        }
+
+        log(`  ${page.category} page ${page.page}: ${newListings.length} new / ${page.listings.length} total`);
+
+        // Enrich only new listings inline
+        if (scraper.hasDetailPhase && newListings.length > 0) {
+          await scraper.enrichListings(newListings, {
+            concurrency: opts.watcherDetailConcurrency,
+          });
+        }
+
+        // Upsert the full page (new + updated)
+        const stats = await upsertBatch(db, page.listings, log);
+        newCount += stats.newCount;
+        updatedCount += stats.updatedCount;
+        errorCount += stats.errorCount;
+      }
+    } else if (opts.full) {
+      // ----------------------------------------------------------------
+      // FULL MODE: consume everything, no early-stop, then deactivate
+      // ----------------------------------------------------------------
+      const allListings: ScraperResult[] = [];
+
+      for await (const page of scraper.fetchPages()) {
+        allListings.push(...page.listings);
+      }
+
+      log(`Fetched ${allListings.length} listings (full scan)`);
+
+      if (opts.dryRun || !db) {
+        log(`[DRY RUN] Would upsert ${allListings.length} listings -- skipping DB writes`);
+        newCount = allListings.length;
+      } else {
+        // Enrich all
+        if (scraper.hasDetailPhase) {
+          await scraper.enrichListings(allListings);
+        }
+
+        // Upsert all
+        const seenIds = new Set<string>();
+        const stats = await upsertBatch(db, allListings, log);
+        newCount = stats.newCount;
+        updatedCount = stats.updatedCount;
+        errorCount = stats.errorCount;
+
+        for (const l of allListings) seenIds.add(l.external_id);
+
+        log(`Upserted: new=${newCount} updated=${updatedCount} errors=${errorCount}`);
+
+        // Deactivate stale listings
+        try {
+          deactivatedCount = await deactivateStale(db, source, seenIds);
+          if (deactivatedCount > 0) {
+            log(`Deactivated ${deactivatedCount} stale listings`);
+          }
+        } catch (err) {
+          log(`Error during deactivation: ${err}`);
+          errorCount++;
+        }
+      }
+    } else {
+      // ----------------------------------------------------------------
+      // INCREMENTAL MODE (default): stop early when hitting known listings
+      // ----------------------------------------------------------------
+      const allListings: ScraperResult[] = [];
+      const skippedCategories = new Set<string>();
+
+      for await (const page of scraper.fetchPages()) {
+        // Skip categories where we already found all-known pages
+        if (skippedCategories.has(page.category)) continue;
+
+        allListings.push(...page.listings);
+
+        // Check if all listings on this page are already known
+        if (!opts.dryRun && db) {
+          const externalIds = page.listings.map((l) => l.external_id);
+          const existing = await findExistingExternalIds(db, externalIds);
+          if (externalIds.length > 0 && existing.size === externalIds.length) {
+            log(`  ${page.category} page ${page.page}: all known, skipping rest of category`);
+            skippedCategories.add(page.category);
+          }
+        }
+      }
+
+      log(`Fetched ${allListings.length} listings (incremental)`);
+
+      if (opts.dryRun || !db) {
+        log(`[DRY RUN] Would upsert ${allListings.length} listings -- skipping DB writes`);
+        newCount = allListings.length;
+      } else {
+        // Enrich all collected listings
+        if (scraper.hasDetailPhase) {
+          await scraper.enrichListings(allListings);
+        }
+
+        // Upsert all
+        const stats = await upsertBatch(db, allListings, log);
+        newCount = stats.newCount;
+        updatedCount = stats.updatedCount;
+        errorCount = stats.errorCount;
+
+        log(`Upserted: new=${newCount} updated=${updatedCount} errors=${errorCount}`);
+        // No deactivation in incremental mode (didn't see everything)
       }
     }
 
-    log(`Upserted: new=${newCount} updated=${updatedCount} errors=${errorCount}`);
-
-    // 4. Deactivate stale listings
-    try {
-      deactivatedCount = await deactivateStale(db, source, seenIds);
-      if (deactivatedCount > 0) {
-        log(`Deactivated ${deactivatedCount} stale listings`);
-      }
-    } catch (err) {
-      log(`Error during deactivation: ${err}`);
-      errorCount++;
-    }
-
-    // 5. Finish the scraper run record
+    // Finish the scraper run record
     const elapsedMs = Math.round(performance.now() - t0);
 
-    if (runId != null) {
+    if (runId != null && db) {
       try {
         await finishScraperRun(db, runId, {
           new_count: newCount,
@@ -358,48 +525,57 @@ async function runSource(
 }
 
 // ---------------------------------------------------------------------------
-// Main
+// Run a full cycle (all sources in parallel)
 // ---------------------------------------------------------------------------
 
-async function main(): Promise<void> {
-  const { source, dryRun } = parseArgs();
+async function runCycle(
+  sources: SourceName[],
+  opts: RunSourceOpts,
+): Promise<SourceResult[]> {
+  // Create independent DB connections per source
+  const connections: Array<{ db: Db; sql: ReturnType<typeof postgres> } | null> =
+    opts.dryRun ? sources.map(() => null) : sources.map(() => createDb());
 
-  const sources: SourceName[] =
-    source === "all" ? ALL_SOURCES : [source];
+  const settledResults = await Promise.allSettled(
+    sources.map((src, i) =>
+      runSource(src, connections[i]?.db ?? null, opts),
+    ),
+  );
 
-  console.log("=".repeat(60));
-  console.log("Flat Finder CZ - Scraper");
-  console.log(`Sources:  ${sources.join(", ")}`);
-  if (dryRun) console.log("Mode:     DRY RUN (no DB writes)");
-  console.log("=".repeat(60));
-
-  // Only connect to DB when not in dry-run mode
-  const db = dryRun ? null : getDb();
-  const results: SourceResult[] = [];
-
-  // Run scrapers sequentially -- one failing should not stop others
-  for (const src of sources) {
-    try {
-      const result = await runSource(src, db, dryRun);
-      results.push(result);
-    } catch (err) {
-      // Should not normally reach here since runSource catches errors,
-      // but guard against unexpected failures
-      console.error(`[runner] Unexpected error for ${src}:`, err);
-      results.push({
-        source: src,
-        newCount: 0,
-        updatedCount: 0,
-        errorCount: 1,
-        deactivatedCount: 0,
-        elapsedMs: 0,
-        success: false,
-        fatalError: err instanceof Error ? err.message : String(err),
-      });
+  // Close all connections
+  for (const c of connections) {
+    if (c) {
+      try {
+        await c.sql.end();
+      } catch {
+        // ignore close errors
+      }
     }
   }
 
-  // Print summary
+  // Unwrap settled results
+  return settledResults.map((r, i) => {
+    if (r.status === "fulfilled") return r.value;
+    const err = r.reason instanceof Error ? r.reason.message : String(r.reason);
+    console.error(`[runner] Unexpected error for ${sources[i]}:`, r.reason);
+    return {
+      source: sources[i],
+      newCount: 0,
+      updatedCount: 0,
+      errorCount: 1,
+      deactivatedCount: 0,
+      elapsedMs: 0,
+      success: false,
+      fatalError: err,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Print summary
+// ---------------------------------------------------------------------------
+
+function printSummary(results: SourceResult[]): void {
   console.log("");
   console.log("=".repeat(60));
   console.log("Summary:");
@@ -415,15 +591,87 @@ async function main(): Promise<void> {
     );
   }
   console.log("=".repeat(60));
+}
 
-  // Close database connection
-  if (!dryRun) {
-    await closeDb();
+// ---------------------------------------------------------------------------
+// Sleep helper
+// ---------------------------------------------------------------------------
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+async function main(): Promise<void> {
+  const { source, dryRun, watch, full, interval } = parseArgs();
+  const env = getEnv();
+
+  const sources: SourceName[] =
+    source === "all" ? ALL_SOURCES : [source];
+
+  const mode = watch ? "WATCH" : full ? "FULL" : "INCREMENTAL";
+
+  console.log("=".repeat(60));
+  console.log("Flat Finder CZ - Scraper");
+  console.log(`Sources:  ${sources.join(", ")}`);
+  console.log(`Mode:     ${mode}`);
+  if (dryRun) console.log("          DRY RUN (no DB writes)");
+  if (watch) console.log(`Interval: ${interval}s`);
+  console.log("=".repeat(60));
+
+  // Graceful shutdown — exit with 0 so npm doesn't print errors
+  let shouldStop = false;
+  const onSignal = (signal: string) => {
+    if (!watch) {
+      // Non-watch mode: exit immediately on first signal
+      console.log(`\n[runner] Received ${signal}, exiting.`);
+      process.exit(0);
+    }
+    if (shouldStop) {
+      // Watch mode, second signal → force exit
+      console.log(`\n[runner] Received ${signal} again, forcing exit.`);
+      process.exit(0);
+    }
+    console.log(`\n[runner] Received ${signal}, stopping after current cycle...`);
+    shouldStop = true;
+  };
+  process.on("SIGINT", () => onSignal("SIGINT"));
+  process.on("SIGTERM", () => onSignal("SIGTERM"));
+
+  const runOpts: RunSourceOpts = {
+    watch,
+    full,
+    dryRun,
+    watcherMaxPages: env.WATCHER_MAX_PAGES,
+    watcherDetailConcurrency: env.WATCHER_DETAIL_CONCURRENCY,
+  };
+
+  if (watch) {
+    let cycle = 0;
+    while (!shouldStop) {
+      cycle++;
+      console.log(`\n--- Watcher cycle ${cycle} ---`);
+      const results = await runCycle(sources, runOpts);
+      printSummary(results);
+
+      if (shouldStop) break;
+
+      console.log(`[runner] Sleeping ${interval}s until next cycle...`);
+      await sleep(interval * 1000);
+    }
+
+    console.log("[runner] Watcher stopped.");
+  } else {
+    const results = await runCycle(sources, runOpts);
+    printSummary(results);
+
+    // Exit with code 1 if any scraper failed
+    const anyFailed = results.some((r) => !r.success);
+    process.exit(anyFailed ? 1 : 0);
   }
-
-  // Exit with code 1 if any scraper failed
-  const anyFailed = results.some((r) => !r.success);
-  process.exit(anyFailed ? 1 : 0);
 }
 
 main().catch((err) => {

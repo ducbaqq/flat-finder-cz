@@ -1,5 +1,5 @@
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
-import { BaseScraper, type ScraperOptions } from "../base-scraper.js";
+import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
 import { HttpError } from "../http-client.js";
 
 // ---------------------------------------------------------------------------
@@ -79,16 +79,15 @@ export class BezrealitkyScraper extends BaseScraper {
   // Public entry point
   // ------------------------------------------------------------------
 
-  async fetchListings(): Promise<ScraperResult[]> {
+  async *fetchPages(): AsyncGenerator<PageResult> {
     this.init();
-    const allListings: ScraperResult[] = [];
     const batchSize = this.batchMultiplier * this.concurrency;
 
     // Get fresh buildId
     this.buildId = await this.getBuildId();
     if (!this.buildId) {
       this.log("Could not get Bezrealitky buildId -- skipping");
-      return [];
+      return;
     }
     this.log(`buildId: ${this.buildId}`);
 
@@ -122,9 +121,9 @@ export class BezrealitkyScraper extends BaseScraper {
         this.log(`  ${slugLabel}: ${totalCount} listings, ${totalPages} pages`);
       }
 
-      // Process page 1 immediately
+      // Yield page 1 immediately
       const page1Results = this.processPageData(firstData);
-      allListings.push(...page1Results);
+      yield { category: slugLabel, page: 1, totalPages, listings: page1Results };
 
       if (totalPages <= 1) continue;
 
@@ -162,7 +161,7 @@ export class BezrealitkyScraper extends BaseScraper {
         for (const pgData of pageResults) {
           if (pgData == null) continue;
           const parsed = this.processPageData(pgData);
-          allListings.push(...parsed);
+          yield { category: slugLabel, page: batchPages[0], totalPages, listings: parsed };
         }
 
         // Check if buildId was invalidated during this batch
@@ -172,8 +171,6 @@ export class BezrealitkyScraper extends BaseScraper {
         }
       }
     }
-
-    return allListings;
   }
 
   // ------------------------------------------------------------------

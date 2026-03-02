@@ -1,5 +1,6 @@
+import pLimit from "p-limit";
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
-import { BaseScraper, type ScraperOptions } from "../base-scraper.js";
+import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
 
 // ---------------------------------------------------------------------------
 // Constants & lookup maps
@@ -104,13 +105,12 @@ export class SrealityScraper extends BaseScraper {
   // Public entry point
   // ------------------------------------------------------------------
 
-  async fetchListings(): Promise<ScraperResult[]> {
+  async *fetchPages(): AsyncGenerator<PageResult> {
     this.init();
-    const allListings: ScraperResult[] = [];
     const batchSize = this.batchMultiplier * this.concurrency;
 
     for (const [catMain, catType] of CATEGORIES) {
-      const catName = `cat_main=${catMain} cat_type=${catType}`;
+      const catName = `${TRANSACTION_TYPE_MAP[catType] ?? "unknown"}/${PROPERTY_TYPE_MAP[catMain] ?? "unknown"}`;
       this.log(`Fetching: ${catName}`);
 
       // Fetch page 1 to discover total_pages
@@ -131,9 +131,9 @@ export class SrealityScraper extends BaseScraper {
       const totalPages = Math.max(1, Math.ceil(resultSize / PER_PAGE));
       this.log(`  ${catName}: ${resultSize} listings, ${totalPages} pages`);
 
-      // Process page 1 immediately
+      // Yield page 1 immediately
       const page1Results = this.parsePageEstates(firstPage);
-      allListings.push(...page1Results);
+      yield { category: catName, page: 1, totalPages, listings: page1Results };
 
       if (totalPages <= 1) continue;
 
@@ -158,14 +158,45 @@ export class SrealityScraper extends BaseScraper {
         for (const pgData of pageResults) {
           if (!pgData || typeof pgData !== "object") continue;
           const parsed = this.parsePageEstates(pgData);
-          allListings.push(...parsed);
+          yield { category: catName, page: batchPages[0], totalPages, listings: parsed };
         }
       }
     }
+  }
 
-    // Fetch details for listings that need enrichment (batched)
-    const enriched = await this.enrichAll(allListings);
-    return enriched;
+  // ------------------------------------------------------------------
+  // Enrichment (public)
+  // ------------------------------------------------------------------
+
+  override get hasDetailPhase(): boolean {
+    return true;
+  }
+
+  override async enrichListings(
+    listings: ScraperResult[],
+    opts?: { concurrency?: number; batchSize?: number },
+  ): Promise<void> {
+    this.init();
+    const batchSize = opts?.batchSize ?? this.detailBatchSize;
+    const limit = opts?.concurrency ? pLimit(opts.concurrency) : this.limiter;
+
+    for (let i = 0; i < listings.length; i += batchSize) {
+      const batch = listings.slice(i, i + batchSize);
+      const detailPromises = batch.map((listing) => {
+        const hashId = listing.external_id.replace("sreality_", "");
+        return limit(async () => {
+          const detail = await this.fetchDetail(Number(hashId));
+          return { listing, detail };
+        });
+      });
+
+      const results = await Promise.all(detailPromises);
+      for (const { listing, detail } of results) {
+        if (detail) {
+          this.enrichFromDetail(listing, detail);
+        }
+      }
+    }
   }
 
   // ------------------------------------------------------------------
@@ -321,33 +352,6 @@ export class SrealityScraper extends BaseScraper {
       seller_company: null,
       additional_params: null,
     };
-  }
-
-  // ------------------------------------------------------------------
-  // Enrichment
-  // ------------------------------------------------------------------
-
-  private async enrichAll(listings: ScraperResult[]): Promise<ScraperResult[]> {
-    // Fetch details in batches
-    for (let i = 0; i < listings.length; i += this.detailBatchSize) {
-      const batch = listings.slice(i, i + this.detailBatchSize);
-      const detailPromises = batch.map((listing) => {
-        const hashId = listing.external_id.replace("sreality_", "");
-        return this.limiter(async () => {
-          const detail = await this.fetchDetail(Number(hashId));
-          return { listing, detail };
-        });
-      });
-
-      const results = await Promise.all(detailPromises);
-      for (const { listing, detail } of results) {
-        if (detail) {
-          this.enrichFromDetail(listing, detail);
-        }
-      }
-    }
-
-    return listings;
   }
 
   private enrichFromDetail(listing: ScraperResult, detail: SrealityDetailResponse): void {

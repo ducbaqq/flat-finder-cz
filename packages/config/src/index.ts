@@ -4,9 +4,14 @@ import { z } from "zod";
 config({ path: "../../.env" });
 
 const envSchema = z.object({
-  DATABASE_URL: z
-    .string()
-    .default("postgresql://flat_finder:flat_finder_dev@localhost:5432/flat_finder"),
+  // Database connection (individual fields → assembled into a URL)
+  DB_USERNAME: z.string().default("flat_finder"),
+  DB_PASSWORD: z.string().default("flat_finder_dev"),
+  DB_HOST: z.string().default("localhost"),
+  DB_PORT: z.coerce.number().default(5432),
+  DB_DATABASE: z.string().default("flat_finder"),
+  DB_SSLMODE: z.string().default("disable"),
+
   BREVO_API_KEY: z.string().default(""),
   BREVO_TEMPLATE_ID: z.coerce.number().default(1),
   BREVO_SENDER_EMAIL: z.string().default("hlidac@flatfinder.cz"),
@@ -26,6 +31,11 @@ const envSchema = z.object({
   PAGE_BATCH_MULTIPLIER: z.coerce.number().default(2),
   DETAIL_BATCH_SIZE: z.coerce.number().default(20),
   REQUEST_TIMEOUT_MS: z.coerce.number().default(30000),
+
+  // Watcher config
+  WATCHER_INTERVAL_S: z.coerce.number().default(300),
+  WATCHER_MAX_PAGES: z.coerce.number().default(3),
+  WATCHER_DETAIL_CONCURRENCY: z.coerce.number().default(8),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -37,6 +47,13 @@ export function getEnv(): Env {
     _env = envSchema.parse(process.env);
   }
   return _env;
+}
+
+/** Build a postgres:// connection URL from the individual DB_* env vars. */
+export function getDatabaseUrl(env?: Env): string {
+  const e = env ?? getEnv();
+  const password = encodeURIComponent(e.DB_PASSWORD);
+  return `postgresql://${e.DB_USERNAME}:${password}@${e.DB_HOST}:${e.DB_PORT}/${e.DB_DATABASE}`;
 }
 
 export { envSchema };

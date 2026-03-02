@@ -189,6 +189,18 @@ export async function upsertListing(
   return { isNew: false, id: existing[0].id };
 }
 
+export async function findExistingExternalIds(
+  db: Db,
+  externalIds: string[],
+): Promise<Set<string>> {
+  if (externalIds.length === 0) return new Set();
+  const rows = await db
+    .select({ external_id: listings.external_id })
+    .from(listings)
+    .where(inArray(listings.external_id, externalIds));
+  return new Set(rows.map((r) => r.external_id));
+}
+
 export async function deactivateStaleListings(
   db: Db,
   source: string,

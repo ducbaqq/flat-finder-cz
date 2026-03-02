@@ -5,7 +5,7 @@
  *   npx tsx scripts/migrate-sqlite-to-pg.ts [--sqlite-path ./data/flat_finder.db]
  *
  * Prerequisites:
- *   - PostgreSQL running (docker-compose up -d)
+ *   - PostgreSQL running and accessible
  *   - Tables created (npm run db:push)
  *   - npm install better-sqlite3 (one-time dep)
  */
@@ -13,6 +13,8 @@
 import { config } from "dotenv";
 config();
 
+import fs from "node:fs";
+import path from "node:path";
 import postgres from "postgres";
 
 // We use dynamic import for better-sqlite3 since it's an optional dep
@@ -22,9 +24,13 @@ async function main() {
     process.argv[process.argv.indexOf("--sqlite-path") + 1] ??
     "./data/flat_finder.db";
 
-  const databaseUrl =
-    process.env.DATABASE_URL ??
-    "postgresql://flat_finder:flat_finder_dev@localhost:5432/flat_finder";
+  const username = process.env.DB_USERNAME ?? "flat_finder";
+  const password = encodeURIComponent(process.env.DB_PASSWORD ?? "flat_finder_dev");
+  const host = process.env.DB_HOST ?? "localhost";
+  const port = process.env.DB_PORT ?? "5432";
+  const database = process.env.DB_DATABASE ?? "flat_finder";
+  const sslmode = process.env.DB_SSLMODE ?? "disable";
+  const databaseUrl = `postgresql://${username}:${password}@${host}:${port}/${database}`;
 
   console.log(`Migrating from SQLite: ${sqlitePath}`);
   console.log(`To PostgreSQL: ${databaseUrl.replace(/:[^@]+@/, ":***@")}`);
@@ -41,7 +47,19 @@ async function main() {
   }
 
   const sqlite = new Database(sqlitePath, { readonly: true });
-  const pg = postgres(databaseUrl);
+
+  // Build SSL option
+  let ssl: postgres.Options<Record<string, postgres.PostgresType>>["ssl"] = false;
+  if (sslmode !== "disable") {
+    const caPath = path.resolve(__dirname, "../certs/ca-certificate.crt");
+    if (fs.existsSync(caPath)) {
+      ssl = { ca: fs.readFileSync(caPath, "utf-8"), rejectUnauthorized: true };
+    } else {
+      ssl = { rejectUnauthorized: false };
+    }
+  }
+
+  const pg = postgres(databaseUrl, { ssl });
 
   // Count total
   const { count: totalCount } = sqlite

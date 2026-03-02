@@ -1,5 +1,6 @@
+import pLimit from "p-limit";
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
-import { BaseScraper, type ScraperOptions } from "../base-scraper.js";
+import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
 
 // ---------------------------------------------------------------------------
 // Constants & lookup maps
@@ -82,13 +83,12 @@ export class UlovDomovScraper extends BaseScraper {
   // Public entry point
   // ------------------------------------------------------------------
 
-  async fetchListings(): Promise<ScraperResult[]> {
+  async *fetchPages(): AsyncGenerator<PageResult> {
     this.init();
-    const allListings: ScraperResult[] = [];
     const batchSize = this.batchMultiplier * this.concurrency;
 
     for (const [offerType, propertyType] of COMBINATIONS) {
-      const comboLabel = `offer_type=${offerType} property_type=${propertyType}`;
+      const comboLabel = `${offerType}/${propertyType}`;
       this.log(`Fetching: ${comboLabel}`);
 
       // Fetch page 1 to discover total_pages
@@ -110,9 +110,9 @@ export class UlovDomovScraper extends BaseScraper {
       const totalCount = extra.total ?? 0;
       this.log(`  ${comboLabel}: ${totalCount} listings, ${totalPages} pages`);
 
-      // Process page 1 immediately
+      // Yield page 1 immediately
       const page1Results = this.parsePageOffers(firstData, offerType, propertyType);
-      allListings.push(...page1Results);
+      yield { category: comboLabel, page: 1, totalPages, listings: page1Results };
 
       if (totalPages <= 1) continue;
 
@@ -144,14 +144,45 @@ export class UlovDomovScraper extends BaseScraper {
             continue;
           }
           const parsed = this.parsePageOffers(pgData, offerType, propertyType);
-          allListings.push(...parsed);
+          yield { category: comboLabel, page: batchPages[0], totalPages, listings: parsed };
         }
       }
     }
+  }
 
-    // Fetch details for enrichment (batched)
-    const enriched = await this.enrichAll(allListings);
-    return enriched;
+  // ------------------------------------------------------------------
+  // Enrichment (public)
+  // ------------------------------------------------------------------
+
+  override get hasDetailPhase(): boolean {
+    return true;
+  }
+
+  override async enrichListings(
+    listings: ScraperResult[],
+    opts?: { concurrency?: number; batchSize?: number },
+  ): Promise<void> {
+    this.init();
+    const batchSize = opts?.batchSize ?? this.detailBatchSize;
+    const limit = opts?.concurrency ? pLimit(opts.concurrency) : this.limiter;
+
+    for (let i = 0; i < listings.length; i += batchSize) {
+      const batch = listings.slice(i, i + batchSize);
+      const detailPromises = batch.map((listing) => {
+        const offerId = listing.external_id.replace("ulovdomov_", "");
+        return limit(async () => {
+          const detail = await this.fetchDetail(Number(offerId));
+          return { listing, detail };
+        });
+      });
+
+      const results = await Promise.all(detailPromises);
+      for (const { listing, detail } of results) {
+        if (detail) {
+          this.enrichFromDetail(listing, detail);
+        }
+      }
+    }
   }
 
   // ------------------------------------------------------------------
@@ -358,32 +389,6 @@ export class UlovDomovScraper extends BaseScraper {
       seller_company: null,
       additional_params: null,
     };
-  }
-
-  // ------------------------------------------------------------------
-  // Enrichment
-  // ------------------------------------------------------------------
-
-  private async enrichAll(listings: ScraperResult[]): Promise<ScraperResult[]> {
-    for (let i = 0; i < listings.length; i += this.detailBatchSize) {
-      const batch = listings.slice(i, i + this.detailBatchSize);
-      const detailPromises = batch.map((listing) => {
-        const offerId = listing.external_id.replace("ulovdomov_", "");
-        return this.limiter(async () => {
-          const detail = await this.fetchDetail(Number(offerId));
-          return { listing, detail };
-        });
-      });
-
-      const results = await Promise.all(detailPromises);
-      for (const { listing, detail } of results) {
-        if (detail) {
-          this.enrichFromDetail(listing, detail);
-        }
-      }
-    }
-
-    return listings;
   }
 
   private enrichFromDetail(

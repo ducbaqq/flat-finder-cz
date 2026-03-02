@@ -10,6 +10,13 @@ export interface ScraperOptions {
   timeoutMs: number;
 }
 
+export interface PageResult {
+  category: string;
+  page: number;
+  totalPages: number;
+  listings: ScraperResult[];
+}
+
 /**
  * Abstract base class for all scrapers.
  *
@@ -38,7 +45,7 @@ export abstract class BaseScraper {
    * Initialize the HTTP client. Must be called once the subclass `name`
    * field is available (i.e. after the subclass constructor has run).
    * Scrapers call this lazily on first use via the `log` / `http` getters,
-   * or eagerly at the start of fetchListings().
+   * or eagerly at the start of fetchPages().
    */
   protected init(): void {
     if (!this.http) {
@@ -57,9 +64,31 @@ export abstract class BaseScraper {
   }
 
   /**
-   * Fetch all listings from this source.
-   * Implementations should return a flat array of ScraperResult objects
-   * ready to be upserted.
+   * Yield pages one at a time. The runner decides when to stop
+   * (incremental early-stop) and when to enrich.
    */
-  abstract fetchListings(): Promise<ScraperResult[]>;
+  abstract fetchPages(): AsyncGenerator<PageResult>;
+
+  /** Override in scrapers with a detail phase (Sreality, UlovDomov). */
+  async enrichListings(
+    _listings: ScraperResult[],
+    _opts?: { concurrency?: number; batchSize?: number },
+  ): Promise<void> {
+    // default: no-op (Bezrealitky has no detail phase)
+  }
+
+  get hasDetailPhase(): boolean {
+    return false;
+  }
+
+  /** Convenience: consume generator + enrich. Backwards compat. */
+  async fetchListings(): Promise<ScraperResult[]> {
+    this.init();
+    const all: ScraperResult[] = [];
+    for await (const page of this.fetchPages()) {
+      all.push(...page.listings);
+    }
+    await this.enrichListings(all);
+    return all;
+  }
 }
