@@ -70,7 +70,12 @@ def init_db(db):
       scraped_at TEXT DEFAULT (datetime('now')),
       created_at TEXT DEFAULT (datetime('now')),
       is_active INTEGER DEFAULT 1,
-      deactivated_at TEXT
+      deactivated_at TEXT,
+      seller_name TEXT,
+      seller_phone TEXT,
+      seller_email TEXT,
+      seller_company TEXT,
+      additional_params TEXT
     )
     """)
     db.execute("CREATE INDEX IF NOT EXISTS idx_listings_city ON listings(city)")
@@ -81,14 +86,19 @@ def init_db(db):
     db.execute("CREATE INDEX IF NOT EXISTS idx_listings_is_active ON listings(is_active)")
 
     # Migration: add columns if upgrading from older schema
-    try:
-        db.execute("ALTER TABLE listings ADD COLUMN is_active INTEGER DEFAULT 1")
-    except:
-        pass
-    try:
-        db.execute("ALTER TABLE listings ADD COLUMN deactivated_at TEXT")
-    except:
-        pass
+    for col_sql in [
+        "ALTER TABLE listings ADD COLUMN is_active INTEGER DEFAULT 1",
+        "ALTER TABLE listings ADD COLUMN deactivated_at TEXT",
+        "ALTER TABLE listings ADD COLUMN seller_name TEXT",
+        "ALTER TABLE listings ADD COLUMN seller_phone TEXT",
+        "ALTER TABLE listings ADD COLUMN seller_email TEXT",
+        "ALTER TABLE listings ADD COLUMN seller_company TEXT",
+        "ALTER TABLE listings ADD COLUMN additional_params TEXT",
+    ]:
+        try:
+            db.execute(col_sql)
+        except:
+            pass
 
     db.execute("""
     CREATE TABLE IF NOT EXISTS watchdogs (
@@ -183,6 +193,18 @@ def build_where_clause(params):
         conditions.append("(city LIKE ? OR district LIKE ? OR region LIKE ? OR address LIKE ?)")
         like_val = f"%{location}%"
         values.extend([like_val, like_val, like_val, like_val])
+
+    # Geographic bounds filtering (map viewport)
+    sw_lat = params.get("sw_lat")
+    sw_lng = params.get("sw_lng")
+    ne_lat = params.get("ne_lat")
+    ne_lng = params.get("ne_lng")
+    if sw_lat and sw_lng and ne_lat and ne_lng:
+        conditions.append("latitude IS NOT NULL AND longitude IS NOT NULL")
+        conditions.append("latitude >= ? AND latitude <= ?")
+        values.extend([float(sw_lat), float(ne_lat)])
+        conditions.append("longitude >= ? AND longitude <= ?")
+        values.extend([float(sw_lng), float(ne_lng)])
 
     where = " AND ".join(conditions) if conditions else "1=1"
     # Always exclude inactive listings unless explicitly requested
@@ -483,5 +505,5 @@ if __name__ == "__main__":
         print(f"Database has {total} listings.")
     db.close()
 
-    print("Starting Flat Finder CZ API server on http://localhost:5000")
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    print("Starting Flat Finder CZ API server on http://localhost:4000")
+    app.run(host="0.0.0.0", port=4000, debug=False)

@@ -1,0 +1,27 @@
+{
+  "name": "@flat-finder/web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@flat-finder/types": "*",
+    "next": "^15.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zustand": "^5.0.0",
+    "@tanstack/react-query": "^5.64.0",
+    "leaflet": "^1.9.4",
+    "react-leaflet": "^5.0.0",
+    "react-leaflet-cluster": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}

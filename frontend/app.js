@@ -34,7 +34,8 @@
       sort: 'newest'
     },
     mapReady: false,
-    seeded: false
+    seeded: false,
+    mapBounds: null
   };
 
   let map, markerCluster, debounceTimer;
@@ -92,6 +93,45 @@
   const furnishingLabels = {
     furnished: 'Zařízené', partially: 'Částečně', unfurnished: 'Nezařízené'
   };
+
+  // ============================================
+  // Source URL builders — construct correct links to original listing sites
+  // ============================================
+  const SREALITY_TRANS_CZ = { sale: 'prodej', rent: 'pronajem', auction: 'drazby' };
+  const SREALITY_PROP_CZ = { flat: 'byt', house: 'dum', land: 'pozemek', commercial: 'komercni', other: 'ostatni', garage: 'garaz' };
+
+  const SOURCE_URLS = {
+    sreality(listing) {
+      const hashId = (listing.external_id || '').replace('sreality_', '');
+      if (!hashId) return null;
+      const trans = SREALITY_TRANS_CZ[listing.transaction_type] || listing.transaction_type;
+      const prop = SREALITY_PROP_CZ[listing.property_type] || listing.property_type;
+      // Use layout as disposition slug for flats (e.g. "2+kk"); fall back to "x"
+      const slug = (listing.property_type === 'flat' && listing.layout) ? listing.layout : 'x';
+      return `https://www.sreality.cz/detail/${trans}/${prop}/${slug}/x/${hashId}`;
+    },
+    ulovdomov(listing) {
+      const offerId = (listing.external_id || '').replace('ulovdomov_', '');
+      if (!offerId) return null;
+      return `https://www.ulovdomov.cz/inzerat/x/${offerId}`;
+    },
+    bezrealitky(listing) {
+      // Bezrealitky source_url from the DB is usually correct (built from API uri).
+      // Only override if it looks broken (missing or just a bare numeric fallback).
+      if (listing.source_url && listing.source_url.includes('/nemovitosti-byty-domy/')) {
+        return listing.source_url;
+      }
+      const advertId = (listing.external_id || '').replace('bezrealitky_', '');
+      if (!advertId) return null;
+      return `https://www.bezrealitky.cz/nemovitosti-byty-domy/${advertId}`;
+    },
+  };
+
+  function buildSourceUrl(listing) {
+    const builder = SOURCE_URLS[listing.source];
+    if (builder) return builder(listing);
+    return listing.source_url || null;
+  }
 
   const amenityLabels = {
     balcony: 'Balkón', elevator: 'Výtah', parking: 'Parkování', cellar: 'Sklep',
@@ -156,6 +196,14 @@
     if (f.amenities) params.amenities = f.amenities;
     if (f.source) params.source = f.source;
     if (f.sort) params.sort = f.sort;
+
+    // Include map viewport bounds so listings match what's visible on map
+    if (state.mapBounds) {
+      params.sw_lat = state.mapBounds.sw_lat;
+      params.sw_lng = state.mapBounds.sw_lng;
+      params.ne_lat = state.mapBounds.ne_lat;
+      params.ne_lng = state.mapBounds.ne_lng;
+    }
 
     return params;
   }
@@ -395,9 +443,11 @@
     map.addLayer(markerCluster);
     state.mapReady = true;
 
-    // Reload markers on map move
+    // Sync listing grid with visible map viewport
     map.on('moveend', () => {
-      // Not needed — we load all markers matching filters
+      updateMapBounds();
+      state.page = 1;
+      loadListings();
     });
   }
 
@@ -524,14 +574,14 @@
           </div>
         ` : ''}
 
-        ${listing.source_url ? `
+        ${(() => { const _url = buildSourceUrl(listing); return _url ? `
           <div class="modal-source">
-            <a class="source-link" href="${listing.source_url}" target="_blank" rel="noopener noreferrer">
+            <a class="source-link" href="${_url}" target="_blank" rel="noopener noreferrer">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
               Zobrazit na ${listing.source}.cz
             </a>
           </div>
-        ` : ''}
+        ` : ''; })()}
 
         ${listing.latitude && listing.longitude ? `<div class="modal-map" id="detailMapContainer"></div>` : ''}
       `;
@@ -637,8 +687,21 @@
     }, 300);
   }
 
+  function updateMapBounds() {
+    if (state.mapReady && map) {
+      const b = map.getBounds();
+      state.mapBounds = {
+        sw_lat: b.getSouthWest().lat.toFixed(6),
+        sw_lng: b.getSouthWest().lng.toFixed(6),
+        ne_lat: b.getNorthEast().lat.toFixed(6),
+        ne_lng: b.getNorthEast().lng.toFixed(6)
+      };
+    }
+  }
+
   function triggerSearch() {
     readFiltersFromDOM();
+    updateMapBounds();
     loadListings();
     loadMarkers();
   }
@@ -995,6 +1058,9 @@
     // Hide seed overlay
     seedOverlay.classList.add('hidden');
     setTimeout(() => seedOverlay.remove(), 500);
+
+    // Capture initial map bounds before loading
+    updateMapBounds();
 
     // Initial load
     await Promise.all([loadListings(), loadMarkers()]);

@@ -1,17 +1,40 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
-*.db
-*.sqlite
-*.sqlite3
-data/
-.env
 .venv/
 venv/
 env/
 *.egg-info/
+
+# Node.js
+node_modules/
 dist/
+.next/
+.turbo/
+
+# Build
 build/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
 .DS_Store
 Thumbs.db
+
+# Logs
 *.log
+
+# IDE
+.idea/
+*.swp
+*.swo

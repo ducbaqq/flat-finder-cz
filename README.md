@@ -81,11 +81,11 @@ cd backend
 python api.py
 ```
 
-The server starts on `http://localhost:5000`.
+The server starts on `http://localhost:4000`.
 
 ### 4. Open the frontend
 
-Navigate to `http://localhost:5000` — Flask serves the frontend files automatically.
+Navigate to `http://localhost:4000` — Flask serves the frontend files automatically.
 
 ## API Endpoints
 
