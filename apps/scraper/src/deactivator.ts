@@ -11,16 +11,17 @@ export async function deactivateStale(
   source: string,
   seenIds: Set<string>,
 ): Promise<number> {
+  const t = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
   if (seenIds.size === 0) {
     console.warn(
-      `[deactivator] deactivateStale called with empty seenIds for ${source} -- skipping to avoid mass deactivation`,
+      `${t()} [deactivator] deactivateStale called with empty seenIds for ${source} -- skipping to avoid mass deactivation`,
     );
     return 0;
   }
 
   const count = await deactivateStaleListings(db, source, seenIds);
   if (count > 0) {
-    console.log(`[deactivator] Deactivated ${count} stale listings for source=${source}`);
+    console.log(`${t()} [deactivator] Deactivated ${count} stale listings for source=${source}`);
   }
   return count;
 }

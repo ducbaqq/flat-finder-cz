@@ -1,7 +1,9 @@
+import path from "node:path";
 import { config } from "dotenv";
 import { z } from "zod";
 
-config({ path: "../../.env" });
+// Resolve .env relative to this file (packages/config/src/) → monorepo root
+config({ path: path.resolve(import.meta.dirname, "../../../.env") });
 
 const envSchema = z.object({
   // Database connection (individual fields → assembled into a URL)

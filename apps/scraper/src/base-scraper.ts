@@ -60,7 +60,8 @@ export abstract class BaseScraper {
   }
 
   protected log(msg: string, ...args: unknown[]): void {
-    console.log(`[${this.name}]`, msg, ...args);
+    const t = new Date().toLocaleTimeString("en-GB", { hour12: false });
+    console.log(`${t} [${this.name}]`, msg, ...args);
   }
 
   /**

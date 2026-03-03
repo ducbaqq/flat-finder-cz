@@ -80,8 +80,9 @@ export class HttpClient {
         }
 
         const backoff = this.retryBaseMs * 2 ** attempt;
+        const t = new Date().toLocaleTimeString("en-GB", { hour12: false });
         console.warn(
-          `[${this.name}] Retry ${attempt + 1}/${this.maxRetries} after ${backoff}ms — ${lastError.message}`,
+          `${t} [${this.name}] Retry ${attempt + 1}/${this.maxRetries} after ${backoff}ms — ${lastError.message}`,
         );
         await sleep(backoff);
       }

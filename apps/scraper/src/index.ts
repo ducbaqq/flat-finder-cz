@@ -36,6 +36,14 @@ import { UlovDomovScraper } from "./scrapers/ulovdomov.js";
 import { deactivateStale } from "./deactivator.js";
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function ts(): string {
+  return new Date().toLocaleTimeString("en-GB", { hour12: false });
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -285,7 +293,7 @@ async function runSource(
   opts: RunSourceOpts,
 ): Promise<SourceResult> {
   const t0 = performance.now();
-  const log = (msg: string) => console.log(`[${source}]`, msg);
+  const log = (msg: string) => console.log(`${ts()} [${source}]`, msg);
 
   log("Starting...");
 
@@ -572,7 +580,7 @@ async function runCycle(
   return settledResults.map((r, i) => {
     if (r.status === "fulfilled") return r.value;
     const err = r.reason instanceof Error ? r.reason.message : String(r.reason);
-    console.error(`[runner] Unexpected error for ${sources[i]}:`, r.reason);
+    console.error(`${ts()} [runner] Unexpected error for ${sources[i]}:`, r.reason);
     return {
       source: sources[i],
       newCount: 0,
@@ -591,13 +599,14 @@ async function runCycle(
 // ---------------------------------------------------------------------------
 
 function printSummary(results: SourceResult[]): void {
+  const t = ts();
   console.log("");
-  console.log("=".repeat(60));
-  console.log("Summary:");
+  console.log(`${t} ${"=".repeat(60)}`);
+  console.log(`${t} Summary:`);
   for (const r of results) {
     const status = r.success ? "OK" : "FAILED";
     console.log(
-      `  ${r.source.padEnd(15)} [${status.padEnd(6)}] ` +
+      `${t}   ${r.source.padEnd(15)} [${status.padEnd(6)}] ` +
         `new=${String(r.newCount).padEnd(6)} ` +
         `updated=${String(r.updatedCount).padEnd(6)} ` +
         `errors=${String(r.errorCount).padEnd(4)} ` +
@@ -605,7 +614,7 @@ function printSummary(results: SourceResult[]): void {
         `time=${(r.elapsedMs / 1000).toFixed(1)}s`,
     );
   }
-  console.log("=".repeat(60));
+  console.log(`${t} ${"=".repeat(60)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -642,15 +651,15 @@ async function main(): Promise<void> {
   const onSignal = (signal: string) => {
     if (!watch) {
       // Non-watch mode: exit immediately on first signal
-      console.log(`\n[runner] Received ${signal}, exiting.`);
+      console.log(`\n${ts()} [runner] Received ${signal}, exiting.`);
       process.exit(0);
     }
     if (shouldStop) {
       // Watch mode, second signal → force exit
-      console.log(`\n[runner] Received ${signal} again, forcing exit.`);
+      console.log(`\n${ts()} [runner] Received ${signal} again, forcing exit.`);
       process.exit(0);
     }
-    console.log(`\n[runner] Received ${signal}, stopping after current cycle...`);
+    console.log(`\n${ts()} [runner] Received ${signal}, stopping after current cycle...`);
     shouldStop = true;
   };
   process.on("SIGINT", () => onSignal("SIGINT"));
@@ -668,17 +677,17 @@ async function main(): Promise<void> {
     let cycle = 0;
     while (!shouldStop) {
       cycle++;
-      console.log(`\n--- Watcher cycle ${cycle} ---`);
+      console.log(`\n${ts()} --- Watcher cycle ${cycle} ---`);
       const results = await runCycle(sources, runOpts);
       printSummary(results);
 
       if (shouldStop) break;
 
-      console.log(`[runner] Sleeping ${interval}s until next cycle...`);
+      console.log(`${ts()} [runner] Sleeping ${interval}s until next cycle...`);
       await sleep(interval * 1000);
     }
 
-    console.log("[runner] Watcher stopped.");
+    console.log(`${ts()} [runner] Watcher stopped.`);
   } else {
     const results = await runCycle(sources, runOpts);
     printSummary(results);
@@ -690,6 +699,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("[runner] Fatal error:", err);
+  console.error(`${ts()} [runner] Fatal error:`, err);
   process.exit(1);
 });
