@@ -9,7 +9,7 @@
     "dev:api": "npm -w apps/api run dev",
     "dev:web": "npm -w apps/web run dev",
     "build": "npm -w packages/types run build && npm -w packages/config run build && npm -w packages/db run build && npm -w apps/api run build && npm -w apps/web run build",
-    "scraper": "npm -w apps/scraper run start",
+    "scraper": "tsx apps/scraper/src/index.ts",
     "notifier": "npm -w apps/notifier run start",
     "db:push": "npm -w packages/db run push",
     "db:studio": "npm -w packages/db run studio",

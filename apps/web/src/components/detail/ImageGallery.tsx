@@ -1,123 +1,51 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect } from "react";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 
 interface ImageGalleryProps {
   images: string[];
 }
 
 export default function ImageGallery({ images }: ImageGalleryProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
-
-  if (!images.length) return null;
-
-  const scrollToIndex = useCallback(
-    (index: number) => {
-      const container = scrollRef.current;
-      if (!container) return;
-      const children = container.children;
-      if (index < 0 || index >= children.length) return;
-      const child = children[index] as HTMLElement;
-      container.scrollTo({
-        left: child.offsetLeft - container.offsetLeft,
-        behavior: "smooth",
-      });
-      setCurrentIndex(index);
-    },
-    []
-  );
-
-  const handleScroll = useCallback(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-    const children = container.children;
-    const scrollLeft = container.scrollLeft;
-    let closest = 0;
-    let closestDist = Infinity;
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i] as HTMLElement;
-      const dist = Math.abs(child.offsetLeft - container.offsetLeft - scrollLeft);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closest = i;
-      }
-    }
-    setCurrentIndex(closest);
-  }, []);
-
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, [handleScroll]);
-
-  const goPrev = useCallback(() => {
-    scrollToIndex(Math.max(0, currentIndex - 1));
-  }, [currentIndex, scrollToIndex]);
-
-  const goNext = useCallback(() => {
-    scrollToIndex(Math.min(images.length - 1, currentIndex + 1));
-  }, [currentIndex, images.length, scrollToIndex]);
+  if (!images.length) {
+    return (
+      <div className="flex aspect-[16/9] items-center justify-center bg-muted">
+        <span className="text-sm text-muted-foreground">Žádné fotky</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="gallery-wrapper">
-      <div className="modal-gallery" ref={scrollRef}>
+    <Carousel className="w-full">
+      <CarouselContent>
         {images.map((url, i) => (
-          <img
-            key={i}
-            className="modal-gallery-img"
-            src={url}
-            alt=""
-            loading="lazy"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
+          <CarouselItem key={i}>
+            <div className="aspect-[16/9] overflow-hidden">
+              <img
+                className="h-full w-full object-cover"
+                src={url}
+                alt=""
+                loading={i === 0 ? "eager" : "lazy"}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+            </div>
+          </CarouselItem>
         ))}
-      </div>
+      </CarouselContent>
       {images.length > 1 && (
         <>
-          <button
-            className="gallery-nav prev"
-            onClick={goPrev}
-            disabled={currentIndex === 0}
-            aria-label="Previous image"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </button>
-          <button
-            className="gallery-nav next"
-            onClick={goNext}
-            disabled={currentIndex === images.length - 1}
-            aria-label="Next image"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </button>
-          <span className="gallery-counter">
-            {currentIndex + 1}/{images.length}
-          </span>
+          <CarouselPrevious className="left-2" />
+          <CarouselNext className="right-2" />
         </>
       )}
-    </div>
+    </Carousel>
   );
 }

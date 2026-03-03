@@ -1,47 +1,30 @@
-"use client";
-
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import { NuqsAdapter } from "nuqs/adapters/next/app";
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
+import { QueryProvider } from "@/components/providers/QueryProvider";
 import "./globals.css";
-import { Plus_Jakarta_Sans, DM_Sans } from "next/font/google";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
 
-const jakarta = Plus_Jakarta_Sans({
+const inter = Inter({
   subsets: ["latin", "latin-ext"],
-  variable: "--font-jakarta",
+  variable: "--font-inter",
   display: "swap",
-  weight: ["400", "500", "600", "700", "800"],
 });
 
-const dmSans = DM_Sans({
-  subsets: ["latin", "latin-ext"],
-  variable: "--font-dm",
-  display: "swap",
-  weight: ["400", "500", "600", "700"],
-});
+export const metadata: Metadata = {
+  title: "Flat Finder CZ — Najděte svůj nový domov",
+  description:
+    "Hledáte byt nebo dům v Česku? Flat Finder prohledává sreality.cz, bezrealitky.cz a ulovdomov.cz na jednom místě.",
+};
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 30_000,
-            refetchOnWindowFocus: false,
-          },
-        },
-      })
-  );
-
   return (
-    <html lang="cs" data-theme="light" suppressHydrationWarning>
+    <html lang="cs" suppressHydrationWarning>
       <head>
-        <meta charSet="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Flat Finder CZ</title>
         <link
           rel="stylesheet"
           href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -55,10 +38,12 @@ export default function RootLayout({
           href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
         />
       </head>
-      <body className={`${jakarta.variable} ${dmSans.variable}`}>
-        <QueryClientProvider client={queryClient}>
-          {children}
-        </QueryClientProvider>
+      <body className={`${inter.variable} font-sans antialiased`}>
+        <NuqsAdapter>
+          <ThemeProvider>
+            <QueryProvider>{children}</QueryProvider>
+          </ThemeProvider>
+        </NuqsAdapter>
       </body>
     </html>
   );

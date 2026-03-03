@@ -1,31 +1,26 @@
 "use client";
 
-import { useFilterStore } from "@/store/filter-store";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
-const OPTIONS = [
-  { value: "", label: "V\u0161e (All)" },
-  { value: "rent", label: "Pron\u00e1jem (Rent)" },
-  { value: "sale", label: "Prodej (Sale)" },
-];
+interface TransactionToggleProps {
+  value: string;
+  onChange: (value: string) => void;
+}
 
-export default function TransactionToggle() {
-  const transactionType = useFilterStore((s) => s.filters.transaction_type);
-  const setFilter = useFilterStore((s) => s.setFilter);
-
+export function TransactionToggle({ value, onChange }: TransactionToggleProps) {
   return (
-    <div className="filter-group">
-      <label className="filter-label">Typ nab\u00eddky (Transaction)</label>
-      <div className="btn-group">
-        {OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            className={`btn-toggle${transactionType === opt.value ? " active" : ""}`}
-            onClick={() => setFilter("transaction_type", opt.value)}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
-    </div>
+    <ToggleGroup
+      type="single"
+      value={value}
+      onValueChange={(v) => onChange(v || "")}
+      className="w-full"
+    >
+      <ToggleGroupItem value="rent" className="flex-1 text-xs">
+        Pronájem
+      </ToggleGroupItem>
+      <ToggleGroupItem value="sale" className="flex-1 text-xs">
+        Prodej
+      </ToggleGroupItem>
+    </ToggleGroup>
   );
 }

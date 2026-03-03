@@ -21,6 +21,7 @@ export default function MiniMap({ lat, lng }: MiniMapProps) {
 
     const init = async () => {
       const L = (await import("leaflet")).default;
+
       const container = document.getElementById("detailMapContainer");
       if (!container) return;
 
@@ -34,10 +35,7 @@ export default function MiniMap({ lat, lng }: MiniMapProps) {
       });
       L.tileLayer(
         "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-        {
-          subdomains: "abcd",
-          maxZoom: 20,
-        }
+        { subdomains: "abcd", maxZoom: 20 }
       ).addTo(map);
       L.marker([lat, lng]).addTo(map);
     };
@@ -46,11 +44,15 @@ export default function MiniMap({ lat, lng }: MiniMapProps) {
 
     return () => {
       clearTimeout(timer);
-      if (map) {
-        map.remove();
-      }
+      if (map) map.remove();
     };
   }, [mounted, lat, lng]);
 
-  return <div className="modal-map" id="detailMapContainer" />;
+  return (
+    <div
+      className="overflow-hidden rounded-lg border"
+      id="detailMapContainer"
+      style={{ height: 200 }}
+    />
+  );
 }

@@ -1,8 +1,25 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useState } from "react";
+import { Pause, Play, Trash2 } from "lucide-react";
 import type { Watchdog } from "@flat-finder/types";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { getFilterSummaryTags } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 interface WatchdogListProps {
   email: string;
@@ -21,31 +38,15 @@ export default function WatchdogList({
   onToggle,
   onDelete,
 }: WatchdogListProps) {
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
-
-  const handleDelete = useCallback(
-    async (id: number) => {
-      if (confirmDeleteId === id) {
-        await onDelete(id);
-        setConfirmDeleteId(null);
-      } else {
-        setConfirmDeleteId(id);
-        setTimeout(() => setConfirmDeleteId(null), 3000);
-      }
-    },
-    [confirmDeleteId, onDelete]
-  );
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   return (
-    <div className="watchdog-list-section">
-      <h3>Va\u0161i hl\u00eddac\u00ed psi (Your Watchdogs)</h3>
-
-      <div className="watchdog-input-row" style={{ marginBottom: "var(--space-3)" }}>
-        <label htmlFor="watchdogListEmail">E-mail pro vyhled\u00e1n\u00ed</label>
-        <input
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="watchdogListEmail">E-mail pro vyhledání</Label>
+        <Input
           type="email"
           id="watchdogListEmail"
-          className="filter-input"
           placeholder="vas@email.cz"
           value={email}
           onChange={(e) => onEmailChange(e.target.value)}
@@ -53,115 +54,100 @@ export default function WatchdogList({
         />
       </div>
 
-      <div className="watchdog-list">
+      <div className="space-y-2">
         {watchdogs.length === 0 ? (
-          <p className="watchdog-list-empty">
+          <p className="py-4 text-center text-sm text-muted-foreground">
             {email && email.includes("@")
-              ? "Zat\u00edm nem\u00e1te \u017e\u00e1dn\u00e9 hl\u00eddac\u00ed psy."
-              : "Zadejte e-mail v\u00fd\u0161e pro zobrazen\u00ed hl\u00eddac\u00edch ps\u016f."}
-            <br />
-            <small>
-              {email && email.includes("@")
-                ? "You don't have any watchdogs yet."
-                : "Enter your email above to view your watchdogs."}
-            </small>
+              ? "Zatím nemáte žádné hlídací psy."
+              : "Zadejte e-mail výše pro zobrazení hlídacích psů."}
           </p>
         ) : (
           watchdogs.map((w) => {
             const tags = getFilterSummaryTags(
               (w.filters || {}) as Record<string, string>
             );
-            const label = w.label || "Hl\u00eddac\u00ed pes #" + w.id;
             return (
               <div
                 key={w.id}
-                className={`watchdog-item${w.active ? "" : " inactive"}`}
+                className={cn(
+                  "rounded-lg border p-3 transition-opacity",
+                  !w.active && "opacity-50"
+                )}
               >
-                <div className="watchdog-item-info">
-                  <div className="watchdog-item-label">{label}</div>
-                  <div className="watchdog-item-email">{w.email}</div>
-                  <div className="watchdog-item-filters">
-                    {tags.length ? (
-                      tags.map((t, i) => (
-                        <span key={i} className="filter-tag">
-                          {t.label}: {t.value}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="filter-tag">
-                        V\u0161e (All listings)
-                      </span>
-                    )}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">
+                      {w.label || `Hlídací pes #${w.id}`}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{w.email}</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {tags.length > 0 ? (
+                        tags.map((t, i) => (
+                          <Badge
+                            key={i}
+                            variant="secondary"
+                            className="text-[10px]"
+                          >
+                            {t.label}: {t.value}
+                          </Badge>
+                        ))
+                      ) : (
+                        <Badge variant="secondary" className="text-[10px]">
+                          Vše
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="watchdog-item-actions">
-                  <button
-                    className="toggle-btn"
-                    onClick={() => onToggle(w.id)}
-                    title={
-                      w.active
-                        ? "Pozastavit (Pause)"
-                        : "Aktivovat (Activate)"
-                    }
-                  >
-                    {w.active ? (
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <rect x="6" y="4" width="4" height="16" />
-                        <rect x="14" y="4" width="4" height="16" />
-                      </svg>
-                    ) : (
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <polygon points="5 3 19 12 5 21 5 3" />
-                      </svg>
-                    )}
-                  </button>
-                  <button
-                    className="delete-btn"
-                    onClick={() => handleDelete(w.id)}
-                    title={
-                      confirmDeleteId === w.id
-                        ? "Klikn\u011bte znovu pro potvrzen\u00ed (Click again to confirm)"
-                        : "Smazat (Delete)"
-                    }
-                    style={
-                      confirmDeleteId === w.id
-                        ? {
-                            background: "oklch(0.6 0.2 25 / 0.1)",
-                            color: "oklch(0.6 0.2 25)",
-                            borderColor: "oklch(0.6 0.2 25 / 0.3)",
-                          }
-                        : undefined
-                    }
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
+
+                  <div className="flex shrink-0 gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => onToggle(w.id)}
+                      title={w.active ? "Pozastavit" : "Aktivovat"}
                     >
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6l-1 14H6L5 6" />
-                      <path d="M10 11v6" />
-                      <path d="M14 11v6" />
-                      <path d="M9 6V4h6v2" />
-                    </svg>
-                  </button>
+                      {w.active ? (
+                        <Pause className="h-3.5 w-3.5" />
+                      ) : (
+                        <Play className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Smazat hlídacího psa?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Tato akce je nevratná. Hlídací pes bude trvale
+                            smazán.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Zrušit</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={async () => {
+                              setDeletingId(w.id);
+                              await onDelete(w.id);
+                              setDeletingId(null);
+                            }}
+                            disabled={deletingId === w.id}
+                          >
+                            {deletingId === w.id ? "Mažu..." : "Smazat"}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </div>
               </div>
             );

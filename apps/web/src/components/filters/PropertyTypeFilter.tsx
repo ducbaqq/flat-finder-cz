@@ -1,52 +1,44 @@
 "use client";
 
-import { useFilterStore } from "@/store/filter-store";
-import { useCallback } from "react";
+import { Home, Building2, TreePine, Landmark, Car } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import type { LucideIcon } from "lucide-react";
 
-const OPTIONS = [
-  { value: "flat", label: "Byt (Flat)" },
-  { value: "house", label: "D\u016fm (House)" },
-  { value: "commercial", label: "Komer\u010dn\u00ed (Commercial)" },
-  { value: "garage", label: "Gar\u00e1\u017e (Garage)" },
-  { value: "residential_building", label: "\u010cin\u017eovn\u00ed d\u016fm" },
-  { value: "land", label: "Pozemek (Land)" },
-  { value: "cottage", label: "Chata (Cottage)" },
+interface PropertyTypeFilterProps {
+  value: string;
+  onChange: (value: string) => void;
+}
+
+const types: { value: string; label: string; icon: LucideIcon }[] = [
+  { value: "flat", label: "Byt", icon: Building2 },
+  { value: "house", label: "Dům", icon: Home },
+  { value: "land", label: "Pozemek", icon: TreePine },
+  { value: "commercial", label: "Komerční", icon: Landmark },
+  { value: "cottage", label: "Chata", icon: Home },
+  { value: "garage", label: "Garáž", icon: Car },
 ];
 
-export default function PropertyTypeFilter() {
-  const propertyType = useFilterStore((s) => s.filters.property_type);
-  const setFilter = useFilterStore((s) => s.setFilter);
-
-  const activeValues = propertyType ? propertyType.split(",") : [];
-
-  const toggle = useCallback(
-    (value: string) => {
-      const current = propertyType ? propertyType.split(",").filter(Boolean) : [];
-      const idx = current.indexOf(value);
-      if (idx >= 0) {
-        current.splice(idx, 1);
-      } else {
-        current.push(value);
-      }
-      setFilter("property_type", current.join(","));
-    },
-    [propertyType, setFilter]
-  );
+export function PropertyTypeFilter({ value, onChange }: PropertyTypeFilterProps) {
+  const selected = value ? value.split(",") : [];
 
   return (
-    <div className="filter-group">
-      <label className="filter-label">Typ nemovitosti (Property)</label>
-      <div className="btn-group multi">
-        {OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            className={`btn-toggle${activeValues.includes(opt.value) ? " active" : ""}`}
-            onClick={() => toggle(opt.value)}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
-    </div>
+    <ToggleGroup
+      type="multiple"
+      value={selected}
+      onValueChange={(values) => onChange(values.join(","))}
+      className="flex flex-wrap gap-1"
+    >
+      {types.map(({ value: v, label, icon: Icon }) => (
+        <ToggleGroupItem
+          key={v}
+          value={v}
+          className="flex items-center gap-1 text-xs"
+          size="sm"
+        >
+          <Icon className="h-3.5 w-3.5" />
+          {label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
 }
