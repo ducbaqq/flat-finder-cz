@@ -22,6 +22,13 @@ export const Source = {
   Sreality: "sreality",
   Bezrealitky: "bezrealitky",
   UlovDomov: "ulovdomov",
+  Bazos: "bazos",
+  EReality: "ereality",
+  Eurobydleni: "eurobydleni",
+  CeskeReality: "ceskereality",
+  RealityMix: "realitymix",
+  Idnes: "idnes",
+  Realingo: "realingo",
 } as const;
 export type Source = (typeof Source)[keyof typeof Source];
 

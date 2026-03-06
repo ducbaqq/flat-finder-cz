@@ -11,6 +11,11 @@
     "@flat-finder/config": "*",
     "@flat-finder/db": "*",
     "@flat-finder/types": "*",
-    "p-limit": "^6.2.0"
+    "node-html-parser": "^6.1.0",
+    "p-limit": "^6.2.0",
+    "proj4": "^2.20.3"
+  },
+  "devDependencies": {
+    "@types/proj4": "^2.5.6"
   }
 }

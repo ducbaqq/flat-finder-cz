@@ -33,6 +33,13 @@ import type { BaseScraper } from "./base-scraper.js";
 import { SrealityScraper } from "./scrapers/sreality.js";
 import { BezrealitkyScraper } from "./scrapers/bezrealitky.js";
 import { UlovDomovScraper } from "./scrapers/ulovdomov.js";
+import { BazosScraper } from "./scrapers/bazos.js";
+import { ERealityScraper } from "./scrapers/ereality.js";
+import { EurobydleniScraper } from "./scrapers/eurobydleni.js";
+import { CeskeRealityScraper } from "./scrapers/ceskereality.js";
+import { RealitymixScraper } from "./scrapers/realitymix.js";
+import { IdnesScraper } from "./scrapers/idnes.js";
+import { ReaLingoScraper } from "./scrapers/realingo.js";
 import { deactivateStale } from "./deactivator.js";
 
 // ---------------------------------------------------------------------------
@@ -47,9 +54,30 @@ function ts(): string {
 // Types
 // ---------------------------------------------------------------------------
 
-type SourceName = "sreality" | "bezrealitky" | "ulovdomov";
+type SourceName =
+  | "sreality"
+  | "bezrealitky"
+  | "ulovdomov"
+  | "bazos"
+  | "ereality"
+  | "eurobydleni"
+  | "ceskereality"
+  | "realitymix"
+  | "idnes"
+  | "realingo";
 
-const ALL_SOURCES: SourceName[] = ["sreality", "bezrealitky", "ulovdomov"];
+const ALL_SOURCES: SourceName[] = [
+  "sreality",
+  "bezrealitky",
+  "ulovdomov",
+  "bazos",
+  "ereality",
+  "eurobydleni",
+  "ceskereality",
+  "realitymix",
+  "idnes",
+  "realingo",
+];
 
 interface CliArgs {
   source: SourceName | "all";
@@ -97,9 +125,9 @@ function parseArgs(): CliArgs {
     const arg = args[i];
     if (arg === "--source" && i + 1 < args.length) {
       const val = args[++i];
-      if (!["sreality", "bezrealitky", "ulovdomov", "all"].includes(val)) {
+      if (![...ALL_SOURCES, "all"].includes(val)) {
         console.error(
-          `Invalid --source value: "${val}". Must be one of: sreality, bezrealitky, ulovdomov, all`,
+          `Invalid --source value: "${val}". Must be one of: ${ALL_SOURCES.join(", ")}, all`,
         );
         process.exit(2);
       }
@@ -124,7 +152,7 @@ Usage:
   tsx src/index.ts [options]
 
 Options:
-  --source <name>     Which source to scrape: sreality | bezrealitky | ulovdomov | all (default: all)
+  --source <name>     Which source to scrape: ${ALL_SOURCES.join(" | ")} | all (default: all)
   --dry-run           Collect listings but do not save to database
   --watch             Run in watcher mode: loop continuously checking newest pages
   --full              Full scan: fetch all pages + deactivate stale listings
@@ -182,6 +210,48 @@ function createScraper(source: SourceName): BaseScraper {
         concurrency: env.ULOVDOMOV_CONCURRENCY,
         batchMultiplier: env.PAGE_BATCH_MULTIPLIER,
         detailBatchSize: env.DETAIL_BATCH_SIZE,
+      });
+    case "bazos":
+      return new BazosScraper({
+        ...common,
+        rps: env.BAZOS_RPS,
+        concurrency: env.BAZOS_CONCURRENCY,
+      });
+    case "ereality":
+      return new ERealityScraper({
+        ...common,
+        rps: env.EREALITY_RPS,
+        concurrency: env.EREALITY_CONCURRENCY,
+      });
+    case "eurobydleni":
+      return new EurobydleniScraper({
+        ...common,
+        rps: env.EUROBYDLENI_RPS,
+        concurrency: env.EUROBYDLENI_CONCURRENCY,
+      });
+    case "ceskereality":
+      return new CeskeRealityScraper({
+        ...common,
+        rps: env.CESKEREALITY_RPS,
+        concurrency: env.CESKEREALITY_CONCURRENCY,
+      });
+    case "realitymix":
+      return new RealitymixScraper({
+        ...common,
+        rps: env.REALITYMIX_RPS,
+        concurrency: env.REALITYMIX_CONCURRENCY,
+      });
+    case "idnes":
+      return new IdnesScraper({
+        ...common,
+        rps: env.IDNES_RPS,
+        concurrency: env.IDNES_CONCURRENCY,
+      });
+    case "realingo":
+      return new ReaLingoScraper({
+        ...common,
+        rps: env.REALINGO_RPS,
+        concurrency: env.REALINGO_CONCURRENCY,
       });
   }
 }

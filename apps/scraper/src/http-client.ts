@@ -45,6 +45,16 @@ export class HttpClient {
   }
 
   /**
+   * Perform a GET request and return raw HTML text.
+   */
+  async getHtml(url: string, headers?: Record<string, string>): Promise<string> {
+    return this.requestWithRetry<string>("GET", url, undefined, {
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      ...headers,
+    });
+  }
+
+  /**
    * Perform a POST request with a JSON body and return parsed JSON.
    */
   async post<T = unknown>(
