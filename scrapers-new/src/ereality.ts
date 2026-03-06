@@ -486,7 +486,7 @@ export class ERealityScraper extends BaseScraper {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const { parseMaxPages } = await import("./cli.js");
-  const scraper = new ERealityScraper({ name: "ereality", rps: 3, maxPages: parseMaxPages() });
+  const { parseMaxPages, getRps } = await import("./cli.js");
+  const scraper = new ERealityScraper({ name: "ereality", rps: getRps("ereality"), maxPages: parseMaxPages() });
   scraper.run().catch(console.error);
 }

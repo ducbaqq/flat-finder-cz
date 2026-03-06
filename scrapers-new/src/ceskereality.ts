@@ -821,7 +821,7 @@ function isAmenityLabel(label: string): boolean {
 // ---------------------------------------------------------------------------
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const { parseMaxPages } = await import("./cli.js");
-  const scraper = new CeskeRealityScraper({ name: "ceskereality", rps: 3, maxPages: parseMaxPages() });
+  const { parseMaxPages, getRps } = await import("./cli.js");
+  const scraper = new CeskeRealityScraper({ name: "ceskereality", rps: getRps("ceskereality"), maxPages: parseMaxPages() });
   scraper.run().catch(console.error);
 }
