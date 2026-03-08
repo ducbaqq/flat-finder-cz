@@ -83,6 +83,8 @@ export interface MarkerPoint {
   lat: number;
   lng: number;
   price: number | null;
+  title: string | null;
+  thumbnail_url: string | null;
 }
 
 export interface ClusterPoint {

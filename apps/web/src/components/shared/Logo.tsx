@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Home } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 interface LogoProps {
@@ -10,12 +9,17 @@ export function Logo({ className }: LogoProps) {
   return (
     <Link
       href="/"
-      className={cn("flex items-center gap-2 text-foreground", className)}
+      className={cn("flex items-center gap-2.5 text-foreground", className)}
     >
-      <Home className="h-6 w-6 text-primary" />
-      <span className="text-lg font-bold tracking-tight">
-        flat<span className="text-primary">finder</span>
-      </span>
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-lg font-bold text-white font-display">
+        D
+      </div>
+      <div className="flex flex-col leading-none">
+        <span className="text-lg font-bold tracking-tight font-display">
+          Domov.cz
+        </span>
+        <span className="text-[10px] text-muted-foreground">Najděte svůj domov</span>
+      </div>
     </Link>
   );
 }
