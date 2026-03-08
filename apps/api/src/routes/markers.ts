@@ -24,7 +24,7 @@ const INDEX_REFRESH_MS = 5 * 60_000; // 5 minutes
 
 // ── Server-side Supercluster index (for unfiltered requests) ──
 
-type PointProps = { id: number; price: number | null };
+type PointProps = { id: number; price: number | null; title: string | null; thumbnail_url: string | null };
 
 let scIndex: Supercluster<PointProps> | null = null;
 let scIndexTs = 0;
@@ -52,6 +52,8 @@ async function ensureIndex(): Promise<Supercluster<PointProps>> {
         lat: listings.latitude,
         lng: listings.longitude,
         price: listings.price,
+        title: listings.title,
+        thumbnail_url: listings.thumbnail_url,
       })
       .from(listings)
       .where(and(eq(listings.is_active, true), isNotNull(listings.latitude), isNotNull(listings.longitude)));
@@ -65,7 +67,7 @@ async function ensureIndex(): Promise<Supercluster<PointProps>> {
     const points: Supercluster.PointFeature<PointProps>[] = rows.map((r) => ({
       type: "Feature" as const,
       geometry: { type: "Point" as const, coordinates: [r.lng!, r.lat!] },
-      properties: { id: r.id, price: r.price },
+      properties: { id: r.id, price: r.price, title: r.title, thumbnail_url: r.thumbnail_url },
     }));
 
     sc.load(points);
@@ -190,7 +192,7 @@ app.get("/", async (c) => {
         });
       } else {
         const pt = props as PointProps;
-        markers.push({ id: pt.id, lat, lng, price: pt.price });
+        markers.push({ id: pt.id, lat, lng, price: pt.price, title: pt.title, thumbnail_url: pt.thumbnail_url });
       }
     }
 
@@ -219,12 +221,12 @@ app.get("/", async (c) => {
   if (zoom >= INDIVIDUAL_ZOOM_THRESHOLD) {
     // Individual points at very high zoom
     const rows = await db
-      .select({ id: listings.id, lat: listings.latitude, lng: listings.longitude, price: listings.price })
+      .select({ id: listings.id, lat: listings.latitude, lng: listings.longitude, price: listings.price, title: listings.title, thumbnail_url: listings.thumbnail_url })
       .from(listings)
       .where(where)
       .limit(MAX_INDIVIDUAL_MARKERS);
 
-    const markers: MarkerPoint[] = rows.map((r) => ({ id: r.id, lat: r.lat!, lng: r.lng!, price: r.price }));
+    const markers: MarkerPoint[] = rows.map((r) => ({ id: r.id, lat: r.lat!, lng: r.lng!, price: r.price, title: r.title, thumbnail_url: r.thumbnail_url }));
     const response: MarkersResponse = { markers, clusters: [], total: markers.length, clustered: false };
 
     sqlCache.set(cacheKey, { data: response, ts: Date.now() });

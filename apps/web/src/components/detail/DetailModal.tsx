@@ -60,7 +60,7 @@ export default function DetailModal() {
 
   return (
     <Dialog open={detailModalOpen} onOpenChange={(open) => !open && closeDetail()}>
-      <DialogContent className="max-w-4xl gap-0 overflow-hidden p-0">
+      <DialogContent className="max-w-4xl gap-0 overflow-hidden rounded-xl border-divider p-0">
         <DialogTitle className="sr-only">
           {listing?.title || "Detail nabídky"}
         </DialogTitle>
@@ -103,7 +103,8 @@ export default function DetailModal() {
               >
                 <ImageGallery images={listing.image_urls || []} />
 
-                <div className="space-y-4 p-5 sm:p-6">
+                <div className="space-y-5 p-5 sm:p-6">
+                  {/* Badges */}
                   <div className="flex flex-wrap gap-1.5">
                     <Badge
                       className={
@@ -117,16 +118,12 @@ export default function DetailModal() {
                       {propertyTypeLabels[listing.property_type] ||
                         listing.property_type}
                     </Badge>
-                    {listing.source === "bezrealitky" && (
-                      <Badge className="bg-emerald-600 text-white">
-                        Bez provize
-                      </Badge>
-                    )}
                   </div>
 
+                  {/* Title + Price */}
                   <div>
-                    <h2 className="text-xl font-bold leading-tight sm:text-2xl">
-                      {listing.title || "—"}
+                    <h2 className="font-display text-xl leading-tight sm:text-2xl">
+                      {listing.title || "\u2014"}
                     </h2>
                     <div className="mt-2 flex items-baseline gap-2">
                       <span className="text-2xl font-bold text-primary sm:text-3xl">
@@ -142,7 +139,7 @@ export default function DetailModal() {
                       )}
                     </div>
                     {(listing.address || listing.city) && (
-                      <div className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <div className="mt-1.5 flex items-center gap-1.5 text-sm text-muted-foreground">
                         <MapPin className="h-3.5 w-3.5" />
                         {[listing.address, listing.city]
                           .filter(Boolean)
@@ -151,27 +148,30 @@ export default function DetailModal() {
                     )}
                   </div>
 
-                  <Separator />
+                  <Separator className="bg-divider" />
 
+                  {/* Specs */}
                   <DetailSpecs listing={listing} />
 
+                  {/* Description */}
                   {listing.description && (
                     <>
-                      <Separator />
+                      <Separator className="bg-divider" />
                       <div>
                         <h3 className="mb-2 text-sm font-semibold">Popis</h3>
-                        <p className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
+                        <p className="max-w-[72ch] whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
                           {listing.description}
                         </p>
                       </div>
                     </>
                   )}
 
+                  {/* Source link */}
                   {sourceUrl && (
                     <>
-                      <Separator />
+                      <Separator className="bg-divider" />
                       <Button
-                        className="w-full bg-terracotta text-white hover:bg-terracotta/90"
+                        className="w-full rounded-lg bg-[var(--terracotta)] text-white hover:bg-[var(--terracotta)]/90"
                         size="lg"
                         asChild
                       >
@@ -187,6 +187,7 @@ export default function DetailModal() {
                     </>
                   )}
 
+                  {/* Mini map */}
                   {listing.latitude != null && listing.longitude != null && (
                     <MiniMap lat={listing.latitude} lng={listing.longitude} />
                   )}

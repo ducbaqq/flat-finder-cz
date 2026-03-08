@@ -32,11 +32,12 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay: index * 0.05 }}
-      whileHover={{ y: -4 }}
-      className="group cursor-pointer overflow-hidden rounded-xl border bg-card shadow-sm transition-shadow hover:shadow-md"
+      whileHover={{ y: -4, scale: 1.01 }}
+      className="group cursor-pointer overflow-hidden rounded-xl border border-divider bg-card shadow-sm transition-shadow hover:shadow-lg"
       onClick={() => openDetail(listing.id)}
     >
-      <div className="relative aspect-[16/10] overflow-hidden">
+      {/* Image */}
+      <div className="relative aspect-[16/10] overflow-hidden bg-gradient-to-br from-muted to-surface-offset">
         <img
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           src={
@@ -50,10 +51,11 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
           }}
         />
 
+        {/* Source badge - top left */}
         <div className="absolute left-2 top-2 flex gap-1.5">
           <Badge
             className={cn(
-              "text-[10px] font-semibold",
+              "text-[10px] font-semibold rounded-md",
               sourceColors[listing.source] || "bg-primary text-primary-foreground"
             )}
           >
@@ -61,13 +63,9 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
           </Badge>
         </div>
 
-        {listing.source === "bezrealitky" && (
-          <Badge className="absolute right-2 top-2 bg-emerald-600 text-[10px] font-semibold text-white">
-            Bez provize
-          </Badge>
-        )}
 
-        <div className="absolute bottom-2 right-2 rounded-lg bg-card/90 px-2.5 py-1 shadow-sm backdrop-blur-sm">
+        {/* Price badge - bottom right */}
+        <div className="absolute bottom-2 right-2 rounded-lg bg-card/90 px-3 py-1.5 shadow-sm backdrop-blur-sm">
           <span className="text-sm font-bold text-primary">
             {formatPrice(listing.price, listing.currency)}
           </span>
@@ -77,13 +75,14 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
         </div>
       </div>
 
-      <div className="p-3.5">
-        <h3 className="line-clamp-1 text-sm font-semibold leading-tight">
-          {listing.title || "—"}
+      {/* Body */}
+      <div className="p-4">
+        <h3 className="line-clamp-1 font-display text-[15px] font-normal leading-tight">
+          {listing.title || "\u2014"}
         </h3>
 
         {(listing.address || listing.city) && (
-          <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+          <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="h-3 w-3 shrink-0" />
             <span className="line-clamp-1">
               {listing.address || listing.city}
@@ -91,11 +90,12 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
           </div>
         )}
 
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        {/* Specs row */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {listing.size_m2 != null && (
             <span className="flex items-center gap-1">
               <Ruler className="h-3 w-3" />
-              {listing.size_m2} m²
+              {listing.size_m2} m&sup2;
             </span>
           )}
           {listing.layout && (
@@ -113,7 +113,7 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
         </div>
 
         {listing.amenities && listing.amenities.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
+          <div className="mt-2.5 flex flex-wrap gap-1">
             {listing.amenities.slice(0, 3).map((a) => (
               <span
                 key={a}
@@ -125,9 +125,9 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
           </div>
         )}
 
-        <div className="mt-2.5 flex items-center justify-between text-[11px] text-muted-foreground">
+        <div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground">
           <span>{relativeTime(listing.listed_at)}</span>
-          <span className="flex items-center gap-1">
+          <span>
             {propertyTypeLabels[listing.property_type] || listing.property_type}
           </span>
         </div>

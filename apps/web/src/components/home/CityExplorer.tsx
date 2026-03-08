@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { MapPin } from "lucide-react";
 import { motion } from "framer-motion";
 import { useInView } from "react-intersection-observer";
 import { useStats } from "@/hooks/useStats";
@@ -19,10 +20,13 @@ export function CityExplorer() {
   if (cities.length === 0) return null;
 
   return (
-    <section ref={ref} className="py-16">
+    <section ref={ref} className="py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="mb-8 text-center">
-          <h2 className="text-2xl font-bold sm:text-3xl">
+          <h2
+            className="font-display font-normal"
+            style={{ fontSize: "var(--text-3xl)" }}
+          >
             Prozkoumejte města
           </h2>
           <p className="mt-2 text-muted-foreground">
@@ -40,16 +44,17 @@ export function CityExplorer() {
             <motion.div key={city} variants={fadeInUp}>
               <Link
                 href={`/search?location=${encodeURIComponent(city)}`}
-                className="group relative block overflow-hidden rounded-xl bg-gradient-to-br from-primary/80 to-primary/40 p-6 transition-transform hover:scale-[1.03]"
+                className="group relative block overflow-hidden rounded-xl border border-divider bg-card p-6 transition-all hover:shadow-md hover:border-primary/30"
               >
-                <div className="relative z-10">
-                  <h3 className="text-lg font-bold text-white sm:text-xl">
-                    {city}
-                  </h3>
-                  <p className="mt-1 text-sm text-white/80">
-                    {count.toLocaleString("cs-CZ")} nabídek
-                  </p>
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                  <MapPin className="h-5 w-5 text-primary" />
                 </div>
+                <h3 className="text-lg font-bold font-display">
+                  {city}
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {count.toLocaleString("cs-CZ")} nabídek
+                </p>
               </Link>
             </motion.div>
           ))}

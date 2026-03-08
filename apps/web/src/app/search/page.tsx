@@ -60,7 +60,7 @@ function SearchPageContent() {
 
       <div className="flex flex-1">
         {/* Desktop sidebar */}
-        <aside className="hidden w-72 shrink-0 border-r md:block">
+        <aside className="hidden w-72 shrink-0 border-r border-divider md:block">
           <FilterSidebar filters={filters} setFilter={setFilter} />
         </aside>
 
@@ -71,7 +71,7 @@ function SearchPageContent() {
             <div
               className={cn(
                 "flex-1 overflow-y-auto p-4",
-                showMap && "lg:max-w-[50%]"
+                showMap && "lg:w-[25%] lg:min-w-[280px] lg:max-w-[25%] lg:flex-none"
               )}
             >
               <ListingResults

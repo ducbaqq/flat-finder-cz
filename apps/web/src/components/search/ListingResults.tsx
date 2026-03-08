@@ -27,7 +27,7 @@ export function ListingResults({
     return (
       <div
         className={`grid gap-4 ${
-          singleColumn ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"
+          singleColumn ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
         }`}
       >
         {Array.from({ length: 8 }).map((_, i) => (
@@ -41,7 +41,9 @@ export function ListingResults({
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <SearchX className="mb-4 h-12 w-12 text-muted-foreground/50" />
-        <h3 className="text-lg font-semibold">Žádné výsledky</h3>
+        <h3 className="text-lg font-semibold font-display">
+          Žádné výsledky
+        </h3>
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">
           Zkuste upravit filtry nebo rozšířit vyhledávání pro více výsledků.
         </p>
@@ -53,7 +55,7 @@ export function ListingResults({
     <div className="space-y-4">
       <motion.div
         className={`grid gap-4 ${
-          singleColumn ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"
+          singleColumn ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
         }`}
         variants={staggerContainer}
         initial="hidden"
@@ -71,6 +73,7 @@ export function ListingResults({
             size="sm"
             disabled={page <= 1}
             onClick={() => onPageChange(page - 1)}
+            className="rounded-lg"
           >
             Předchozí
           </Button>
@@ -82,6 +85,7 @@ export function ListingResults({
             size="sm"
             disabled={page >= data.total_pages}
             onClick={() => onPageChange(page + 1)}
+            className="rounded-lg"
           >
             Další
           </Button>

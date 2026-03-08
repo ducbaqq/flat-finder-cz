@@ -7,7 +7,7 @@ import { HeroSection } from "@/components/home/HeroSection";
 import { SearchTabs } from "@/components/home/SearchTabs";
 import { TrustBar } from "@/components/home/TrustBar";
 import { LatestListings } from "@/components/home/LatestListings";
-import { HowItWorks } from "@/components/home/HowItWorks";
+import { FeaturesSection } from "@/components/home/FeaturesSection";
 import { CityExplorer } from "@/components/home/CityExplorer";
 import DetailModal from "@/components/detail/DetailModal";
 import WatchdogModal from "@/components/watchdog/WatchdogModal";
@@ -19,10 +19,10 @@ export default function HomePage() {
       <main>
         <HeroSection>
           <SearchTabs />
+          <TrustBar />
         </HeroSection>
-        <TrustBar />
         <LatestListings />
-        <HowItWorks />
+        <FeaturesSection />
         <CityExplorer />
       </main>
       <Footer />

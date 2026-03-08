@@ -26,11 +26,14 @@ export function LatestListings() {
   });
 
   return (
-    <section ref={ref} className="py-16">
+    <section ref={ref} className="py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="mb-8 flex items-end justify-between">
           <div>
-            <h2 className="text-2xl font-bold sm:text-3xl">
+            <h2
+              className="font-display font-normal"
+              style={{ fontSize: "var(--text-3xl)" }}
+            >
               Nejnovější nabídky
             </h2>
             <p className="mt-1 text-muted-foreground">

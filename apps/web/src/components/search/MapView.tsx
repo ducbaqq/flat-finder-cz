@@ -41,8 +41,8 @@ function createPriceIcon(price: number) {
 const dotIcon = L.divIcon({
   className: "",
   html: '<div class="custom-marker-dot"></div>',
-  iconSize: [10, 10],
-  iconAnchor: [5, 5],
+  iconSize: [30, 30],
+  iconAnchor: [15, 15],
 });
 
 // ── Cluster display helpers ──
@@ -90,13 +90,18 @@ function MapEventsHandler() {
 
 // ── Marker layer — renders server-side clusters + individual points ──
 
+// Zoom threshold: at this level and above, show pin dots instead of price labels
+const PIN_ONLY_ZOOM = 16;
+
 function MarkerLayer({ filters }: { filters: Record<string, string> }) {
   const map = useMap();
   const openDetail = useUiStore((s) => s.openDetail);
+  const mapZoom = useUiStore((s) => s.mapZoom);
   const { data } = useMarkers(filters);
 
   const clusters = data?.clusters ?? [];
   const markers = data?.markers ?? [];
+  const useDots = (mapZoom ?? map.getZoom()) >= PIN_ONLY_ZOOM;
 
   return (
     <>
@@ -107,9 +112,9 @@ function MarkerLayer({ filters }: { filters: Record<string, string> }) {
           center={[cluster.lat, cluster.lng]}
           radius={clusterRadius(cluster.count)}
           pathOptions={{
-            fillColor: "#3b82f6",
+            fillColor: "#0F766E",
             fillOpacity: 0.7,
-            color: "#1d4ed8",
+            color: "#0D6359",
             weight: 2,
           }}
           eventHandlers={{
@@ -129,10 +134,10 @@ function MarkerLayer({ filters }: { filters: Record<string, string> }) {
         </CircleMarker>
       ))}
 
-      {/* Individual points */}
+      {/* Individual points — dots at high zoom, price labels otherwise */}
       {markers.map((pt) => {
         const icon =
-          pt.price != null ? createPriceIcon(pt.price) : dotIcon;
+          useDots || pt.price == null ? dotIcon : createPriceIcon(pt.price);
         return (
           <Marker
             key={`pt-${pt.id}`}
@@ -141,7 +146,22 @@ function MarkerLayer({ filters }: { filters: Record<string, string> }) {
             eventHandlers={{
               click: () => openDetail(pt.id),
             }}
-          />
+          >
+            {(pt.title || pt.thumbnail_url) && (
+              <Tooltip direction="top" offset={[0, -10]} className="marker-hover-tooltip">
+                <div className="marker-tooltip-inner">
+                  {pt.thumbnail_url && (
+                    <img
+                      src={pt.thumbnail_url}
+                      alt=""
+                      className="marker-tooltip-img"
+                    />
+                  )}
+                  {pt.title && <div className="marker-tooltip-title">{pt.title}</div>}
+                </div>
+              </Tooltip>
+            )}
+          </Marker>
         );
       })}
     </>

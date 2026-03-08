@@ -13,6 +13,13 @@ const sources = [
   { key: "sreality", label: "sreality.cz", color: "bg-sreality" },
   { key: "bezrealitky", label: "bezrealitky.cz", color: "bg-bezrealitky" },
   { key: "ulovdomov", label: "ulovdomov.cz", color: "bg-ulovdomov" },
+  { key: "bazos", label: "bazos.cz", color: "bg-primary" },
+  { key: "idnes", label: "idnes.cz", color: "bg-primary" },
+  { key: "ceskereality", label: "ceskereality.cz", color: "bg-primary" },
+  { key: "realitymix", label: "realitymix.cz", color: "bg-primary" },
+  { key: "ereality", label: "ereality.cz", color: "bg-primary" },
+  { key: "eurobydleni", label: "eurobydleni.cz", color: "bg-primary" },
+  { key: "realingo", label: "realingo.cz", color: "bg-primary" },
 ];
 
 export function SourceFilter({ value, onChange }: SourceFilterProps) {

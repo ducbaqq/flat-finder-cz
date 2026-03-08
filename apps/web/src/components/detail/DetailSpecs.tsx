@@ -75,7 +75,7 @@ export default function DetailSpecs({ listing }: { listing: Listing }) {
           {specs.map(({ icon: Icon, label, value }) => (
             <div
               key={label}
-              className="flex items-start gap-2.5 rounded-lg bg-muted/50 p-3"
+              className="flex items-start gap-2.5 rounded-lg bg-surface-offset p-4"
             >
               <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
               <div>
