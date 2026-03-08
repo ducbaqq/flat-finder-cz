@@ -5,15 +5,11 @@ import type { MarkersResponse } from "@flat-finder/types";
 import { apiGet } from "@/lib/api-client";
 import { useUiStore } from "@/store/ui-store";
 
-interface UseMarkersOptions {
-  filters: Record<string, string>;
-  zoom: number;
-}
-
-export function useMarkers({ filters, zoom }: UseMarkersOptions) {
+export function useMarkers(filters: Record<string, string>) {
   const mapBounds = useUiStore((s) => s.mapBounds);
+  const mapZoom = useUiStore((s) => s.mapZoom);
 
-  const params: Record<string, unknown> = { zoom };
+  const params: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(filters)) {
     if (value) params[key] = value;
@@ -26,9 +22,14 @@ export function useMarkers({ filters, zoom }: UseMarkersOptions) {
     params.ne_lng = mapBounds.ne_lng;
   }
 
+  if (mapZoom != null) {
+    params.zoom = Math.floor(mapZoom);
+  }
+
   return useQuery<MarkersResponse>({
     queryKey: ["markers", params],
     queryFn: () => apiGet<MarkersResponse>("/markers", params),
-    enabled: zoom > 0,
+    enabled: mapBounds !== null,
+    placeholderData: (prev) => prev,
   });
 }

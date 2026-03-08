@@ -89,6 +89,7 @@ export class RealitymixScraper extends BaseScraper {
 
     // Fetch remaining pages
     for (let page = 2; page <= pagesToScrape; page++) {
+      if (this.isCategorySkipped(slug)) return;
       try {
         const url = `${this.baseUrl}/reality/${slug}?stranka=${page}`;
         const html = await this.http.getHtml(url);
@@ -218,13 +219,11 @@ export class RealitymixScraper extends BaseScraper {
         if (floorsMatch && listing.total_floors === null) {
           listing.total_floors = parseInt(floorsMatch[1], 10);
         }
-      } else if (labelLower.includes("celková plocha") || labelLower.includes("celkova plocha") || labelLower.includes("užitná plocha")) {
-        if (listing.size_m2 === null) {
-          const sizeMatch = value.match(/([\d,.\s]+)\s*m/);
-          if (sizeMatch) {
-            const size = parseFloat(sizeMatch[1].replace(/\s/g, "").replace(",", "."));
-            if (!isNaN(size) && size > 0) listing.size_m2 = size;
-          }
+      } else if ((labelLower.includes("celkov") && labelLower.includes("plocha")) || labelLower.includes("uzitna plocha") || labelLower.includes("užitná plocha")) {
+        const sizeMatch = value.match(/([\d,.\s]+)\s*m/);
+        if (sizeMatch) {
+          const size = parseFloat(sizeMatch[1].replace(/\s/g, "").replace(",", "."));
+          if (!isNaN(size) && size > 0) listing.size_m2 = size;
         }
       } else if (labelLower.includes("dispozice")) {
         if (!listing.layout) {
@@ -595,7 +594,7 @@ export class RealitymixScraper extends BaseScraper {
 
   private extractSize(title: string | null): number | null {
     if (!title) return null;
-    const match = title.match(/([\d,.\s]+)\s*m[²2]/i);
+    const match = title.match(/(\d[\d\s]*(?:[,.]\d+)?)\s*m[²2]/i);
     if (match) {
       const numStr = match[1].replace(/\s/g, "").replace(",", ".");
       const size = parseFloat(numStr);
@@ -679,6 +678,27 @@ export class RealitymixScraper extends BaseScraper {
     address: string | null,
     sourceUrl: string | null,
   ): string | null {
+    // Prefer address-based extraction (preserves diacritics)
+    if (address) {
+      const parts = address.split(",").map((p) => p.trim());
+
+      if (parts.length >= 2) {
+        const lastPart = parts[parts.length - 1];
+        if (lastPart.toLowerCase().startsWith("okr.")) {
+          const cityPart =
+            parts.length >= 3
+              ? parts[parts.length - 2]
+              : parts[0];
+          return cityPart.replace(/\s+\d+\s*$/, "").trim() || cityPart;
+        }
+        return lastPart.replace(/\s+\d+\s*$/, "").trim() || lastPart;
+      }
+      if (parts.length === 1) {
+        return parts[0].replace(/\s+\d+\s*$/, "").trim() || parts[0];
+      }
+    }
+
+    // Fallback to URL slug (no diacritics)
     if (sourceUrl) {
       const urlMatch = sourceUrl.match(/\/detail\/([^/]+)\//);
       if (urlMatch) {
@@ -691,24 +711,6 @@ export class RealitymixScraper extends BaseScraper {
       }
     }
 
-    if (!address) return null;
-
-    const parts = address.split(",").map((p) => p.trim());
-
-    if (parts.length >= 2) {
-      const lastPart = parts[parts.length - 1];
-      if (lastPart.toLowerCase().startsWith("okr.")) {
-        const cityPart =
-          parts.length >= 3
-            ? parts[parts.length - 2]
-            : parts[0];
-        return cityPart.replace(/\s+\d+\s*$/, "").trim() || cityPart;
-      }
-      return lastPart.replace(/\s+\d+\s*$/, "").trim() || lastPart;
-    }
-    if (parts.length === 1) {
-      return parts[0].replace(/\s+\d+\s*$/, "").trim() || parts[0];
-    }
     return null;
   }
 

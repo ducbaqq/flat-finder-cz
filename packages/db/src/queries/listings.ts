@@ -125,6 +125,7 @@ export function getSortOrder(sort?: string) {
 export async function queryListings(
   db: Db,
   filters: ListingFilters,
+  opts?: { cachedTotal?: number },
 ) {
   const page = filters.page ?? 1;
   const perPage = Math.min(filters.per_page ?? 20, 100);
@@ -135,8 +136,13 @@ export async function queryListings(
   });
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
+  // Skip the expensive COUNT(*) query when a cached total is available
+  const hasCachedTotal = opts?.cachedTotal != null;
+
   const [totalResult, rows] = await Promise.all([
-    db.select({ count: count() }).from(listings).where(where),
+    hasCachedTotal
+      ? Promise.resolve([{ count: opts!.cachedTotal! }])
+      : db.select({ count: count() }).from(listings).where(where),
     db
       .select()
       .from(listings)

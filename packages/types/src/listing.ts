@@ -78,30 +78,25 @@ export interface ListingsResponse {
   total_pages: number;
 }
 
-export interface MarkerCluster {
+export interface MarkerPoint {
+  id: number;
+  lat: number;
+  lng: number;
+  price: number | null;
+}
+
+export interface ClusterPoint {
   lat: number;
   lng: number;
   count: number;
-  listings: MarkerListing[];
-}
-
-export interface MarkerListing {
-  id: number;
-  title: string | null;
-  price: number | null;
-  thumbnail_url: string | null;
-  property_type: PropertyType;
-  transaction_type: TransactionType;
-  layout: string | null;
-  size_m2: number | null;
-  city: string | null;
-  lat: number;
-  lng: number;
+  avg_price: number | null;
 }
 
 export interface MarkersResponse {
-  markers: MarkerCluster[];
+  markers: MarkerPoint[];
+  clusters: ClusterPoint[];
   total: number;
+  clustered: boolean;
 }
 
 export interface StatsResponse {

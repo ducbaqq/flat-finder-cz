@@ -1,19 +1,20 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useCallback } from "react";
 import {
   MapContainer,
   TileLayer,
   Marker,
-  Popup,
+  CircleMarker,
+  Tooltip,
   useMap,
   useMapEvents,
 } from "react-leaflet";
-import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 import { useUiStore } from "@/store/ui-store";
 import { useMarkers } from "@/hooks/useMarkers";
-import { ListingPopup } from "./ListingPopup";
+
+// ── Price formatting ──
 
 function formatMarkerPrice(price: number): string {
   if (price >= 1_000_000) {
@@ -34,7 +35,6 @@ function createPriceIcon(price: number) {
     html: `<div class="custom-marker-price">${label}</div>`,
     iconSize: [0, 0],
     iconAnchor: [0, 0],
-    popupAnchor: [0, -12],
   });
 }
 
@@ -45,86 +45,110 @@ const dotIcon = L.divIcon({
   iconAnchor: [5, 5],
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createClusterIcon(cluster: any) {
-  const count = cluster.getChildCount();
-  let size: number;
-  if (count < 10) size = 34;
-  else if (count < 50) size = 40;
-  else size = 46;
-  return L.divIcon({
-    html: "<div>" + count + "</div>",
-    className: "marker-cluster",
-    iconSize: L.point(size, size),
-  });
+// ── Cluster display helpers ──
+
+function formatClusterCount(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
+  return String(count);
 }
+
+function clusterRadius(count: number): number {
+  return Math.min(35, 12 + Math.log10(count) * 8);
+}
+
+// ── Map event handler — sets bounds + zoom on mount + moveend ──
 
 function MapEventsHandler() {
   const setMapBounds = useUiStore((s) => s.setMapBounds);
-  const isInitialMove = useRef(true);
+  const setMapZoom = useUiStore((s) => s.setMapZoom);
+  const map = useMap();
+
+  const updateBounds = useCallback(() => {
+    const b = map.getBounds();
+    setMapBounds({
+      sw_lat: parseFloat(b.getSouthWest().lat.toFixed(6)),
+      sw_lng: parseFloat(b.getSouthWest().lng.toFixed(6)),
+      ne_lat: parseFloat(b.getNorthEast().lat.toFixed(6)),
+      ne_lng: parseFloat(b.getNorthEast().lng.toFixed(6)),
+    });
+    setMapZoom(map.getZoom());
+  }, [map, setMapBounds, setMapZoom]);
+
+  useEffect(() => {
+    updateBounds();
+  }, [updateBounds]);
 
   useMapEvents({
-    moveend(e) {
-      const map = e.target;
-      const b = map.getBounds();
-      setMapBounds({
-        sw_lat: parseFloat(b.getSouthWest().lat.toFixed(6)),
-        sw_lng: parseFloat(b.getSouthWest().lng.toFixed(6)),
-        ne_lat: parseFloat(b.getNorthEast().lat.toFixed(6)),
-        ne_lng: parseFloat(b.getNorthEast().lng.toFixed(6)),
-      });
-      if (isInitialMove.current) {
-        isInitialMove.current = false;
-      }
+    moveend() {
+      updateBounds();
     },
   });
 
   return null;
 }
 
+// ── Marker layer — renders server-side clusters + individual points ──
+
 function MarkerLayer({ filters }: { filters: Record<string, string> }) {
   const map = useMap();
-  const [zoom, setZoom] = useState(map.getZoom());
+  const openDetail = useUiStore((s) => s.openDetail);
+  const { data } = useMarkers(filters);
 
-  useMapEvents({
-    zoomend() {
-      setZoom(map.getZoom());
-    },
-  });
-
-  const { data } = useMarkers({ filters, zoom });
-  if (!data) return null;
-
-  const showPrices = zoom >= 14;
+  const clusters = data?.clusters ?? [];
+  const markers = data?.markers ?? [];
 
   return (
-    <MarkerClusterGroup
-      maxClusterRadius={50}
-      spiderfyOnMaxZoom
-      showCoverageOnHover={false}
-      zoomToBoundsOnClick
-      iconCreateFunction={createClusterIcon}
-    >
-      {data.markers.map((cluster) =>
-        cluster.listings.map((listing) => {
-          const lat = listing.lat || cluster.lat;
-          const lng = listing.lng || cluster.lng;
-          const icon =
-            showPrices && listing.price
-              ? createPriceIcon(listing.price)
-              : dotIcon;
-          return (
-            <Marker key={listing.id} position={[lat, lng]} icon={icon}>
-              <Popup maxWidth={280} minWidth={260} className="custom-popup">
-                <ListingPopup listing={listing} />
-              </Popup>
-            </Marker>
-          );
-        })
-      )}
-    </MarkerClusterGroup>
+    <>
+      {/* Server-side clusters */}
+      {clusters.map((cluster) => (
+        <CircleMarker
+          key={`cl-${cluster.lat}-${cluster.lng}`}
+          center={[cluster.lat, cluster.lng]}
+          radius={clusterRadius(cluster.count)}
+          pathOptions={{
+            fillColor: "#3b82f6",
+            fillOpacity: 0.7,
+            color: "#1d4ed8",
+            weight: 2,
+          }}
+          eventHandlers={{
+            click: () => {
+              const z = map.getZoom();
+              map.setView([cluster.lat, cluster.lng], Math.min(z + 2, 18));
+            },
+          }}
+        >
+          <Tooltip
+            direction="center"
+            permanent
+            className="cluster-count-tooltip"
+          >
+            {formatClusterCount(cluster.count)}
+          </Tooltip>
+        </CircleMarker>
+      ))}
+
+      {/* Individual points */}
+      {markers.map((pt) => {
+        const icon =
+          pt.price != null ? createPriceIcon(pt.price) : dotIcon;
+        return (
+          <Marker
+            key={`pt-${pt.id}`}
+            position={[pt.lat, pt.lng]}
+            icon={icon}
+            eventHandlers={{
+              click: () => openDetail(pt.id),
+            }}
+          />
+        );
+      })}
+    </>
   );
 }
+
+// ── Main MapView ──
 
 interface MapViewProps {
   filters: Record<string, string>;

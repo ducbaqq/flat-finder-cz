@@ -1,6 +1,7 @@
 import pLimit from "p-limit";
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
 import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
+import { normalizeAmenities } from "../amenity-normalizer.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -221,8 +222,10 @@ function extractLayoutFromCategory(category: string): string | null {
  */
 function extractCity(address: string | null): string | null {
   if (!address) return null;
-  const parts = address.split(",").map((p) => p.trim());
-  return parts[parts.length - 1] || null;
+  const parts = address.split(",").map((p) => p.trim()).filter(Boolean);
+  const nonPostal = parts.filter((p) => !/^\d{3}\s?\d{2}$/.test(p));
+  if (nonPostal.length === 0) return null;
+  return nonPostal[nonPostal.length - 1] || null;
 }
 
 /**
@@ -347,6 +350,7 @@ export class ReaLingoScraper extends BaseScraper {
     let totalItems = 0;
 
     for (let page = 0; ; page++) {
+      if (this.isCategorySkipped(transactionType)) return;
       const skip = page * ITEMS_PER_PAGE;
 
       this.log(`  Page ${page + 1}: skip=${skip}, first=${ITEMS_PER_PAGE}`);
@@ -526,7 +530,7 @@ export class ReaLingoScraper extends BaseScraper {
     }
 
     // Amenities
-    listing.amenities = collectAmenities(detail);
+    listing.amenities = normalizeAmenities(collectAmenities(detail));
 
     // Contact info
     if (detail?.contact) {

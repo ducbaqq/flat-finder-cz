@@ -94,6 +94,7 @@ export class ERealityScraper extends BaseScraper {
 
     // Fetch subsequent pages via AJAX
     for (let page = 2; page <= totalPages; page++) {
+      if (this.isCategorySkipped(urlPath)) return;
       const ajaxUrl = `${this.baseUrl}/ajaxlist/${urlPath}?pg=${page - 1}`;
       let html: string;
       try {

@@ -409,6 +409,7 @@ async function runSource(
         // Limit pages per category in watch mode
         if (categoryPageCount > maxPages) {
           skippedCategories.add(page.category);
+          scraper.skipCategory(page.category);
           continue;
         }
 
@@ -427,6 +428,7 @@ async function runSource(
         if (newListings.length === 0) {
           log(`  ${page.category} page ${page.page}: all known, skipping rest`);
           skippedCategories.add(page.category);
+          scraper.skipCategory(page.category);
           // Still upsert the page to update scraped_at etc.
           const stats = await upsertBatch(db, page.listings, log);
           updatedCount += stats.updatedCount;
@@ -521,6 +523,7 @@ async function runSource(
         if (externalIds.length > 0 && existing.size === externalIds.length) {
           log(`  ${page.category} page ${page.page}: all known, skipping rest of category`);
           skippedCategories.add(page.category);
+          scraper.skipCategory(page.category);
           // Still upsert to refresh scraped_at
           const stats = await upsertBatch(db, page.listings, log);
           updatedCount += stats.updatedCount;

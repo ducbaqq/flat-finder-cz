@@ -2,6 +2,7 @@ import { parse as parseHtml, type HTMLElement } from "node-html-parser";
 import pLimit from "p-limit";
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
 import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
+import { normalizeAmenities } from "../amenity-normalizer.js";
 
 /**
  * Category definitions: [urlPath, propertyType, transactionType]
@@ -87,6 +88,7 @@ export class EurobydleniScraper extends BaseScraper {
 
     // Fetch subsequent pages
     for (let page = 2; page <= totalPages; page++) {
+      if (this.isCategorySkipped(urlPath)) return;
       const url = `${this.baseUrl}/${urlPath}/page-${page}/`;
       this.log(`Fetching ${urlPath} page ${page}/${totalPages}: ${url}`);
 
@@ -256,7 +258,7 @@ export class EurobydleniScraper extends BaseScraper {
         continue;
       }
 
-      const sizeMatch = text.match(/^([\d.,]+)\s*m2$/i);
+      const sizeMatch = text.match(/([\d.,]+)\s*m[2²]/i);
       if (sizeMatch) {
         sizeM2 = parseFloat(sizeMatch[1].replace(",", "."));
         continue;
@@ -315,7 +317,7 @@ export class EurobydleniScraper extends BaseScraper {
       ownership,
       furnishing: null,
       energy_rating: null,
-      amenities: amenitiesList.length > 0 ? JSON.stringify(amenitiesList) : null,
+      amenities: normalizeAmenities(amenitiesList.length > 0 ? JSON.stringify(amenitiesList) : null),
       image_urls: JSON.stringify(imageUrls),
       thumbnail_url: thumbnailUrl,
       source_url: sourceUrl,
@@ -455,9 +457,9 @@ export class EurobydleniScraper extends BaseScraper {
       }
 
       // Size (override if more specific)
-      const sizeMatch = text.match(/(\d+)\s*m[²2]/);
-      if (sizeMatch && (text.includes("plocha") || text.includes("výměra"))) {
-        listing.size_m2 = parseInt(sizeMatch[1], 10);
+      const detailSizeMatch = text.match(/(\d+)\s*m[²2]/);
+      if (detailSizeMatch && (text.includes("plocha") || text.includes("výměra") || text.includes("vymera"))) {
+        listing.size_m2 = parseInt(detailSizeMatch[1], 10);
       }
 
       // Floor
@@ -485,7 +487,7 @@ export class EurobydleniScraper extends BaseScraper {
     );
     if (amenityEls.length > 0) {
       const amenities = amenityEls.map((el) => el.text.trim()).filter(Boolean);
-      if (amenities.length > 0) listing.amenities = JSON.stringify(amenities);
+      if (amenities.length > 0) listing.amenities = normalizeAmenities(JSON.stringify(amenities));
     }
 
     // Seller/contact info

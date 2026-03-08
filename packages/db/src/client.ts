@@ -37,7 +37,11 @@ function buildSslOption(): postgres.Options<Record<string, postgres.PostgresType
 
 function createPostgresClient(): ReturnType<typeof postgres> {
   const url = getDatabaseUrl();
-  return postgres(url, { ssl: buildSslOption() });
+  return postgres(url, {
+    ssl: buildSslOption(),
+    connect_timeout: 10,
+    idle_timeout: 30,
+  });
 }
 
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;

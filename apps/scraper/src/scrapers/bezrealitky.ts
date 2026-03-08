@@ -1,6 +1,8 @@
+import pLimit from "p-limit";
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
 import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
 import { HttpError } from "../http-client.js";
+import { normalizeAmenities } from "../amenity-normalizer.js";
 
 // ---------------------------------------------------------------------------
 // Constants & lookup maps
@@ -64,6 +66,8 @@ const OFFER_TYPE_MAP: Record<string, TransactionType> = {
 export class BezrealitkyScraper extends BaseScraper {
   readonly name = "bezrealitky";
   readonly baseUrl = BASE_URL;
+
+  override get hasDetailPhase() { return true; }
 
   private buildId: string | null = null;
   private readonly batchMultiplier: number;
@@ -131,6 +135,7 @@ export class BezrealitkyScraper extends BaseScraper {
       const remaining = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
 
       for (let bStart = 0; bStart < remaining.length; bStart += batchSize) {
+        if (this.isCategorySkipped(slugLabel)) break;
         const batchPages = remaining.slice(bStart, bStart + batchSize);
 
         // Ensure buildId is still valid before each batch
@@ -158,10 +163,12 @@ export class BezrealitkyScraper extends BaseScraper {
 
         const pageResults = await Promise.all(pagePromises);
 
-        for (const pgData of pageResults) {
+        for (let j = 0; j < pageResults.length; j++) {
+          if (this.isCategorySkipped(slugLabel)) break;
+          const pgData = pageResults[j];
           if (pgData == null) continue;
           const parsed = this.processPageData(pgData);
-          yield { category: slugLabel, page: batchPages[0], totalPages, listings: parsed };
+          yield { category: slugLabel, page: batchPages[j], totalPages, listings: parsed };
         }
 
         // Check if buildId was invalidated during this batch
@@ -170,6 +177,178 @@ export class BezrealitkyScraper extends BaseScraper {
           break;
         }
       }
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Detail enrichment
+  // ------------------------------------------------------------------
+
+  override async enrichListings(
+    listings: ScraperResult[],
+    opts?: { concurrency?: number; batchSize?: number },
+  ): Promise<void> {
+    if (listings.length === 0) return;
+
+    this.init();
+    this.log(`Enriching ${listings.length} new listings...`);
+
+    // Get fresh buildId for detail fetches
+    if (!this.buildId) {
+      this.buildId = await this.getBuildId();
+    }
+    if (!this.buildId) {
+      this.log("Could not get buildId for detail enrichment -- skipping");
+      return;
+    }
+
+    const limit = opts?.concurrency ? pLimit(opts.concurrency) : this.limiter;
+
+    await Promise.all(
+      listings.map((listing) =>
+        limit(async () => {
+          try {
+            await this.enrichOne(listing);
+          } catch (err) {
+            this.log(`Failed to enrich ${listing.external_id}: ${err}`);
+          }
+        }),
+      ),
+    );
+
+    const withDesc = listings.filter((l) => l.description !== null).length;
+    const withFloor = listings.filter((l) => l.floor !== null).length;
+    const withAmenities = listings.filter((l) => l.amenities !== null).length;
+    this.log(
+      `Enrichment: ${withDesc}/${listings.length} description, ${withFloor}/${listings.length} floor, ${withAmenities}/${listings.length} amenities`,
+    );
+  }
+
+  private async enrichOne(listing: ScraperResult): Promise<void> {
+    if (!listing.source_url) return;
+
+    // Extract slug from source_url: https://www.bezrealitky.cz/nemovitosti-byty-domy/12345
+    // Detail endpoint: /_next/data/{buildId}/cs/detail/{slug}.json
+    const urlPath = listing.source_url.replace(BASE_URL, "");
+    // The slug is the last path segment
+    const slug = urlPath.split("/").filter(Boolean).pop();
+    if (!slug) return;
+
+    if (!this.buildId) return;
+
+    const detailUrl = `${BASE_URL}/_next/data/${this.buildId}/cs/detail/${slug}.json?id=${slug}`;
+
+    let data: Record<string, unknown>;
+    try {
+      data = await this.http.get<Record<string, unknown>>(detailUrl, {
+        Referer: listing.source_url,
+      });
+    } catch (err) {
+      if (err instanceof HttpError && err.status === 404) {
+        // buildId might be stale
+        this.buildId = null;
+      }
+      return;
+    }
+
+    const pageProps = getPageProps(data);
+    const apolloCache = getApolloCache(pageProps);
+    if (!apolloCache) return;
+
+    // Find the main Advert entry in the cache
+    let advert: Record<string, unknown> | null = null;
+    for (const [key, val] of Object.entries(apolloCache)) {
+      if (key.startsWith("Advert:") && typeof val === "object" && val !== null) {
+        advert = val as Record<string, unknown>;
+        break;
+      }
+    }
+    if (!advert) return;
+
+    // Description
+    if (!listing.description) {
+      const desc = advert.description as string | undefined;
+      if (desc) listing.description = desc;
+    }
+
+    // Floor info
+    if (listing.floor === null) {
+      const etage = advert.etage as number | undefined;
+      if (etage != null) listing.floor = etage;
+    }
+    if (listing.total_floors === null) {
+      const totalFloors = advert.totalFloors as number | undefined;
+      if (totalFloors != null) listing.total_floors = totalFloors;
+    }
+
+    // Construction (buildingType: BRICK, PANEL, etc.)
+    if (!listing.construction) {
+      const bt = advert.buildingType as string | undefined;
+      if (bt) listing.construction = normalizeBezrealitkyEnum(bt, CONSTRUCTION_NORMALIZE);
+    }
+
+    // Condition (buildingCondition)
+    if (!listing.condition) {
+      const bc = advert.buildingCondition as string | undefined;
+      if (bc) listing.condition = normalizeBezrealitkyEnum(bc, CONDITION_NORMALIZE);
+    }
+
+    // Ownership
+    if (!listing.ownership) {
+      const own = advert.ownership as string | undefined;
+      if (own) listing.ownership = normalizeBezrealitkyEnum(own, OWNERSHIP_NORMALIZE);
+    }
+
+    // Furnishing
+    if (!listing.furnishing) {
+      const furn = advert.furnished as string | undefined;
+      if (furn) listing.furnishing = normalizeBezrealitkyEnum(furn, FURNISHING_NORMALIZE);
+    }
+
+    // Energy rating
+    if (!listing.energy_rating) {
+      const er = advert.energyEfficiencyRating as string | undefined;
+      if (er) {
+        const letter = er.charAt(0).toUpperCase();
+        if (letter >= "A" && letter <= "G") listing.energy_rating = letter;
+      }
+    }
+
+    // Amenities from boolean flags
+    const amenityFlags: string[] = [];
+    if (advert.balcony) amenityFlags.push("balcony");
+    if (advert.terrace) amenityFlags.push("terrace");
+    if (advert.loggia) amenityFlags.push("loggia");
+    if (advert.cellar) amenityFlags.push("cellar");
+
+    // Check for elevator/lift - may be in Apollo cache under different keys
+    for (const k of Object.keys(advert)) {
+      if (k === "elevator" || k === "lift") {
+        if (advert[k]) amenityFlags.push("lift");
+      }
+    }
+
+    if (advert.parking) amenityFlags.push("parking");
+    if (advert.garage) amenityFlags.push("garage");
+
+    // Check for barrierFree
+    for (const k of Object.keys(advert)) {
+      if (k.toLowerCase().includes("barrierfree") || k.toLowerCase().includes("barrier_free")) {
+        if (advert[k]) amenityFlags.push("barrier_free");
+      }
+    }
+
+    if (advert.garden) amenityFlags.push("garden");
+
+    if (amenityFlags.length > 0) {
+      // Merge with existing amenities from tags
+      const existing = listing.amenities;
+      const merged = normalizeAmenities(
+        existing
+          ? JSON.stringify([...JSON.parse(existing), ...amenityFlags])
+          : JSON.stringify(amenityFlags),
+      );
+      listing.amenities = merged;
     }
   }
 
@@ -416,12 +595,13 @@ export class BezrealitkyScraper extends BaseScraper {
       }
     }
     if (tagsRaw == null) tagsRaw = [];
-    let amenities: string | null = null;
+    let amenitiesRaw: string | null = null;
     if (Array.isArray(tagsRaw)) {
-      amenities = tagsRaw.filter(Boolean).map(String).join(",") || null;
+      amenitiesRaw = tagsRaw.filter(Boolean).map(String).join(",") || null;
     } else if (tagsRaw) {
-      amenities = String(tagsRaw);
+      amenitiesRaw = String(tagsRaw);
     }
+    const amenities = normalizeAmenities(amenitiesRaw);
 
     // Additional params
     const extraParams: Record<string, unknown> = {};
@@ -581,6 +761,33 @@ function normalizeUrl(url: string): string | null {
   if (url.startsWith("//")) return "https:" + url;
   if (url.startsWith("/")) return "https://api.bezrealitky.cz" + url;
   return url;
+}
+
+// ---------------------------------------------------------------------------
+// Bezrealitky enum normalization
+// ---------------------------------------------------------------------------
+
+const CONSTRUCTION_NORMALIZE: Record<string, string> = {
+  BRICK: "brick", PANEL: "panel", WOOD: "wood", STONE: "stone",
+  MIXED: "mixed", SKELETON: "skeleton", MONTOVANA: "prefab",
+};
+
+const CONDITION_NORMALIZE: Record<string, string> = {
+  NEW: "new", VERY_GOOD: "very_good", GOOD: "good", BAD: "poor",
+  UNDER_CONSTRUCTION: "under_construction", BEFORE_RECONSTRUCTION: "before_reconstruction",
+  AFTER_RECONSTRUCTION: "after_reconstruction", DEMOLITION: "demolition", PROJECT: "project",
+};
+
+const OWNERSHIP_NORMALIZE: Record<string, string> = {
+  PERSONAL: "personal", COOPERATIVE: "cooperative", STATE: "state",
+};
+
+const FURNISHING_NORMALIZE: Record<string, string> = {
+  FURNISHED: "furnished", PARTIALLY: "partially", UNFURNISHED: "unfurnished",
+};
+
+function normalizeBezrealitkyEnum(val: string, map: Record<string, string>): string {
+  return map[val] ?? val.toLowerCase();
 }
 
 function extractCityFromAddress(address: string): string | null {

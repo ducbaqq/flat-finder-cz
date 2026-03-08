@@ -1,6 +1,7 @@
 import pLimit from "p-limit";
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
 import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
+import { normalizeAmenities } from "../amenity-normalizer.js";
 
 // ---------------------------------------------------------------------------
 // Constants & lookup maps
@@ -120,6 +121,7 @@ export class UlovDomovScraper extends BaseScraper {
       const remaining = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
 
       for (let bStart = 0; bStart < remaining.length; bStart += batchSize) {
+        if (this.isCategorySkipped(comboLabel)) break;
         const batchPages = remaining.slice(bStart, bStart + batchSize);
         this.log(
           `  ${comboLabel}: Fetching pages ${batchPages[0]}-${batchPages[batchPages.length - 1]} concurrently`,
@@ -136,7 +138,9 @@ export class UlovDomovScraper extends BaseScraper {
 
         const pageResults = await Promise.all(pagePromises);
 
-        for (const pgData of pageResults) {
+        for (let j = 0; j < pageResults.length; j++) {
+          if (this.isCategorySkipped(comboLabel)) break;
+          const pgData = pageResults[j];
           if (!pgData || !pgData.success) {
             if (pgData && !pgData.success) {
               this.log(`API returned success=false for ${comboLabel}`);
@@ -144,7 +148,7 @@ export class UlovDomovScraper extends BaseScraper {
             continue;
           }
           const parsed = this.parsePageOffers(pgData, offerType, propertyType);
-          yield { category: comboLabel, page: batchPages[0], totalPages, listings: parsed };
+          yield { category: comboLabel, page: batchPages[j], totalPages, listings: parsed };
         }
       }
     }
@@ -309,7 +313,7 @@ export class UlovDomovScraper extends BaseScraper {
     const convenience = offer.convenience ?? [];
     const houseConv = offer.houseConvenience ?? [];
     const allAmenities = [...convenience, ...houseConv];
-    const amenities = allAmenities.length > 0 ? allAmenities.join(",") : null;
+    const amenities = normalizeAmenities(allAmenities.length > 0 ? allAmenities.join(",") : null);
 
     // Floor
     let floor: number | null = null;

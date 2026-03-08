@@ -7,7 +7,7 @@ import { getDb, listings } from "@flat-finder/db";
 
 import { errorHandler } from "./middleware/error-handler.js";
 import listingsRoutes from "./routes/listings.js";
-import markersRoutes from "./routes/markers.js";
+import markersRoutes, { warmMarkerIndex } from "./routes/markers.js";
 import statsRoutes from "./routes/stats.js";
 import watchdogsRoutes from "./routes/watchdogs.js";
 
@@ -54,6 +54,17 @@ serve({ fetch: app.fetch, port }, () => {
   console.log(
     `Flat Finder CZ API server running on http://localhost:${port}`,
   );
+
+  // Pre-warm caches in background so first visitor doesn't wait
+  const base = `http://localhost:${port}`;
+  console.log("Pre-warming caches…");
+  Promise.all([
+    fetch(`${base}/api/stats`),
+    warmMarkerIndex(),
+    fetch(`${base}/api/listings?per_page=20&sort=newest`),
+  ])
+    .then(() => console.log("Caches pre-warmed ✓"))
+    .catch((e) => console.error("Cache pre-warm failed:", e));
 });
 
 export default app;

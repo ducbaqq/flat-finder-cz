@@ -16,8 +16,12 @@
     "migrate": "tsx scripts/migrate-sqlite-to-pg.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/node": "^22.13.0",
-    "typescript": "^5.7.0",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0"
   }
 }

@@ -141,6 +141,7 @@ export class SrealityScraper extends BaseScraper {
       const remaining = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
 
       for (let bStart = 0; bStart < remaining.length; bStart += batchSize) {
+        if (this.isCategorySkipped(catName)) break;
         const batchPages = remaining.slice(bStart, bStart + batchSize);
         this.log(
           `  ${catName}: Fetching pages ${batchPages[0]}-${batchPages[batchPages.length - 1]} concurrently`,
@@ -155,10 +156,12 @@ export class SrealityScraper extends BaseScraper {
 
         const pageResults = await Promise.all(pagePromises);
 
-        for (const pgData of pageResults) {
+        for (let j = 0; j < pageResults.length; j++) {
+          if (this.isCategorySkipped(catName)) break;
+          const pgData = pageResults[j];
           if (!pgData || typeof pgData !== "object") continue;
           const parsed = this.parsePageEstates(pgData);
-          yield { category: catName, page: batchPages[0], totalPages, listings: parsed };
+          yield { category: catName, page: batchPages[j], totalPages, listings: parsed };
         }
       }
     }
@@ -312,6 +315,7 @@ export class SrealityScraper extends BaseScraper {
     const sourceUrl = `https://www.sreality.cz/detail/${transCz}/${propCz}/${subSlug}/x/${hashId}`;
 
     const now = new Date().toISOString();
+    const { city, district } = extractCityAndDistrict(locality);
 
     return {
       external_id: `sreality_${hashId}`,
@@ -324,8 +328,8 @@ export class SrealityScraper extends BaseScraper {
       currency: "CZK",
       price_note: null,
       address: locality || null,
-      city: extractCity(locality),
-      district: null,
+      city,
+      district,
       region: null,
       latitude: lat,
       longitude: lng,
@@ -379,7 +383,9 @@ export class SrealityScraper extends BaseScraper {
     if (locality && typeof locality === "object" && (locality as { value?: string }).value) {
       const locValue = (locality as { value: string }).value;
       listing.address = locValue;
-      listing.city = extractCity(locValue);
+      const parsed = extractCityAndDistrict(locValue);
+      listing.city = parsed.city;
+      if (parsed.district) listing.district = parsed.district;
     }
 
     // Images
@@ -508,15 +514,29 @@ function extractLayoutFromName(name: string): string | null {
   return null;
 }
 
-function extractCity(locality: string): string | null {
-  if (!locality) return null;
-  const parts = locality.split(",");
-  let cityPart = parts.length > 1 ? parts[parts.length - 1].trim() : parts[0].trim();
+function extractCityAndDistrict(locality: string): { city: string | null; district: string | null } {
+  if (!locality) return { city: null, district: null };
+  const parts = locality.split(",").map((p) => p.trim());
+
+  let district: string | null = null;
+  let cityPart: string;
+
+  const lastPart = parts[parts.length - 1];
+  if (/^okres\s+/i.test(lastPart)) {
+    // Last segment is "okres XYZ" — that's the district
+    district = lastPart.replace(/^okres\s+/i, "").trim() || null;
+    // City is the segment before it, or the first segment
+    cityPart = parts.length > 1 ? parts[parts.length - 2].trim() : "";
+  } else {
+    cityPart = parts.length > 1 ? lastPart : parts[0].trim();
+  }
+
   // Remove district/neighbourhood suffixes like " - Vinohrady"
   cityPart = cityPart.replace(/\s*-\s*\S.*$/, "").trim();
   // Remove trailing district number: "Praha 2" -> "Praha"
   cityPart = cityPart.replace(/\s+\d+$/, "").trim();
-  return cityPart || null;
+
+  return { city: cityPart || null, district };
 }
 
 function extractSizeFromName(name: string): number | null {

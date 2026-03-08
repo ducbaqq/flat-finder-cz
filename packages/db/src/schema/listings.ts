@@ -61,6 +61,8 @@ export const listings = pgTable(
     index("idx_listings_transaction_type").on(table.transaction_type),
     index("idx_listings_is_active").on(table.is_active),
     index("idx_listings_external_id").on(table.external_id),
+    index("idx_listings_geo").on(table.is_active, table.latitude, table.longitude),
+    index("idx_listings_active_listed").on(table.is_active, table.listed_at),
   ],
 );
 

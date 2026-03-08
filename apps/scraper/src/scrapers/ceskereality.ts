@@ -2,6 +2,7 @@ import { parse as parseHtml, type HTMLElement } from "node-html-parser";
 import pLimit from "p-limit";
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
 import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
+import { normalizeAmenities } from "../amenity-normalizer.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -315,6 +316,7 @@ export class CeskeRealityScraper extends BaseScraper {
 
     // Fetch subsequent pages
     for (let page = 2; page <= totalPages; page++) {
+      if (this.isCategorySkipped(catName)) return;
       const pageUrl = `${this.baseUrl}${urlPath}?strana=${page}`;
       try {
         html = await this.http.getHtml(pageUrl);
@@ -449,7 +451,7 @@ export class CeskeRealityScraper extends BaseScraper {
     if (params.total_floors !== null) listing.total_floors = params.total_floors;
     if (params.furnishing) listing.furnishing = params.furnishing;
     if (params.size_m2 !== null && !listing.size_m2) listing.size_m2 = params.size_m2;
-    if (params.amenities.length > 0) listing.amenities = JSON.stringify(params.amenities);
+    if (params.amenities.length > 0) listing.amenities = normalizeAmenities(JSON.stringify(params.amenities));
     if (params.listed_at) listing.listed_at = params.listed_at;
   }
 

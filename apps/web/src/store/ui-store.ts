@@ -14,11 +14,13 @@ interface UiState {
   detailModalOpen: boolean;
   watchdogModalOpen: boolean;
   mapBounds: MapBounds | null;
+  mapZoom: number | null;
 
   toggleSidebar: () => void;
   closeSidebar: () => void;
   toggleMapCollapsed: () => void;
   setMapBounds: (bounds: MapBounds | null) => void;
+  setMapZoom: (zoom: number) => void;
   openDetail: (id: number) => void;
   closeDetail: () => void;
   toggleWatchdogModal: () => void;
@@ -32,11 +34,13 @@ export const useUiStore = create<UiState>((set) => ({
   detailModalOpen: false,
   watchdogModalOpen: false,
   mapBounds: null,
+  mapZoom: null,
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   closeSidebar: () => set({ sidebarOpen: false }),
   toggleMapCollapsed: () => set((s) => ({ mapCollapsed: !s.mapCollapsed })),
   setMapBounds: (bounds) => set({ mapBounds: bounds }),
+  setMapZoom: (zoom) => set({ mapZoom: zoom }),
   openDetail: (id) => set({ selectedListingId: id, detailModalOpen: true }),
   closeDetail: () => set({ selectedListingId: null, detailModalOpen: false }),
   toggleWatchdogModal: () =>

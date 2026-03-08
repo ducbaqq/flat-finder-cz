@@ -118,6 +118,7 @@ export class BazosScraper extends BaseScraper {
 
     // Subsequent pages
     for (let page = 2; page <= totalPages; page++) {
+      if (this.isCategorySkipped(catName)) return;
       const offset = (page - 1) * ITEMS_PER_PAGE;
       const pageUrl = `${BASE_URL}${basePath}${offset}/`;
 

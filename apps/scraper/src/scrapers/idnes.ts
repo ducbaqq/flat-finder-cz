@@ -2,6 +2,7 @@ import { parse as parseHtml, type HTMLElement } from "node-html-parser";
 import pLimit from "p-limit";
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
 import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
+import { normalizeAmenities } from "../amenity-normalizer.js";
 
 const ITEMS_PER_PAGE = 30;
 
@@ -81,6 +82,7 @@ export class IdnesScraper extends BaseScraper {
 
     // Fetch remaining pages
     for (let page = 2; page <= maxPage; page++) {
+      if (this.isCategorySkipped(categoryLabel)) return;
       this.log(`  Fetching page ${page}/${maxPage}`);
 
       const html = await this.fetchAjaxPage(category, page);
@@ -280,6 +282,11 @@ export class IdnesScraper extends BaseScraper {
         if (hasCheck || (value && !value.toLowerCase().includes("ne"))) {
           amenities.push(label);
         }
+      } else if (labelLower.includes("datum") || labelLower.includes("aktualizace") || labelLower.includes("vložen")) {
+        const dateMatch = value.match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+        if (dateMatch) {
+          listing.listed_at = `${dateMatch[3]}-${dateMatch[2].padStart(2, "0")}-${dateMatch[1].padStart(2, "0")}`;
+        }
       } else if (labelLower.includes("plocha pozemku")) {
         extra.plot_area = value;
       } else if (labelLower.includes("poloha domu")) {
@@ -294,7 +301,7 @@ export class IdnesScraper extends BaseScraper {
     }
 
     if (amenities.length > 0) {
-      listing.amenities = JSON.stringify(amenities);
+      listing.amenities = normalizeAmenities(JSON.stringify(amenities));
     }
 
     if (Object.keys(extra).length > 0) {

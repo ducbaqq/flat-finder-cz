@@ -5,10 +5,20 @@ import type { StatsResponse, HealthResponse } from "@flat-finder/types";
 
 const app = new Hono();
 
+// ── In-memory cache for stats (aggregation queries are expensive) ──
+let statsCache: { data: StatsResponse; ts: number } | null = null;
+const STATS_CACHE_TTL = 60_000; // 1 minute
+
 /**
- * GET /api/stats — Aggregate statistics
+ * GET /api/stats — Aggregate statistics (cached for 60s)
  */
 app.get("/", async (c) => {
+  const now = Date.now();
+  if (statsCache && now - statsCache.ts < STATS_CACHE_TTL) {
+    c.header("X-Cache", "HIT");
+    return c.json(statsCache.data);
+  }
+
   const db = getDb();
 
   const [totalResult, totalAllResult] = await Promise.all([
@@ -84,6 +94,8 @@ app.get("/", async (c) => {
     by_city,
   };
 
+  statsCache = { data: response, ts: Date.now() };
+  c.header("X-Cache", "MISS");
   return c.json(response);
 });
 

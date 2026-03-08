@@ -34,11 +34,24 @@ export abstract class BaseScraper {
   protected readonly concurrency: number;
 
   private readonly _opts: ScraperOptions;
+  private _skippedCategories = new Set<string>();
 
   constructor(opts: ScraperOptions) {
     this.concurrency = opts.concurrency;
     this._opts = opts;
     this.limiter = pLimit(opts.concurrency);
+  }
+
+  skipCategory(category: string): void {
+    this._skippedCategories.add(category);
+  }
+
+  protected isCategorySkipped(category: string): boolean {
+    return this._skippedCategories.has(category);
+  }
+
+  resetSkippedCategories(): void {
+    this._skippedCategories.clear();
   }
 
   /**
