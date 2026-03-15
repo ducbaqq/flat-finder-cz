@@ -24,7 +24,7 @@ const INDEX_REFRESH_MS = 5 * 60_000; // 5 minutes
 
 // ── Server-side Supercluster index (for unfiltered requests) ──
 
-type PointProps = { id: number; price: number | null; title: string | null; thumbnail_url: string | null };
+type PointProps = { id: number; price: number | null };
 
 let scIndex: Supercluster<PointProps> | null = null;
 let scIndexTs = 0;
@@ -52,8 +52,6 @@ async function ensureIndex(): Promise<Supercluster<PointProps>> {
         lat: listings.latitude,
         lng: listings.longitude,
         price: listings.price,
-        title: listings.title,
-        thumbnail_url: listings.thumbnail_url,
       })
       .from(listings)
       .where(and(eq(listings.is_active, true), isNotNull(listings.latitude), isNotNull(listings.longitude)));
@@ -67,7 +65,7 @@ async function ensureIndex(): Promise<Supercluster<PointProps>> {
     const points: Supercluster.PointFeature<PointProps>[] = rows.map((r) => ({
       type: "Feature" as const,
       geometry: { type: "Point" as const, coordinates: [r.lng!, r.lat!] },
-      properties: { id: r.id, price: r.price, title: r.title, thumbnail_url: r.thumbnail_url },
+      properties: { id: r.id, price: r.price },
     }));
 
     sc.load(points);
@@ -192,7 +190,7 @@ app.get("/", async (c) => {
         });
       } else {
         const pt = props as PointProps;
-        markers.push({ id: pt.id, lat, lng, price: pt.price, title: pt.title, thumbnail_url: pt.thumbnail_url });
+        markers.push({ id: pt.id, lat, lng, price: pt.price, title: null, thumbnail_url: null });
       }
     }
 
@@ -268,6 +266,41 @@ app.get("/", async (c) => {
   c.header("X-Cache", "MISS");
 
   return c.json(response);
+});
+
+/**
+ * GET /api/markers/preview/:id — Lightweight hover preview for a single listing.
+ * Returns just title + thumbnail_url. Cached in an LRU map for fast repeated hovers.
+ */
+const previewCache = new Map<number, { title: string | null; thumbnail_url: string | null }>();
+const MAX_PREVIEW_CACHE = 2_000;
+
+app.get("/preview/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!id || isNaN(id)) return c.json({ title: null, thumbnail_url: null });
+
+  const cached = previewCache.get(id);
+  if (cached) {
+    c.header("X-Cache", "HIT");
+    return c.json(cached);
+  }
+
+  const db = getDb();
+  const [row] = await db
+    .select({ title: listings.title, thumbnail_url: listings.thumbnail_url })
+    .from(listings)
+    .where(eq(listings.id, id))
+    .limit(1);
+
+  const result = row ?? { title: null, thumbnail_url: null };
+
+  if (previewCache.size >= MAX_PREVIEW_CACHE) {
+    const oldest = previewCache.keys().next().value;
+    if (oldest !== undefined) previewCache.delete(oldest);
+  }
+  previewCache.set(id, result);
+
+  return c.json(result);
 });
 
 /** Pre-warm the Supercluster index. Called from server startup. */

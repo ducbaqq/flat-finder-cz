@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -13,6 +13,7 @@ import {
 import L from "leaflet";
 import { useUiStore } from "@/store/ui-store";
 import { useMarkers } from "@/hooks/useMarkers";
+import { apiGet } from "@/lib/api-client";
 
 // ── Price formatting ──
 
@@ -55,6 +56,47 @@ function formatClusterCount(count: number): string {
 
 function clusterRadius(count: number): number {
   return Math.min(35, 12 + Math.log10(count) * 8);
+}
+
+// ── Lazy hover tooltip — fetches preview on first hover ──
+
+interface PreviewData {
+  title: string | null;
+  thumbnail_url: string | null;
+}
+
+const previewCache = new Map<number, PreviewData>();
+
+function HoverTooltip({ id }: { id: number }) {
+  const [preview, setPreview] = useState<PreviewData | null>(
+    previewCache.get(id) ?? null
+  );
+
+  useEffect(() => {
+    if (preview) return;
+    let cancelled = false;
+    apiGet<PreviewData>(`/markers/preview/${id}`).then((data) => {
+      if (cancelled) return;
+      previewCache.set(id, data);
+      setPreview(data);
+    });
+    return () => { cancelled = true; };
+  }, [id, preview]);
+
+  if (!preview || (!preview.title && !preview.thumbnail_url)) return null;
+
+  return (
+    <Tooltip direction="top" offset={[0, -10]} className="marker-hover-tooltip">
+      <div className="marker-tooltip-inner">
+        {preview.thumbnail_url && (
+          <img src={preview.thumbnail_url} alt="" className="marker-tooltip-img" />
+        )}
+        {preview.title && (
+          <div className="marker-tooltip-title">{preview.title}</div>
+        )}
+      </div>
+    </Tooltip>
+  );
 }
 
 // ── Map event handler — sets bounds + zoom on mount + moveend ──
@@ -147,20 +189,7 @@ function MarkerLayer({ filters }: { filters: Record<string, string> }) {
               click: () => openDetail(pt.id),
             }}
           >
-            {(pt.title || pt.thumbnail_url) && (
-              <Tooltip direction="top" offset={[0, -10]} className="marker-hover-tooltip">
-                <div className="marker-tooltip-inner">
-                  {pt.thumbnail_url && (
-                    <img
-                      src={pt.thumbnail_url}
-                      alt=""
-                      className="marker-tooltip-img"
-                    />
-                  )}
-                  {pt.title && <div className="marker-tooltip-title">{pt.title}</div>}
-                </div>
-              </Tooltip>
-            )}
+            <HoverTooltip id={pt.id} />
           </Marker>
         );
       })}
