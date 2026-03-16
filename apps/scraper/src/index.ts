@@ -14,6 +14,7 @@
  *   tsx src/index.ts --full                      # full scan + deactivation
  *   tsx src/index.ts --watch --interval 60       # watcher loop
  *   tsx src/index.ts --source sreality --dry-run # single source, no DB
+ *   tsx src/index.ts --no-dashboard              # disable live dashboard
  */
 
 import { getEnv } from "@flat-finder/config";
@@ -42,6 +43,7 @@ import { IdnesScraper } from "./scrapers/idnes.js";
 import { ReaLingoScraper } from "./scrapers/realingo.js";
 import { deactivateStale, deactivateByTtl } from "./deactivator.js";
 import { normalizeListingFields } from "./normalizer.js";
+import { Dashboard } from "./dashboard.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -87,6 +89,7 @@ interface CliArgs {
   full: boolean;
   cleanup: boolean;
   interval: number;
+  noDashboard: boolean;
 }
 
 interface SourceResult {
@@ -106,6 +109,7 @@ interface RunSourceOpts {
   dryRun: boolean;
   watcherMaxPages: number;
   watcherDetailConcurrency: number;
+  dashboard: Dashboard | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +126,7 @@ function parseArgs(): CliArgs {
     full: false,
     cleanup: false,
     interval: env.WATCHER_INTERVAL_S,
+    noDashboard: false,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -143,6 +148,8 @@ function parseArgs(): CliArgs {
       opts.full = true;
     } else if (arg === "--cleanup") {
       opts.cleanup = true;
+    } else if (arg === "--no-dashboard") {
+      opts.noDashboard = true;
     } else if (arg === "--interval" && i + 1 < args.length) {
       opts.interval = parseInt(args[++i], 10);
       if (isNaN(opts.interval) || opts.interval < 1) {
@@ -162,6 +169,7 @@ Options:
   --watch             Run in watcher mode: loop continuously checking newest pages
   --full              Full scan: fetch all pages + deactivate stale listings
   --cleanup           Run TTL-based deactivation only (listings not scraped in 14 days)
+  --no-dashboard      Disable the live terminal dashboard (auto-disabled for non-TTY)
   --interval <secs>   Seconds between watcher cycles (default: ${env.WATCHER_INTERVAL_S})
   --help, -h          Show this help message
 
@@ -425,9 +433,15 @@ async function runSource(
   opts: RunSourceOpts,
 ): Promise<SourceResult> {
   const t0 = performance.now();
-  const log = (msg: string) => console.log(`${ts()} [${source}]`, msg);
+  const dashboard = opts.dashboard;
+
+  // Log function: route to dashboard if active, otherwise console.log
+  const log = dashboard
+    ? (msg: string) => dashboard.log(source, msg)
+    : (msg: string) => console.log(`${ts()} [${source}]`, msg);
 
   log("Starting...");
+  if (dashboard) dashboard.setStatus(source, "scanning");
 
   // Create a scraper run record (skip for dry-run)
   let runId: number | null = null;
@@ -462,8 +476,11 @@ async function runSource(
         if (page.category !== lastCategory) {
           lastCategory = page.category;
           categoryPageCount = 0;
+          if (dashboard) dashboard.setCategory(source, page.category);
         }
         categoryPageCount++;
+
+        if (dashboard) dashboard.addPageFetched(source, page.listings.length);
 
         // Skip categories we've already decided to skip
         if (skippedCategories.has(page.category)) continue;
@@ -478,6 +495,7 @@ async function runSource(
         if (opts.dryRun || !db) {
           log(`[DRY RUN] Page ${page.page}/${page.totalPages} of ${page.category}: ${page.listings.length} listings`);
           newCount += page.listings.length;
+          if (dashboard) dashboard.addUpsertResults(source, page.listings.length, 0, 0);
           continue;
         }
 
@@ -486,7 +504,7 @@ async function runSource(
         const existing = await findExistingExternalIds(db, externalIds);
         const newListings = page.listings.filter((l) => !existing.has(l.external_id));
 
-        // All known on this page → skip rest of this category
+        // All known on this page -> skip rest of this category
         if (newListings.length === 0) {
           log(`  ${page.category} page ${page.page}: all known, skipping rest`);
           skippedCategories.add(page.category);
@@ -495,6 +513,7 @@ async function runSource(
           const stats = await upsertBatch(db, page.listings, log);
           updatedCount += stats.updatedCount;
           errorCount += stats.errorCount;
+          if (dashboard) dashboard.addUpsertResults(source, 0, stats.updatedCount, stats.errorCount);
           continue;
         }
 
@@ -502,9 +521,11 @@ async function runSource(
 
         // Enrich only new listings inline
         if (scraper.hasDetailPhase && newListings.length > 0) {
+          if (dashboard) dashboard.setStatus(source, "enriching");
           await scraper.enrichListings(newListings, {
             concurrency: opts.watcherDetailConcurrency,
           });
+          if (dashboard) dashboard.setStatus(source, "scanning");
         }
 
         // Upsert the full page (new + updated)
@@ -512,6 +533,7 @@ async function runSource(
         newCount += stats.newCount;
         updatedCount += stats.updatedCount;
         errorCount += stats.errorCount;
+        if (dashboard) dashboard.addUpsertResults(source, stats.newCount, stats.updatedCount, stats.errorCount);
       }
     } else if (opts.full) {
       // ----------------------------------------------------------------
@@ -523,16 +545,24 @@ async function runSource(
       for await (const page of scraper.fetchPages()) {
         totalFetched += page.listings.length;
 
+        if (dashboard) {
+          dashboard.setCategory(source, page.category);
+          dashboard.addPageFetched(source, page.listings.length);
+        }
+
         if (opts.dryRun || !db) {
           log(`[DRY RUN] ${page.category} page ${page.page}: ${page.listings.length} listings`);
           newCount += page.listings.length;
           for (const l of page.listings) seenIds.add(l.external_id);
+          if (dashboard) dashboard.addUpsertResults(source, page.listings.length, 0, 0);
           continue;
         }
 
         // Enrich this page's listings inline (not after all pages)
         if (scraper.hasDetailPhase && page.listings.length > 0) {
+          if (dashboard) dashboard.setStatus(source, "enriching");
           await scraper.enrichListings(page.listings);
+          if (dashboard) dashboard.setStatus(source, "scanning");
         }
 
         // Upsert this page
@@ -540,6 +570,7 @@ async function runSource(
         newCount += stats.newCount;
         updatedCount += stats.updatedCount;
         errorCount += stats.errorCount;
+        if (dashboard) dashboard.addUpsertResults(source, stats.newCount, stats.updatedCount, stats.errorCount);
 
         for (const l of page.listings) seenIds.add(l.external_id);
 
@@ -562,6 +593,7 @@ async function runSource(
         } catch (err) {
           log(`Error during deactivation: ${err}`);
           errorCount++;
+          if (dashboard) dashboard.addErrors(source, 1);
         }
       }
     } else {
@@ -573,9 +605,15 @@ async function runSource(
       for await (const page of scraper.fetchPages()) {
         if (skippedCategories.has(page.category)) continue;
 
+        if (dashboard) {
+          dashboard.setCategory(source, page.category);
+          dashboard.addPageFetched(source, page.listings.length);
+        }
+
         if (opts.dryRun || !db) {
           log(`[DRY RUN] ${page.category} page ${page.page}: ${page.listings.length} listings`);
           newCount += page.listings.length;
+          if (dashboard) dashboard.addUpsertResults(source, page.listings.length, 0, 0);
           continue;
         }
 
@@ -590,6 +628,7 @@ async function runSource(
           const stats = await upsertBatch(db, page.listings, log);
           updatedCount += stats.updatedCount;
           errorCount += stats.errorCount;
+          if (dashboard) dashboard.addUpsertResults(source, 0, stats.updatedCount, stats.errorCount);
           continue;
         }
 
@@ -602,7 +641,9 @@ async function runSource(
 
         // Enrich only new listings (skip already-known ones for speed)
         if (scraper.hasDetailPhase && newListings.length > 0) {
+          if (dashboard) dashboard.setStatus(source, "enriching");
           await scraper.enrichListings(newListings);
+          if (dashboard) dashboard.setStatus(source, "scanning");
         }
 
         // Upsert the full page (new + updated)
@@ -610,6 +651,7 @@ async function runSource(
         newCount += stats.newCount;
         updatedCount += stats.updatedCount;
         errorCount += stats.errorCount;
+        if (dashboard) dashboard.addUpsertResults(source, stats.newCount, stats.updatedCount, stats.errorCount);
       }
 
       if (!opts.dryRun && db) {
@@ -637,6 +679,7 @@ async function runSource(
     }
 
     log(`Done in ${(elapsedMs / 1000).toFixed(1)}s`);
+    if (dashboard) dashboard.setStatus(source, "done");
 
     return {
       source,
@@ -652,6 +695,7 @@ async function runSource(
     const elapsedMs = Math.round(performance.now() - t0);
     const errorMsg = err instanceof Error ? err.message : String(err);
     log(`Fatal error: ${errorMsg}`);
+    if (dashboard) dashboard.setStatus(source, "error");
 
     if (runId != null && db) {
       try {
@@ -811,11 +855,49 @@ function sleep(ms: number): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Console suppression for dashboard mode
+// ---------------------------------------------------------------------------
+
+/** Monkey-patch console.log/warn to suppress output while dashboard is active. */
+function suppressConsole(dashboard: Dashboard): { restore: () => void } {
+  const origLog = console.log;
+  const origWarn = console.warn;
+
+  console.log = (...args: unknown[]) => {
+    // Route to dashboard log buffer. Extract source prefix if present.
+    const msg = args.map((a) => (typeof a === "string" ? a : String(a))).join(" ");
+    const match = msg.match(/\[(\w+)\]\s*(.*)/);
+    if (match) {
+      dashboard.log(match[1], match[2]);
+    } else {
+      dashboard.log("runner", msg);
+    }
+  };
+
+  console.warn = (...args: unknown[]) => {
+    const msg = args.map((a) => (typeof a === "string" ? a : String(a))).join(" ");
+    const match = msg.match(/\[(\w+)\]\s*(.*)/);
+    if (match) {
+      dashboard.log(match[1], msg);
+    } else {
+      dashboard.log("runner", msg);
+    }
+  };
+
+  return {
+    restore: () => {
+      console.log = origLog;
+      console.warn = origWarn;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  const { source, dryRun, watch, full, cleanup, interval } = parseArgs();
+  const { source, dryRun, watch, full, cleanup, interval, noDashboard } = parseArgs();
   const env = getEnv();
 
   const sources: SourceName[] =
@@ -823,24 +905,47 @@ async function main(): Promise<void> {
 
   const mode = cleanup ? "CLEANUP" : watch ? "WATCH" : full ? "FULL" : "INCREMENTAL";
 
-  console.log("=".repeat(60));
-  console.log("Flat Finder CZ - Scraper");
-  console.log(`Sources:  ${sources.join(", ")}`);
-  console.log(`Mode:     ${mode}`);
-  if (dryRun) console.log("          DRY RUN (no DB writes)");
-  if (watch) console.log(`Interval: ${interval}s`);
-  console.log("=".repeat(60));
+  // Decide whether to use the dashboard:
+  // - Default ON when stdout is a TTY
+  // - OFF when --no-dashboard is specified
+  // - OFF when stdout is not a TTY (piped output)
+  // - OFF for cleanup mode (short-lived, no parallel sources)
+  const useDashboard = !noDashboard && !cleanup && process.stdout.isTTY === true;
 
-  // Graceful shutdown — exit with 0 so npm doesn't print errors
+  let dashboard: Dashboard | null = null;
+  let consoleRestore: (() => void) | null = null;
+
+  if (useDashboard) {
+    dashboard = new Dashboard(sources);
+  }
+
+  if (!useDashboard) {
+    // Original banner for non-dashboard mode
+    console.log("=".repeat(60));
+    console.log("Flat Finder CZ - Scraper");
+    console.log(`Sources:  ${sources.join(", ")}`);
+    console.log(`Mode:     ${mode}`);
+    if (dryRun) console.log("          DRY RUN (no DB writes)");
+    if (watch) console.log(`Interval: ${interval}s`);
+    console.log("=".repeat(60));
+  }
+
+  // Graceful shutdown -- exit with 0 so npm doesn't print errors
   let shouldStop = false;
   const onSignal = (signal: string) => {
+    // Clean up dashboard terminal state before anything else
+    if (dashboard) {
+      dashboard.cleanup();
+      if (consoleRestore) consoleRestore();
+    }
+
     if (!watch) {
       // Non-watch mode: exit immediately on first signal
       console.log(`\n${ts()} [runner] Received ${signal}, exiting.`);
       process.exit(0);
     }
     if (shouldStop) {
-      // Watch mode, second signal → force exit
+      // Watch mode, second signal -> force exit
       console.log(`\n${ts()} [runner] Received ${signal} again, forcing exit.`);
       process.exit(0);
     }
@@ -856,9 +961,10 @@ async function main(): Promise<void> {
     dryRun,
     watcherMaxPages: env.WATCHER_MAX_PAGES,
     watcherDetailConcurrency: env.WATCHER_DETAIL_CONCURRENCY,
+    dashboard,
   };
 
-  // SCR-09: Standalone cleanup mode — TTL deactivation only
+  // SCR-09: Standalone cleanup mode -- TTL deactivation only
   if (cleanup) {
     console.log(`${ts()} [runner] Running TTL-based deactivation (14 day threshold)...`);
     if (!dryRun) {
@@ -870,7 +976,7 @@ async function main(): Promise<void> {
         await conn.sql.end();
       }
     } else {
-      console.log(`${ts()} [runner] DRY RUN — skipping TTL deactivation`);
+      console.log(`${ts()} [runner] DRY RUN -- skipping TTL deactivation`);
     }
     process.exit(0);
   }
@@ -879,19 +985,61 @@ async function main(): Promise<void> {
     let cycle = 0;
     while (!shouldStop) {
       cycle++;
-      console.log(`\n${ts()} --- Watcher cycle ${cycle} ---`);
+
+      if (!useDashboard) {
+        console.log(`\n${ts()} --- Watcher cycle ${cycle} ---`);
+      }
+
+      // Start dashboard for this cycle
+      if (dashboard) {
+        dashboard.start();
+        consoleRestore = suppressConsole(dashboard).restore;
+      }
+
       const results = await runCycle(sources, runOpts);
+
+      // Stop dashboard, restore console, print summary
+      if (dashboard) {
+        dashboard.stop();
+        if (consoleRestore) {
+          consoleRestore();
+          consoleRestore = null;
+        }
+      }
+
       printSummary(results);
 
       if (shouldStop) break;
 
       console.log(`${ts()} [runner] Sleeping ${interval}s until next cycle...`);
       await sleep(interval * 1000);
+
+      // Reset dashboard for next cycle
+      if (useDashboard) {
+        dashboard = new Dashboard(sources);
+        runOpts.dashboard = dashboard;
+      }
     }
 
     console.log(`${ts()} [runner] Watcher stopped.`);
   } else {
+    // Start dashboard
+    if (dashboard) {
+      dashboard.start();
+      consoleRestore = suppressConsole(dashboard).restore;
+    }
+
     const results = await runCycle(sources, runOpts);
+
+    // Stop dashboard, restore console
+    if (dashboard) {
+      dashboard.stop();
+      if (consoleRestore) {
+        consoleRestore();
+        consoleRestore = null;
+      }
+    }
+
     printSummary(results);
 
     // SCR-09: Run TTL-based deactivation after incremental/full scrapes as a safety net
