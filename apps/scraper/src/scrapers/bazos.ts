@@ -91,6 +91,7 @@ export class BazosScraper extends BaseScraper {
   ): AsyncGenerator<PageResult> {
     const catName = `${txnSlug}/${cat.slug}`;
     const basePath = `/${txnSlug}/${cat.slug}/`;
+    const batchSize = this.concurrency * 2; // fetch pages in concurrent batches
 
     // Fetch first page to get total count
     const firstUrl = `${BASE_URL}${basePath}`;
@@ -116,28 +117,42 @@ export class BazosScraper extends BaseScraper {
       return;
     }
 
-    // Subsequent pages
-    for (let page = 2; page <= totalPages; page++) {
+    if (totalPages <= 1) return;
+
+    // Batch-concurrent fetching of remaining pages
+    const remaining = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+
+    for (let bStart = 0; bStart < remaining.length; bStart += batchSize) {
       if (this.isCategorySkipped(catName)) return;
-      const offset = (page - 1) * ITEMS_PER_PAGE;
-      const pageUrl = `${BASE_URL}${basePath}${offset}/`;
+      const batchPages = remaining.slice(bStart, bStart + batchSize);
 
-      try {
-        html = await this.http.getHtml(pageUrl);
-      } catch (err) {
-        this.log(`Failed to fetch ${catName} page ${page}: ${err}`);
-        break;
+      const pagePromises = batchPages.map((page) =>
+        this.limiter(async () => {
+          const offset = (page - 1) * ITEMS_PER_PAGE;
+          const pageUrl = `${BASE_URL}${basePath}${offset}/`;
+          try {
+            return await this.http.getHtml(pageUrl);
+          } catch (err) {
+            this.log(`Failed to fetch ${catName} page ${page}: ${err}`);
+            return null;
+          }
+        }),
+      );
+
+      const pageResults = await Promise.all(pagePromises);
+
+      for (let j = 0; j < pageResults.length; j++) {
+        if (this.isCategorySkipped(catName)) return;
+        const pageHtml = pageResults[j];
+        if (!pageHtml) continue;
+
+        const pageDoc = parseHtml(pageHtml);
+        const pageListings = this.parseListings(pageDoc, cat.propertyType, transactionType);
+
+        if (pageListings.length === 0) continue;
+
+        yield { category: catName, page: batchPages[j], totalPages, listings: pageListings };
       }
-
-      const pageDoc = parseHtml(html);
-      const pageListings = this.parseListings(pageDoc, cat.propertyType, transactionType);
-
-      if (pageListings.length === 0) {
-        this.log(`${catName} page ${page}: no listings, stopping`);
-        break;
-      }
-
-      yield { category: catName, page, totalPages, listings: pageListings };
     }
   }
 

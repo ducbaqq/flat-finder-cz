@@ -87,27 +87,41 @@ export class RealitymixScraper extends BaseScraper {
       return;
     }
 
-    // Fetch remaining pages
-    for (let page = 2; page <= pagesToScrape; page++) {
+    if (pagesToScrape <= 1) return;
+
+    // Batch-concurrent fetching of remaining pages
+    const batchSize = this.concurrency * 2;
+    const remaining = Array.from({ length: pagesToScrape - 1 }, (_, i) => i + 2);
+
+    for (let bStart = 0; bStart < remaining.length; bStart += batchSize) {
       if (this.isCategorySkipped(slug)) return;
-      try {
-        const url = `${this.baseUrl}/reality/${slug}?stranka=${page}`;
-        const html = await this.http.getHtml(url);
+      const batchPages = remaining.slice(bStart, bStart + batchSize);
+
+      const pagePromises = batchPages.map((page) =>
+        this.limiter(async () => {
+          try {
+            const url = `${this.baseUrl}/reality/${slug}?stranka=${page}`;
+            const html = await this.http.getHtml(url);
+            return { page, html };
+          } catch (err) {
+            this.log(`  ${slug}: error on page ${page}: ${err}`);
+            return { page, html: null };
+          }
+        }),
+      );
+
+      const pageResults = await Promise.all(pagePromises);
+
+      for (const { page, html } of pageResults) {
+        if (this.isCategorySkipped(slug)) return;
+        if (!html) continue;
+
         const doc = parseHtml(html);
-        const pageResults = this.parseListingPage(
-          doc,
-          transactionType,
-          propertyType,
-        );
+        const results = this.parseListingPage(doc, transactionType, propertyType);
 
-        if (pageResults.length === 0) {
-          this.log(`  ${slug}: page ${page} returned 0 results, stopping`);
-          break;
-        }
+        if (results.length === 0) continue;
 
-        yield { category: slug, page, totalPages: pagesToScrape, listings: pageResults };
-      } catch (err) {
-        this.log(`  ${slug}: error on page ${page}: ${err}`);
+        yield { category: slug, page, totalPages: pagesToScrape, listings: results };
       }
     }
   }

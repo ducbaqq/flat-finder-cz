@@ -92,34 +92,42 @@ export class ERealityScraper extends BaseScraper {
       yield { category: urlPath, page: 1, totalPages, listings: firstListings };
     }
 
-    // Fetch subsequent pages via AJAX
-    for (let page = 2; page <= totalPages; page++) {
+    if (totalPages <= 1) return;
+
+    // Batch-concurrent fetching of subsequent pages via AJAX
+    const batchSize = this.concurrency * 2;
+    const remaining = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+
+    for (let bStart = 0; bStart < remaining.length; bStart += batchSize) {
       if (this.isCategorySkipped(urlPath)) return;
-      const ajaxUrl = `${this.baseUrl}/ajaxlist/${urlPath}?pg=${page - 1}`;
-      let html: string;
-      try {
-        html = await this.http.getHtml(ajaxUrl);
-      } catch (err) {
-        this.log(`Error fetching page ${page} of ${urlPath}: ${err}`);
-        break;
-      }
+      const batchPages = remaining.slice(bStart, bStart + batchSize);
 
-      if (!html || html.trim().length === 0) {
-        this.log(`No more pages for ${urlPath} at page ${page}`);
-        break;
-      }
+      const pagePromises = batchPages.map((page) =>
+        this.limiter(async () => {
+          const ajaxUrl = `${this.baseUrl}/ajaxlist/${urlPath}?pg=${page - 1}`;
+          try {
+            return { page, html: await this.http.getHtml(ajaxUrl) };
+          } catch (err) {
+            this.log(`Error fetching page ${page} of ${urlPath}: ${err}`);
+            return { page, html: null };
+          }
+        }),
+      );
 
-      const root = parseHtml(`<ul>${html}</ul>`);
-      const tiles = root.querySelectorAll("li.ereality-property-tile");
+      const pageResults = await Promise.all(pagePromises);
 
-      if (tiles.length === 0) {
-        this.log(`No tiles found on page ${page} of ${urlPath}`);
-        break;
-      }
+      for (const { page, html } of pageResults) {
+        if (this.isCategorySkipped(urlPath)) return;
+        if (!html || html.trim().length === 0) continue;
 
-      const listings = this.parseTiles(tiles, propertyType, transactionType);
-      if (listings.length > 0) {
-        yield { category: urlPath, page, totalPages, listings };
+        const root = parseHtml(`<ul>${html}</ul>`);
+        const tiles = root.querySelectorAll("li.ereality-property-tile");
+        if (tiles.length === 0) continue;
+
+        const listings = this.parseTiles(tiles, propertyType, transactionType);
+        if (listings.length > 0) {
+          yield { category: urlPath, page, totalPages, listings };
+        }
       }
     }
   }

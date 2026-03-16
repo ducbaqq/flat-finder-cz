@@ -86,34 +86,46 @@ export class EurobydleniScraper extends BaseScraper {
 
     yield { category: urlPath, page: 1, totalPages, listings: firstListings };
 
-    // Fetch subsequent pages
-    for (let page = 2; page <= totalPages; page++) {
+    if (totalPages <= 1) return;
+
+    // Batch-concurrent fetching of subsequent pages
+    const batchSize = this.concurrency * 2;
+    const remaining = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+
+    for (let bStart = 0; bStart < remaining.length; bStart += batchSize) {
       if (this.isCategorySkipped(urlPath)) return;
-      const url = `${this.baseUrl}/${urlPath}/page-${page}/`;
-      this.log(`Fetching ${urlPath} page ${page}/${totalPages}: ${url}`);
+      const batchPages = remaining.slice(bStart, bStart + batchSize);
 
-      let html: string;
-      try {
-        html = await this.http.getHtml(url);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("404") || msg.includes("410")) {
-          this.log(`No more pages for ${urlPath} (got ${msg})`);
-          break;
-        }
-        this.log(`Error fetching ${url}: ${msg}`);
-        break;
+      const pagePromises = batchPages.map((page) =>
+        this.limiter(async () => {
+          const url = `${this.baseUrl}/${urlPath}/page-${page}/`;
+          try {
+            return { page, html: await this.http.getHtml(url) };
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes("404") || msg.includes("410")) {
+              this.log(`No more pages for ${urlPath} (got ${msg})`);
+            } else {
+              this.log(`Error fetching ${url}: ${msg}`);
+            }
+            return { page, html: null };
+          }
+        }),
+      );
+
+      const pageResults = await Promise.all(pagePromises);
+
+      for (const { page, html } of pageResults) {
+        if (this.isCategorySkipped(urlPath)) return;
+        if (!html) continue;
+
+        const doc = parseHtml(html);
+        const listings = this.parseListPage(doc, propertyType, transactionType);
+
+        if (listings.length === 0) continue;
+
+        yield { category: urlPath, page, totalPages, listings };
       }
-
-      const doc = parseHtml(html);
-      const listings = this.parseListPage(doc, propertyType, transactionType);
-
-      if (listings.length === 0) {
-        this.log(`No listings on page ${page} for ${urlPath}, stopping`);
-        break;
-      }
-
-      yield { category: urlPath, page, totalPages, listings };
     }
   }
 

@@ -21,27 +21,27 @@ const envSchema = z.object({
   APP_BASE_URL: z.string().default("https://flatfinder.cz"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 
-  // Scraper config
+  // Scraper config — RPS/concurrency tuned via benchmark (2026-03-16)
   SREALITY_RPS: z.coerce.number().default(25),
   SREALITY_CONCURRENCY: z.coerce.number().default(50),
   BEZREALITKY_RPS: z.coerce.number().default(3),
   BEZREALITKY_CONCURRENCY: z.coerce.number().default(5),
-  ULOVDOMOV_RPS: z.coerce.number().default(5),
+  ULOVDOMOV_RPS: z.coerce.number().default(8),         // was 5, 0 errors at 5.13 eff RPS
   ULOVDOMOV_CONCURRENCY: z.coerce.number().default(10),
   BAZOS_RPS: z.coerce.number().default(20),
-  BAZOS_CONCURRENCY: z.coerce.number().default(3),
+  BAZOS_CONCURRENCY: z.coerce.number().default(10),    // was 3, 32ms avg latency allows higher
   EREALITY_RPS: z.coerce.number().default(10),
-  EREALITY_CONCURRENCY: z.coerce.number().default(3),
+  EREALITY_CONCURRENCY: z.coerce.number().default(8),  // was 3, 32% utilization at 10 RPS
   EUROBYDLENI_RPS: z.coerce.number().default(10),
-  EUROBYDLENI_CONCURRENCY: z.coerce.number().default(3),
+  EUROBYDLENI_CONCURRENCY: z.coerce.number().default(8), // was 3, 30% utilization at 10 RPS
   CESKEREALITY_RPS: z.coerce.number().default(5),
-  CESKEREALITY_CONCURRENCY: z.coerce.number().default(3),
+  CESKEREALITY_CONCURRENCY: z.coerce.number().default(5), // was 3, server is slow but no errors
   REALITYMIX_RPS: z.coerce.number().default(5),
-  REALITYMIX_CONCURRENCY: z.coerce.number().default(3),
+  REALITYMIX_CONCURRENCY: z.coerce.number().default(5),  // was 3, 57% utilization
   IDNES_RPS: z.coerce.number().default(5),
-  IDNES_CONCURRENCY: z.coerce.number().default(3),
+  IDNES_CONCURRENCY: z.coerce.number().default(5),       // was 3, 55% utilization
   REALINGO_RPS: z.coerce.number().default(5),
-  REALINGO_CONCURRENCY: z.coerce.number().default(3),
+  REALINGO_CONCURRENCY: z.coerce.number().default(5),    // was 3, 56% utilization
   MAX_RETRIES: z.coerce.number().default(3),
   RETRY_BASE_MS: z.coerce.number().default(1000),
   PAGE_BATCH_MULTIPLIER: z.coerce.number().default(2),

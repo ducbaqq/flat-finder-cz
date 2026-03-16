@@ -1,0 +1,357 @@
+{
+  "timestamp": "2026-03-16T13:37:15.425Z",
+  "durationPerSourceSeconds": 60,
+  "nodeVersion": "v22.22.0",
+  "results": [
+    {
+      "source": "sreality",
+      "durationSeconds": 60,
+      "configuredRps": 25,
+      "configuredConcurrency": 50,
+      "phase1": {
+        "totalListingsFound": 40415,
+        "pagesFetched": 676,
+        "timeMs": 36991,
+        "listingsPerMinute": 65554
+      },
+      "phase2": {
+        "newListingsToEnrich": 100,
+        "detailCallsMade": 100,
+        "timeMs": 5401,
+        "enrichmentsPerMinute": 1111
+      },
+      "http": {
+        "totalRequests": 874,
+        "totalResponseTime": 341781.99228800065,
+        "avgLatencyMs": 391,
+        "minLatencyMs": 183,
+        "maxLatencyMs": 803,
+        "p95LatencyMs": 551,
+        "status429Count": 0,
+        "status5xxCount": 0,
+        "retryCount": 0,
+        "errorCount": 0,
+        "timeoutCount": 0
+      },
+      "effectiveRps": 20.62,
+      "totalTimeMs": 42392,
+      "success": true,
+      "stoppedByTimeout": true
+    },
+    {
+      "source": "bezrealitky",
+      "durationSeconds": 60,
+      "configuredRps": 3,
+      "configuredConcurrency": 5,
+      "phase1": {
+        "totalListingsFound": 1380,
+        "pagesFetched": 92,
+        "timeMs": 37769,
+        "listingsPerMinute": 2192
+      },
+      "phase2": {
+        "newListingsToEnrich": 100,
+        "detailCallsMade": 100,
+        "timeMs": 20233,
+        "enrichmentsPerMinute": 297
+      },
+      "http": {
+        "totalRequests": 161,
+        "totalResponseTime": 75206.83687199996,
+        "avgLatencyMs": 467,
+        "minLatencyMs": 187,
+        "maxLatencyMs": 1006,
+        "p95LatencyMs": 781,
+        "status429Count": 0,
+        "status5xxCount": 0,
+        "retryCount": 0,
+        "errorCount": 0,
+        "timeoutCount": 0
+      },
+      "effectiveRps": 2.78,
+      "totalTimeMs": 58003,
+      "success": true,
+      "stoppedByTimeout": true
+    },
+    {
+      "source": "ulovdomov",
+      "durationSeconds": 60,
+      "configuredRps": 8,
+      "configuredConcurrency": 10,
+      "phase1": {
+        "totalListingsFound": 4480,
+        "pagesFetched": 224,
+        "timeMs": 37956,
+        "listingsPerMinute": 7082
+      },
+      "phase2": {
+        "newListingsToEnrich": 100,
+        "detailCallsMade": 100,
+        "timeMs": 13158,
+        "enrichmentsPerMinute": 456
+      },
+      "http": {
+        "totalRequests": 373,
+        "totalResponseTime": 178203.47668599978,
+        "avgLatencyMs": 478,
+        "minLatencyMs": 187,
+        "maxLatencyMs": 1794,
+        "p95LatencyMs": 730,
+        "status429Count": 0,
+        "status5xxCount": 0,
+        "retryCount": 0,
+        "errorCount": 0,
+        "timeoutCount": 0
+      },
+      "effectiveRps": 7.3,
+      "totalTimeMs": 51114,
+      "success": true,
+      "stoppedByTimeout": true
+    },
+    {
+      "source": "bazos",
+      "durationSeconds": 60,
+      "configuredRps": 20,
+      "configuredConcurrency": 10,
+      "phase1": {
+        "totalListingsFound": 13554,
+        "pagesFetched": 679,
+        "timeMs": 36358,
+        "listingsPerMinute": 22368
+      },
+      "phase2": {
+        "newListingsToEnrich": 100,
+        "detailCallsMade": 100,
+        "timeMs": 5105,
+        "enrichmentsPerMinute": 1175
+      },
+      "http": {
+        "totalRequests": 798,
+        "totalResponseTime": 21696.199125999905,
+        "avgLatencyMs": 27,
+        "minLatencyMs": 14,
+        "maxLatencyMs": 98,
+        "p95LatencyMs": 42,
+        "status429Count": 0,
+        "status5xxCount": 0,
+        "retryCount": 0,
+        "errorCount": 0,
+        "timeoutCount": 0
+      },
+      "effectiveRps": 19.25,
+      "totalTimeMs": 41463,
+      "success": true,
+      "stoppedByTimeout": true
+    },
+    {
+      "source": "ereality",
+      "durationSeconds": 60,
+      "configuredRps": 10,
+      "configuredConcurrency": 8,
+      "phase1": {
+        "totalListingsFound": 1100,
+        "pagesFetched": 50,
+        "timeMs": 37978,
+        "listingsPerMinute": 1738
+      },
+      "phase2": {
+        "newListingsToEnrich": 100,
+        "detailCallsMade": 100,
+        "timeMs": 10145,
+        "enrichmentsPerMinute": 591
+      },
+      "http": {
+        "totalRequests": 165,
+        "totalResponseTime": 275337.1691689999,
+        "avgLatencyMs": 1669,
+        "minLatencyMs": 18,
+        "maxLatencyMs": 5388,
+        "p95LatencyMs": 4815,
+        "status429Count": 0,
+        "status5xxCount": 0,
+        "retryCount": 0,
+        "errorCount": 0,
+        "timeoutCount": 0
+      },
+      "effectiveRps": 3.43,
+      "totalTimeMs": 48123,
+      "success": true,
+      "stoppedByTimeout": true
+    },
+    {
+      "source": "eurobydleni",
+      "durationSeconds": 60,
+      "configuredRps": 10,
+      "configuredConcurrency": 8,
+      "phase1": {
+        "totalListingsFound": 2136,
+        "pagesFetched": 178,
+        "timeMs": 36954,
+        "listingsPerMinute": 3468
+      },
+      "phase2": {
+        "newListingsToEnrich": 100,
+        "detailCallsMade": 100,
+        "timeMs": 10087,
+        "enrichmentsPerMinute": 595
+      },
+      "http": {
+        "totalRequests": 293,
+        "totalResponseTime": 199325.69746600042,
+        "avgLatencyMs": 680,
+        "minLatencyMs": 67,
+        "maxLatencyMs": 1753,
+        "p95LatencyMs": 1096,
+        "status429Count": 0,
+        "status5xxCount": 0,
+        "retryCount": 0,
+        "errorCount": 0,
+        "timeoutCount": 0
+      },
+      "effectiveRps": 6.23,
+      "totalTimeMs": 47041,
+      "success": true,
+      "stoppedByTimeout": true
+    },
+    {
+      "source": "ceskereality",
+      "durationSeconds": 60,
+      "configuredRps": 5,
+      "configuredConcurrency": 5,
+      "phase1": {
+        "totalListingsFound": 2425,
+        "pagesFetched": 122,
+        "timeMs": 38291,
+        "listingsPerMinute": 3800
+      },
+      "phase2": {
+        "newListingsToEnrich": 100,
+        "detailCallsMade": 100,
+        "timeMs": 19712,
+        "enrichmentsPerMinute": 304
+      },
+      "http": {
+        "totalRequests": 186,
+        "totalResponseTime": 187434.79841500003,
+        "avgLatencyMs": 1008,
+        "minLatencyMs": 354,
+        "maxLatencyMs": 6889,
+        "p95LatencyMs": 3445,
+        "status429Count": 0,
+        "status5xxCount": 0,
+        "retryCount": 0,
+        "errorCount": 0,
+        "timeoutCount": 0
+      },
+      "effectiveRps": 3.21,
+      "totalTimeMs": 58003,
+      "success": true,
+      "stoppedByTimeout": true
+    },
+    {
+      "source": "realitymix",
+      "durationSeconds": 60,
+      "configuredRps": 5,
+      "configuredConcurrency": 5,
+      "phase1": {
+        "totalListingsFound": 2640,
+        "pagesFetched": 132,
+        "timeMs": 36425,
+        "listingsPerMinute": 4349
+      },
+      "phase2": {
+        "newListingsToEnrich": 100,
+        "detailCallsMade": 100,
+        "timeMs": 20102,
+        "enrichmentsPerMinute": 298
+      },
+      "http": {
+        "totalRequests": 269,
+        "totalResponseTime": 121154.90223699954,
+        "avgLatencyMs": 450,
+        "minLatencyMs": 73,
+        "maxLatencyMs": 3197,
+        "p95LatencyMs": 930,
+        "status429Count": 0,
+        "status5xxCount": 0,
+        "retryCount": 0,
+        "errorCount": 0,
+        "timeoutCount": 0
+      },
+      "effectiveRps": 4.76,
+      "totalTimeMs": 56527,
+      "success": true,
+      "stoppedByTimeout": true
+    },
+    {
+      "source": "idnes",
+      "durationSeconds": 60,
+      "configuredRps": 5,
+      "configuredConcurrency": 5,
+      "phase1": {
+        "totalListingsFound": 3432,
+        "pagesFetched": 132,
+        "timeMs": 37986,
+        "listingsPerMinute": 5421
+      },
+      "phase2": {
+        "newListingsToEnrich": 100,
+        "detailCallsMade": 100,
+        "timeMs": 20016,
+        "enrichmentsPerMinute": 300
+      },
+      "http": {
+        "totalRequests": 239,
+        "totalResponseTime": 149287.46813299984,
+        "avgLatencyMs": 625,
+        "minLatencyMs": 224,
+        "maxLatencyMs": 1457,
+        "p95LatencyMs": 1015,
+        "status429Count": 0,
+        "status5xxCount": 0,
+        "retryCount": 0,
+        "errorCount": 0,
+        "timeoutCount": 0
+      },
+      "effectiveRps": 4.12,
+      "totalTimeMs": 58002,
+      "success": true,
+      "stoppedByTimeout": true
+    },
+    {
+      "source": "realingo",
+      "durationSeconds": 60,
+      "configuredRps": 5,
+      "configuredConcurrency": 5,
+      "phase1": {
+        "totalListingsFound": 7100,
+        "pagesFetched": 71,
+        "timeMs": 36132,
+        "listingsPerMinute": 11790
+      },
+      "phase2": {
+        "newListingsToEnrich": 100,
+        "detailCallsMade": 100,
+        "timeMs": 21871,
+        "enrichmentsPerMinute": 274
+      },
+      "http": {
+        "totalRequests": 190,
+        "totalResponseTime": 27737.747960000765,
+        "avgLatencyMs": 146,
+        "minLatencyMs": 12,
+        "maxLatencyMs": 433,
+        "p95LatencyMs": 398,
+        "status429Count": 0,
+        "status5xxCount": 21,
+        "retryCount": 0,
+        "errorCount": 0,
+        "timeoutCount": 0
+      },
+      "effectiveRps": 3.28,
+      "totalTimeMs": 58003,
+      "success": true,
+      "stoppedByTimeout": true
+    }
+  ]
+}

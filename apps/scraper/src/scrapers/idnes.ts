@@ -80,24 +80,34 @@ export class IdnesScraper extends BaseScraper {
       yield { category: categoryLabel, page: 1, totalPages: maxPage, listings: firstPageListings };
     }
 
-    // Fetch remaining pages
-    for (let page = 2; page <= maxPage; page++) {
+    if (maxPage <= 1) return;
+
+    // Batch-concurrent fetching of remaining pages
+    const batchSize = this.concurrency * 2;
+    const remaining = Array.from({ length: maxPage - 1 }, (_, i) => i + 2);
+
+    for (let bStart = 0; bStart < remaining.length; bStart += batchSize) {
       if (this.isCategorySkipped(categoryLabel)) return;
-      this.log(`  Fetching page ${page}/${maxPage}`);
+      const batchPages = remaining.slice(bStart, bStart + batchSize);
 
-      const html = await this.fetchAjaxPage(category, page);
-      if (!html) {
-        this.log(`  Empty response on page ${page}, stopping.`);
-        break;
+      const pagePromises = batchPages.map((page) =>
+        this.limiter(async () => {
+          const html = await this.fetchAjaxPage(category, page);
+          return { page, html };
+        }),
+      );
+
+      const pageResults = await Promise.all(pagePromises);
+
+      for (const { page, html } of pageResults) {
+        if (this.isCategorySkipped(categoryLabel)) return;
+        if (!html) continue;
+
+        const pageListings = this.parseListingsHtml(html, category);
+        if (pageListings.length === 0) continue;
+
+        yield { category: categoryLabel, page, totalPages: maxPage, listings: pageListings };
       }
-
-      const pageListings = this.parseListingsHtml(html, category);
-      if (pageListings.length === 0) {
-        this.log(`  No listings on page ${page}, stopping.`);
-        break;
-      }
-
-      yield { category: categoryLabel, page, totalPages: maxPage, listings: pageListings };
     }
   }
 

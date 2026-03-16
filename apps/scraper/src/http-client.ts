@@ -15,8 +15,9 @@ export interface HttpClientOptions {
 /**
  * HTTP client with built-in rate limiting and exponential-backoff retry.
  *
- * Uses native `fetch()`.  Retries on HTTP 429, 5xx, and network / timeout
- * errors.  Does NOT retry 4xx (except 429) or JSON parse errors.
+ * Uses native `fetch()` with keep-alive connection pooling.
+ * Retries on HTTP 429, 5xx, and network / timeout errors.
+ * Does NOT retry 4xx (except 429) or JSON parse errors.
  */
 export class HttpClient {
   private readonly rateLimiter: RateLimiter;
