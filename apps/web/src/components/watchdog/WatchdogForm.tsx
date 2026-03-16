@@ -31,6 +31,7 @@ export default function WatchdogForm({
   currentFilters,
 }: WatchdogFormProps) {
   const [localLabel, setLocalLabel] = useState("");
+  const [emailError, setEmailError] = useState("");
   const emailRef = useRef<HTMLInputElement>(null);
 
   const filters = currentFilters || {};
@@ -38,10 +39,18 @@ export default function WatchdogForm({
 
   const handleSave = useCallback(async () => {
     const trimmedEmail = email.trim();
-    if (!trimmedEmail || !trimmedEmail.includes("@")) {
+    if (!trimmedEmail) {
+      setEmailError("Zadejte e-mailovou adresu");
       emailRef.current?.focus();
       return;
     }
+    if (!trimmedEmail.includes("@") || !trimmedEmail.includes(".")) {
+      setEmailError("Zadejte platnou e-mailovou adresu");
+      emailRef.current?.focus();
+      return;
+    }
+
+    setEmailError("");
 
     const filtersToSave = { ...filters };
     delete filtersToSave.sort;
@@ -53,6 +62,14 @@ export default function WatchdogForm({
     });
     setLocalLabel("");
   }, [email, localLabel, filters, onSave]);
+
+  const handleEmailChange = useCallback(
+    (value: string) => {
+      onEmailChange(value);
+      if (emailError) setEmailError("");
+    },
+    [onEmailChange, emailError]
+  );
 
   return (
     <div className="space-y-4">
@@ -81,9 +98,17 @@ export default function WatchdogForm({
           ref={emailRef}
           placeholder="vas@email.cz"
           value={email}
-          onChange={(e) => onEmailChange(e.target.value)}
+          onChange={(e) => handleEmailChange(e.target.value)}
           onBlur={onEmailBlur}
+          className={emailError ? "border-destructive ring-destructive/20 ring-2" : ""}
+          aria-invalid={!!emailError}
+          aria-describedby={emailError ? "watchdogEmailError" : undefined}
         />
+        {emailError && (
+          <p id="watchdogEmailError" className="text-sm text-destructive mt-1">
+            {emailError}
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">

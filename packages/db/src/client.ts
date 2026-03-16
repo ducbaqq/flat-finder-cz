@@ -39,8 +39,10 @@ function createPostgresClient(): ReturnType<typeof postgres> {
   const url = getDatabaseUrl();
   return postgres(url, {
     ssl: buildSslOption(),
-    connect_timeout: 10,
+    max: 20,
     idle_timeout: 30,
+    connect_timeout: 10,
+    max_lifetime: 60 * 30, // 30 minutes
   });
 }
 

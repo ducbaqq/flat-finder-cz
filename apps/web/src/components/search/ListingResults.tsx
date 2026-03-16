@@ -1,6 +1,6 @@
 "use client";
 
-import { SearchX } from "lucide-react";
+import { SearchX, AlertTriangle } from "lucide-react";
 import { motion } from "framer-motion";
 import type { ListingsResponse } from "@flat-finder/types";
 import { PropertyCard } from "@/components/shared/PropertyCard";
@@ -11,6 +11,8 @@ import { staggerContainer } from "@/lib/animations";
 interface ListingResultsProps {
   data: ListingsResponse | undefined;
   isLoading: boolean;
+  isError?: boolean;
+  refetch?: () => void;
   page: number;
   onPageChange: (page: number) => void;
   singleColumn?: boolean;
@@ -19,10 +21,36 @@ interface ListingResultsProps {
 export function ListingResults({
   data,
   isLoading,
+  isError,
+  refetch,
   page,
   onPageChange,
   singleColumn,
 }: ListingResultsProps) {
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <AlertTriangle className="mb-4 h-12 w-12 text-destructive/60" />
+        <h3 className="text-lg font-semibold font-display">
+          Nepodařilo se načíst nabídky
+        </h3>
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+          Zkontrolujte připojení k internetu a zkuste to znovu.
+        </p>
+        {refetch && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4 rounded-lg"
+            onClick={() => refetch()}
+          >
+            Zkusit znovu
+          </Button>
+        )}
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div

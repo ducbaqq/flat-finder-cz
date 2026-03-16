@@ -254,6 +254,13 @@ export class ERealityScraper extends BaseScraper {
       }
     }
 
+    // SCR-05: Extract property parameters from description text.
+    // eReality is an aggregator — detail pages have NO structured parameter
+    // tables, dt/dd lists, or labelled sections.  The only source for
+    // condition, construction, ownership, energy, furnishing and floor is
+    // the free-text description shown under "Popis nemovitosti".
+    this.extractPropertyParamsFromDescription(listing);
+
     // Source attribution from redirect links
     // e.g. /presmeruj/idnes-reality/{hash} → "idnes reality"
     const redirectLinks = root.querySelectorAll("a[href*='/presmeruj/']");
@@ -268,6 +275,114 @@ export class ERealityScraper extends BaseScraper {
         existing.original_source = originalSource;
         listing.additional_params = JSON.stringify(existing);
         break;
+      }
+    }
+  }
+
+  /**
+   * SCR-05: Extract condition, construction, ownership, energy_rating,
+   * furnishing, and floor from the listing description text.
+   *
+   * eReality is an aggregator that shows preview pages from other servers
+   * (iDnes reality, sReality, etc.).  Detail pages contain NO structured
+   * parameter tables, dt/dd lists, or labelled sections — only a
+   * free-text description.  We therefore use regex patterns against Czech
+   * natural language in the description to recover what we can.
+   *
+   * Some descriptions also append semi-structured lines like:
+   *   "užitná plocha: 64 m2"
+   *   "energetická třída: Třída C"
+   */
+  private extractPropertyParamsFromDescription(listing: ScraperResult): void {
+    const desc = listing.description;
+    if (!desc) return;
+
+    // ── Energy rating ────────────────────────────────────────────────
+    if (!listing.energy_rating) {
+      // Match "energetická třída: Třída C", "PENB: B", "energetická náročnost ... štítkem C"
+      const energyMatch =
+        desc.match(/energetick[áý]\s+(?:třída|nároč)[^:]*?:\s*(?:Třída\s+)?([A-Ga-g])\b/i) ??
+        desc.match(/(?:štítkem|třída|třídou|PENB)\s+([A-Ga-g])\b/i) ??
+        desc.match(/\bPENB\s*[:\-–]\s*([A-Ga-g])\b/i);
+      if (energyMatch) {
+        listing.energy_rating = energyMatch[1].toUpperCase();
+      }
+    }
+
+    // ── Ownership ────────────────────────────────────────────────────
+    if (!listing.ownership) {
+      // "osobní vlastnictví", "v osobním vlastnictví", "OV"
+      // Also: "osobní 2+1 byt" (common shorthand in Czech real estate listings)
+      if (/\bosobní(?:m|ho)?\s+vlastnictví\b/i.test(desc) ||
+          /\bOV\b/.test(desc) ||
+          /\bosobní\s+\d\+/i.test(desc)) {
+        listing.ownership = "osobní";
+      } else if (/\bdružstevní(?:m|ho)?\s+(?:vlastnictví\b|byt)/i.test(desc) ||
+                 /\bdružstevní\s+\d\+/i.test(desc)) {
+        listing.ownership = "družstevní";
+      } else if (/\bstátní(?:m|ho)?\s+vlastnictví\b/i.test(desc)) {
+        listing.ownership = "státní";
+      }
+    }
+
+    // ── Construction ─────────────────────────────────────────────────
+    if (!listing.construction) {
+      if (/\bpanel(?:ový|ové|ová|ového|ovém)?\s+(?:budov|dom|dům|byt)/i.test(desc) ||
+          /\bv\s+panel(?:ový|ové|ová|ovém|ového)?\b/i.test(desc)) {
+        listing.construction = "panel";
+      } else if (/\bcihlov(?:ý|é|á|ém|ého)?\s+(?:budov|dom|dům|byt)/i.test(desc) ||
+                 /\bv\s+cihlov(?:ý|é|á|ém|ého)?\b/i.test(desc)) {
+        listing.construction = "cihla";
+      } else if (/\bdřevostavb/i.test(desc)) {
+        listing.construction = "dřevostavba";
+      }
+    }
+
+    // ── Condition ────────────────────────────────────────────────────
+    if (!listing.condition) {
+      if (/\bnovostavb/i.test(desc)) {
+        listing.condition = "novostavba";
+      } else if (/\bpo\s+(?:kompletní\s+)?rekonstrukci\b/i.test(desc)) {
+        listing.condition = "po rekonstrukci";
+      } else if (/\bpřed\s+rekonstrukcí\b/i.test(desc)) {
+        listing.condition = "před rekonstrukcí";
+      } else if (/\bvelmi\s+dobr(?:ý|ém)\s+stavu?\b/i.test(desc)) {
+        listing.condition = "velmi dobrý";
+      } else if (/\bdobr(?:ý|ém)\s+stavu?\b/i.test(desc)) {
+        listing.condition = "dobrý";
+      }
+    }
+
+    // ── Floor ────────────────────────────────────────────────────────
+    if (listing.floor === null) {
+      // "v 3. patře", "ve 2. NP", "nachází v 1. podlaží"
+      const floorMatch =
+        desc.match(/v[e]?\s+(\d+)\.\s*(?:patře|NP|nadzemním|podlaží)/i) ??
+        desc.match(/(\d+)\.\s*(?:patro|NP|nadzemní\s+podlaží)/i);
+      if (floorMatch) {
+        listing.floor = parseInt(floorMatch[1], 10);
+      }
+    }
+
+    // ── Total floors ─────────────────────────────────────────────────
+    if (listing.total_floors === null) {
+      // "domě se 12 podlažími", "dům má 8 podlaží", "12podlažní", "bytový dům 4 podlaží"
+      const totalMatch =
+        desc.match(/(?:se|má|o)\s+(\d+)\s+podlaží/i) ??
+        desc.match(/(\d+)\s*podlažní/i);
+      if (totalMatch) {
+        listing.total_floors = parseInt(totalMatch[1], 10);
+      }
+    }
+
+    // ── Furnishing ───────────────────────────────────────────────────
+    if (!listing.furnishing) {
+      if (/\bplně\s+(?:za|vy)baven/i.test(desc) || /\bkompletně\s+(?:za|vy)baven/i.test(desc)) {
+        listing.furnishing = "vybavený";
+      } else if (/\bčástečně\s+(?:za|vy)baven/i.test(desc)) {
+        listing.furnishing = "částečně";
+      } else if (/\bnev(?:y)?baven/i.test(desc)) {
+        listing.furnishing = "nevybavený";
       }
     }
   }

@@ -75,13 +75,6 @@ const SUB_SLUGS: Record<number, string> = {
   34: "ostatni", 48: "garazove-stani", 52: "garaz", 50: "vinny-sklep",
 };
 
-// Czech property-detail field names we map to named columns
-const MAPPED_ITEM_NAMES = new Set([
-  "Celková cena", "Cena", "Stavba", "Stav objektu", "Vlastnictví",
-  "Podlaží", "Podlaží z celku", "Užitná plocha", "Plocha",
-  "Energetická náročnost budovy", "Vybavení", "Dispozice",
-]);
-
 // ---------------------------------------------------------------------------
 // Sreality scraper
 // ---------------------------------------------------------------------------
@@ -474,7 +467,10 @@ export class SrealityScraper extends BaseScraper {
         const m = valStr.match(/(\d+(?:\.\d+)?)/);
         if (m) listing.size_m2 = parseFloat(m[1]);
       } else if (itemName === "Energetická náročnost budovy") {
-        listing.energy_rating = valStr;
+        // SCR-03: Extract just the letter grade from full Czech sentences
+        // e.g. "Třída G - Mimořádně nehospodárná..." -> "G"
+        const letterMatch = valStr.match(/T[řr][íi]da\s+([A-Ga-g])/i);
+        listing.energy_rating = letterMatch ? letterMatch[1].toUpperCase() : (valStr.match(/^([A-Ga-g])$/)?.[1]?.toUpperCase() ?? valStr);
       } else if (itemName === "Vybavení") {
         listing.furnishing = valStr;
       } else if (itemName === "Dispozice") {

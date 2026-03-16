@@ -205,6 +205,10 @@ body {
 .leaflet-top, .leaflet-bottom { z-index: 2; }
 .leaflet-control { z-index: 2; }
 
+/* Allow marker clicks through attribution overlay */
+.leaflet-control-attribution { pointer-events: none; }
+.leaflet-control-attribution a { pointer-events: auto; }
+
 /* ─── Custom map markers ─── */
 .custom-marker-price {
   background: hsl(var(--primary));

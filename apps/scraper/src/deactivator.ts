@@ -1,5 +1,5 @@
 import type { Db } from "@flat-finder/db";
-import { deactivateStaleListings } from "@flat-finder/db";
+import { deactivateStaleListings, deactivateByTtlListings } from "@flat-finder/db";
 
 /**
  * Deactivate listings from `source` that were NOT seen in the current run.
@@ -22,6 +22,25 @@ export async function deactivateStale(
   const count = await deactivateStaleListings(db, source, seenIds);
   if (count > 0) {
     console.log(`${t()} [deactivator] Deactivated ${count} stale listings for source=${source}`);
+  }
+  return count;
+}
+
+/**
+ * SCR-09: TTL-based deactivation.
+ * Deactivates active listings whose scraped_at is older than `ttlDays` days.
+ * Can run in any mode (incremental, watch, or standalone --cleanup).
+ */
+export async function deactivateByTtl(
+  db: Db,
+  ttlDays: number,
+): Promise<number> {
+  const t = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
+  const count = await deactivateByTtlListings(db, ttlDays);
+  if (count > 0) {
+    console.log(
+      `${t()} [deactivator] TTL deactivation: ${count} listings not scraped in ${ttlDays}+ days`,
+    );
   }
   return count;
 }

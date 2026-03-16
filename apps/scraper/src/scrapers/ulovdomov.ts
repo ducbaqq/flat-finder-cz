@@ -51,9 +51,9 @@ const FURNISHING_MAP: Record<string, string> = {
 };
 
 const CONDITION_MAP: Record<string, string> = {
-  new:  "new_build",
+  new:  "new",
   good: "good",
-  poor: "before_renovation",
+  poor: "before_reconstruction",
 };
 
 const CONSTRUCTION_MAP: Record<string, string> = {
@@ -466,6 +466,83 @@ export class UlovDomovScraper extends BaseScraper {
 
       if (value != null) {
         extraParams[title] = value;
+      }
+    }
+
+    // SCR-06: Extract condition, construction, energy, ownership, furnishing,
+    // floor and total_floors from the detail API parameters.
+    //
+    // UlovDomov's detail API returns structured parameters.  Each parameter
+    // either has a direct `.value` (strings/numbers) or an `.options` array.
+    // IMPORTANT: Unlike some APIs there is NO `isActive` flag on options —
+    // the API only includes the selected/active options in the array.  So
+    // the first option title IS the value for that parameter.
+    for (const [key, param] of Object.entries(parameters)) {
+      if (typeof param !== "object" || param === null) continue;
+      const paramObj = param as Record<string, unknown>;
+      const title = ((paramObj.title as string) ?? key).toLowerCase();
+
+      // Get value: direct value field or first option title
+      let value: string | null = paramObj.value != null ? String(paramObj.value) : null;
+      if (value == null) {
+        const options = paramObj.options;
+        if (Array.isArray(options) && options.length > 0) {
+          const first = options[0];
+          if (typeof first === "object" && first !== null) {
+            value = (first as Record<string, unknown>).title as string
+              ?? (first as Record<string, unknown>).value as string
+              ?? null;
+          }
+        }
+      }
+      if (!value) continue;
+
+      // Match by API key first (most reliable), then fall back to Czech title.
+      // Condition: key=buildingCondition, title="Stav objektu"
+      if (!listing.condition && (
+        key === "buildingCondition" ||
+        (title.includes("stav") && (title.includes("objekt") || title.includes("budov")))
+      )) {
+        listing.condition = value;
+      }
+      // Construction: key=material, title="Stavba" (exact match to avoid "Půdní vestavba")
+      else if (!listing.construction && (
+        key === "material" || title === "stavba" || title === "konstrukce"
+      )) {
+        listing.construction = value;
+      }
+      // Energy: key=energyEfficiencyRating, title="Energetická náročnost"
+      else if (!listing.energy_rating && (
+        key === "energyEfficiencyRating" || title.includes("energetick")
+      )) {
+        const letterMatch = value.match(/([A-Ga-g])/);
+        listing.energy_rating = letterMatch ? letterMatch[1].toUpperCase() : value;
+      }
+      // Ownership: key=ownership, title="Vlastnictví"
+      else if (!listing.ownership && (
+        key === "ownership" || title.includes("vlastnict")
+      )) {
+        listing.ownership = value;
+      }
+      // Furnishing: key=furnished, title="Vybavení"
+      else if (!listing.furnishing && (
+        key === "furnished" || title === "vybavení" || title === "vybaven"
+      )) {
+        listing.furnishing = value;
+      }
+      // Floor: key=floorNumber, title="Patro"
+      else if (listing.floor === null && (
+        key === "floorNumber" || title === "patro"
+      )) {
+        const floorNum = parseInt(String(value), 10);
+        if (!isNaN(floorNum)) listing.floor = floorNum;
+      }
+      // Total floors: key=floors, title="Počet podlaží"
+      else if (listing.total_floors === null && (
+        key === "floors" || (title.includes("počet") && title.includes("podla"))
+      )) {
+        const totalNum = parseInt(String(value), 10);
+        if (!isNaN(totalNum)) listing.total_floors = totalNum;
       }
     }
 

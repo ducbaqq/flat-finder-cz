@@ -231,21 +231,36 @@ app.get("/", async (c) => {
     return c.json(response);
   }
 
-  // SQL clustering
+  // SQL clustering with statement timeout to prevent runaway queries
   const precision = getClusterPrecision(zoom);
   const roundLat = sql`ROUND(${listings.latitude}::numeric, ${sql.raw(String(precision))})`;
   const roundLng = sql`ROUND(${listings.longitude}::numeric, ${sql.raw(String(precision))})`;
 
-  const rows = await db
-    .select({
-      lat: sql<number>`${roundLat}::float8`,
-      lng: sql<number>`${roundLng}::float8`,
-      count: count(),
-      avg_price: sql<number | null>`AVG(${listings.price})::float8`,
-    })
-    .from(listings)
-    .where(where)
-    .groupBy(roundLat, roundLng);
+  let rows: { lat: number; lng: number; count: number; avg_price: number | null }[];
+  try {
+    rows = await db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL statement_timeout = '5000'`);
+      return tx
+        .select({
+          lat: sql<number>`${roundLat}::float8`,
+          lng: sql<number>`${roundLng}::float8`,
+          count: count(),
+          avg_price: sql<number | null>`AVG(${listings.price})::float8`,
+        })
+        .from(listings)
+        .where(where)
+        .groupBy(roundLat, roundLng);
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("statement timeout") || message.includes("canceling statement")) {
+      return c.json(
+        { error: "Query timed out. Try zooming in or reducing filters.", markers: [], clusters: [], total: 0, clustered: false },
+        408,
+      );
+    }
+    throw err;
+  }
 
   const sqlClusters: ClusterPoint[] = rows.map((r) => ({
     lat: r.lat,

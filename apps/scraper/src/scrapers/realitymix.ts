@@ -201,10 +201,15 @@ export class RealitymixScraper extends BaseScraper {
 
       const labelLower = label.toLowerCase();
 
-      if (labelLower.includes("druh objektu") || labelLower.includes("stavba")) {
+      if (labelLower.includes("druh objektu") || (labelLower.includes("stavba") && !labelLower.includes("stav objektu"))) {
         listing.construction = normalizeConstruction(value);
-      } else if (labelLower.includes("stav objektu") || labelLower.includes("stav")) {
-        listing.condition = normalizeCondition(value);
+      } else if (labelLower === "stav objektu" || labelLower === "stav") {
+        // SCR-02: Only accept actual condition values, not m2 values or land-use types
+        const normalized = normalizeCondition(value);
+        if (normalized && !/^\d+\s*m[²2]?$/i.test(value) &&
+            !/^(obytn|rekrea[čc]n|pr[ůu]myslov|komer[čc]n|venkovsk)/i.test(value)) {
+          listing.condition = normalized;
+        }
       } else if (labelLower.includes("vlastnictv") || labelLower.includes("vlastnict")) {
         listing.ownership = normalizeOwnership(value);
       } else if (labelLower.includes("energetick")) {

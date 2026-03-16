@@ -31,10 +31,9 @@ function MapSkeleton() {
 function SearchPageContent() {
   const { filters, page, setPage, view, setView, setFilter, clearFilters } =
     useSearchFilters();
-  const { data, isLoading } = useListings({ filters, page });
+  const { data, isLoading, isError, refetch } = useListings({ filters, page });
   const total = data?.total ?? 0;
 
-  const showSidebar = view !== "map";
   const showMap = view === "map" || view === "hybrid";
   const showList = view === "list" || view === "hybrid";
 
@@ -77,6 +76,8 @@ function SearchPageContent() {
               <ListingResults
                 data={data}
                 isLoading={isLoading}
+                isError={isError}
+                refetch={refetch}
                 page={page}
                 onPageChange={setPage}
                 singleColumn={showMap}

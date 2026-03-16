@@ -134,7 +134,7 @@ export default function WatchdogModal() {
       </Dialog>
 
       {toast && (
-        <div className="fixed bottom-20 left-1/2 z-[100] -translate-x-1/2 rounded-lg bg-foreground px-4 py-2 text-sm text-background shadow-lg">
+        <div className="fixed top-20 left-1/2 z-[100] -translate-x-1/2 rounded-lg bg-foreground px-4 py-2 text-sm text-background shadow-lg">
           {toast}
         </div>
       )}

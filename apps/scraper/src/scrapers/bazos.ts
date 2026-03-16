@@ -230,6 +230,10 @@ export class BazosScraper extends BaseScraper {
         break;
       }
     }
+
+    // SCR-06: bazos is classifieds — no structured fields are available.
+    // Condition, construction, and energy fields are not provided by this source.
+    // This is a known limitation of the bazos data source.
   }
 
   // --- Parsing helpers -----------------------------------------------------

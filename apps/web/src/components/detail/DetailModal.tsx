@@ -7,6 +7,7 @@ import type { Listing } from "@flat-finder/types";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -64,6 +65,9 @@ export default function DetailModal() {
         <DialogTitle className="sr-only">
           {listing?.title || "Detail nabídky"}
         </DialogTitle>
+        <DialogDescription className="sr-only">
+          Detail nemovitosti{listing?.title ? ` - ${listing.title}` : ""}
+        </DialogDescription>
         <ScrollArea className="max-h-[90vh]">
           <AnimatePresence mode="wait">
             {loading && (

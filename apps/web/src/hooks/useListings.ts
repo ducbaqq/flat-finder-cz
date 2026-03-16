@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ListingsResponse } from "@flat-finder/types";
 import { apiGet } from "@/lib/api-client";
-import { useUiStore } from "@/store/ui-store";
 
 interface UseListingsOptions {
   filters: Record<string, string>;
@@ -12,8 +11,6 @@ interface UseListingsOptions {
 }
 
 export function useListings({ filters, page, perPage = 20 }: UseListingsOptions) {
-  const mapBounds = useUiStore((s) => s.mapBounds);
-
   const params: Record<string, unknown> = {
     page,
     per_page: perPage,
@@ -23,15 +20,11 @@ export function useListings({ filters, page, perPage = 20 }: UseListingsOptions)
     if (value) params[key] = value;
   }
 
-  if (mapBounds) {
-    params.sw_lat = mapBounds.sw_lat;
-    params.sw_lng = mapBounds.sw_lng;
-    params.ne_lat = mapBounds.ne_lat;
-    params.ne_lng = mapBounds.ne_lng;
-  }
-
   return useQuery<ListingsResponse>({
     queryKey: ["listings", params],
     queryFn: () => apiGet<ListingsResponse>("/listings", params),
+    staleTime: 60_000,
+    retry: 2,
+    retryDelay: 1000,
   });
 }

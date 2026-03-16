@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Home, Search, Plus } from "lucide-react";
+import { Bell, Home, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Logo } from "./Logo";
@@ -57,8 +57,8 @@ export function Navbar() {
             asChild
           >
             <Link href="/search">
-              <Plus className="mr-1.5 h-4 w-4" />
-              Přidat inzerát
+              <Search className="mr-1.5 h-4 w-4" />
+              Prohlížet nabídky
             </Link>
           </Button>
         </div>

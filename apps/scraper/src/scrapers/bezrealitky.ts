@@ -255,19 +255,32 @@ export class BezrealitkyScraper extends BaseScraper {
     const apolloCache = getApolloCache(pageProps);
     if (!apolloCache) return;
 
-    // Find the main Advert entry in the cache
+    // Find the main Advert entry in the cache.
+    // The detail page Apollo cache includes the main advert (with all fields)
+    // plus related adverts (with minimal fields).  Select the entry with the
+    // most keys to ensure we get the full detail object.
     let advert: Record<string, unknown> | null = null;
+    let maxKeys = 0;
     for (const [key, val] of Object.entries(apolloCache)) {
       if (key.startsWith("Advert:") && typeof val === "object" && val !== null) {
-        advert = val as Record<string, unknown>;
-        break;
+        const numKeys = Object.keys(val as Record<string, unknown>).length;
+        if (numKeys > maxKeys) {
+          maxKeys = numKeys;
+          advert = val as Record<string, unknown>;
+        }
       }
     }
     if (!advert) return;
 
-    // Description
+    // Description — prefer the locale-specific key, fall back to plain
     if (!listing.description) {
-      const desc = advert.description as string | undefined;
+      let desc: string | undefined;
+      for (const k of Object.keys(advert)) {
+        if (k.startsWith("descriptionByLocale") || k === "description") {
+          const v = advert[k];
+          if (typeof v === "string" && v) { desc = v; break; }
+        }
+      }
       if (desc) listing.description = desc;
     }
 
@@ -281,36 +294,41 @@ export class BezrealitkyScraper extends BaseScraper {
       if (totalFloors != null) listing.total_floors = totalFloors;
     }
 
-    // Construction (buildingType: BRICK, PANEL, etc.)
+    // Construction — field is called "construction" (not "buildingType")
     if (!listing.construction) {
-      const bt = advert.buildingType as string | undefined;
-      if (bt) listing.construction = normalizeBezrealitkyEnum(bt, CONSTRUCTION_NORMALIZE);
+      const ct = (advert.construction as string | undefined)
+        ?? (advert.buildingType as string | undefined);
+      if (ct) listing.construction = normalizeBezrealitkyEnum(ct, CONSTRUCTION_NORMALIZE);
     }
 
-    // Condition (buildingCondition)
+    // Condition — field is called "condition" (not "buildingCondition")
     if (!listing.condition) {
-      const bc = advert.buildingCondition as string | undefined;
-      if (bc) listing.condition = normalizeBezrealitkyEnum(bc, CONDITION_NORMALIZE);
+      const cond = (advert.condition as string | undefined)
+        ?? (advert.buildingCondition as string | undefined);
+      if (cond) listing.condition = normalizeBezrealitkyEnum(cond, CONDITION_NORMALIZE);
     }
 
-    // Ownership
+    // Ownership — field name is correct, but add normalization for Czech values
     if (!listing.ownership) {
       const own = advert.ownership as string | undefined;
       if (own) listing.ownership = normalizeBezrealitkyEnum(own, OWNERSHIP_NORMALIZE);
     }
 
-    // Furnishing
+    // Furnishing — field is called "equipped" (not "furnished")
     if (!listing.furnishing) {
-      const furn = advert.furnished as string | undefined;
+      const furn = (advert.equipped as string | undefined)
+        ?? (advert.furnished as string | undefined);
       if (furn) listing.furnishing = normalizeBezrealitkyEnum(furn, FURNISHING_NORMALIZE);
     }
 
-    // Energy rating
+    // Energy rating — field is called "penb" (not "energyEfficiencyRating")
     if (!listing.energy_rating) {
-      const er = advert.energyEfficiencyRating as string | undefined;
+      const er = (advert.penb as string | undefined)
+        ?? (advert.energyEfficiencyRating as string | undefined);
       if (er) {
         const letter = er.charAt(0).toUpperCase();
         if (letter >= "A" && letter <= "G") listing.energy_rating = letter;
+        else listing.energy_rating = er;
       }
     }
 
@@ -320,25 +338,11 @@ export class BezrealitkyScraper extends BaseScraper {
     if (advert.terrace) amenityFlags.push("terrace");
     if (advert.loggia) amenityFlags.push("loggia");
     if (advert.cellar) amenityFlags.push("cellar");
-
-    // Check for elevator/lift - may be in Apollo cache under different keys
-    for (const k of Object.keys(advert)) {
-      if (k === "elevator" || k === "lift") {
-        if (advert[k]) amenityFlags.push("lift");
-      }
-    }
-
+    if (advert.lift) amenityFlags.push("lift");
     if (advert.parking) amenityFlags.push("parking");
     if (advert.garage) amenityFlags.push("garage");
-
-    // Check for barrierFree
-    for (const k of Object.keys(advert)) {
-      if (k.toLowerCase().includes("barrierfree") || k.toLowerCase().includes("barrier_free")) {
-        if (advert[k]) amenityFlags.push("barrier_free");
-      }
-    }
-
-    if (advert.garden) amenityFlags.push("garden");
+    if (advert.barrierFree) amenityFlags.push("barrier_free");
+    if (advert.frontGarden) amenityFlags.push("garden");
 
     if (amenityFlags.length > 0) {
       // Merge with existing amenities from tags
@@ -640,13 +644,13 @@ export class BezrealitkyScraper extends BaseScraper {
       longitude: lng,
       size_m2: sizeM2,
       layout,
-      floor: (advert.floor as number) ?? null,
+      floor: (advert.etage as number) ?? (advert.floor as number) ?? null,
       total_floors: (advert.totalFloors as number) ?? null,
-      condition: (advert.buildingCondition as string) ?? null,
-      construction: (advert.buildingType as string) ?? null,
+      condition: (advert.condition as string) ?? (advert.buildingCondition as string) ?? null,
+      construction: (advert.construction as string) ?? (advert.buildingType as string) ?? null,
       ownership: (advert.ownership as string) ?? null,
-      furnishing: (advert.furnished as string) ?? null,
-      energy_rating: (advert.energyEfficiencyRating as string) ?? null,
+      furnishing: (advert.equipped as string) ?? (advert.furnished as string) ?? null,
+      energy_rating: (advert.penb as string) ?? (advert.energyEfficiencyRating as string) ?? null,
       amenities,
       image_urls: JSON.stringify(imageUrls),
       thumbnail_url: thumbnailUrl,
@@ -780,10 +784,13 @@ const CONDITION_NORMALIZE: Record<string, string> = {
 
 const OWNERSHIP_NORMALIZE: Record<string, string> = {
   PERSONAL: "personal", COOPERATIVE: "cooperative", STATE: "state",
+  OSOBNI: "personal", DRUZSTEVNI: "cooperative", STATNI: "state",
 };
 
 const FURNISHING_NORMALIZE: Record<string, string> = {
   FURNISHED: "furnished", PARTIALLY: "partially", UNFURNISHED: "unfurnished",
+  CASTECNE: "partially", VYBAVENO: "furnished", NEVYBAVENO: "unfurnished",
+  ANO: "furnished", NE: "unfurnished",
 };
 
 function normalizeBezrealitkyEnum(val: string, map: Record<string, string>): string {

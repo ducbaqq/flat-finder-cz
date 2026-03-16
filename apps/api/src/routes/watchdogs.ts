@@ -11,13 +11,18 @@ import type { Watchdog } from "@flat-finder/types";
 
 const app = new Hono();
 
+// ── API-13: Strip HTML tags to prevent XSS in labels ──
+function stripHtmlTags(str: string): string {
+  return str.replace(/<[^>]*>/g, "").trim();
+}
+
 const createWatchdogSchema = z.object({
   email: z
     .string()
     .min(1, "Email is required")
     .refine((val) => val.includes("@"), "Valid email is required"),
   filters: z.record(z.unknown()).default({}),
-  label: z.string().optional(),
+  label: z.string().max(200, "Label must be 200 characters or less").optional(),
 });
 
 /**
@@ -35,10 +40,13 @@ app.post("/", async (c) => {
 
   const { email, filters, label } = parsed.data;
 
+  // API-13: Sanitize label to strip HTML tags
+  const sanitizedLabel = label ? stripHtmlTags(label) : null;
+
   const row = await createWatchdog(db, {
     email,
     filters,
-    label: label?.trim() || null,
+    label: sanitizedLabel || null,
   });
 
   return c.json(
@@ -95,9 +103,14 @@ app.patch("/:id/toggle", async (c) => {
 
   const result = await toggleWatchdog(db, id);
 
+  // API-11: Return 404 if no rows were affected
+  if (!result) {
+    return c.json({ error: "Watchdog not found" }, 404);
+  }
+
   return c.json({
     id,
-    active: result?.active ?? false,
+    active: result.active ?? false,
   });
 });
 
@@ -112,7 +125,12 @@ app.delete("/:id", async (c) => {
     return c.json({ error: "Invalid watchdog ID" }, 400);
   }
 
-  await deleteWatchdog(db, id);
+  const deleted = await deleteWatchdog(db, id);
+
+  // API-11: Return 404 if no rows were affected
+  if (!deleted) {
+    return c.json({ error: "Watchdog not found" }, 404);
+  }
 
   return c.json({ deleted: true });
 });

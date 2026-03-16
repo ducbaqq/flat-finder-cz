@@ -18,7 +18,7 @@ interface SearchHeaderProps {
 
 const quickFilters = [
   { label: "Vše", value: "" },
-  { label: "Byty", value: "apartment" },
+  { label: "Byty", value: "flat" },
   { label: "Domy", value: "house" },
 ];
 

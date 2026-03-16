@@ -40,7 +40,8 @@ import { CeskeRealityScraper } from "./scrapers/ceskereality.js";
 import { RealitymixScraper } from "./scrapers/realitymix.js";
 import { IdnesScraper } from "./scrapers/idnes.js";
 import { ReaLingoScraper } from "./scrapers/realingo.js";
-import { deactivateStale } from "./deactivator.js";
+import { deactivateStale, deactivateByTtl } from "./deactivator.js";
+import { normalizeListingFields } from "./normalizer.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -84,6 +85,7 @@ interface CliArgs {
   dryRun: boolean;
   watch: boolean;
   full: boolean;
+  cleanup: boolean;
   interval: number;
 }
 
@@ -118,6 +120,7 @@ function parseArgs(): CliArgs {
     dryRun: false,
     watch: false,
     full: false,
+    cleanup: false,
     interval: env.WATCHER_INTERVAL_S,
   };
 
@@ -138,6 +141,8 @@ function parseArgs(): CliArgs {
       opts.watch = true;
     } else if (arg === "--full") {
       opts.full = true;
+    } else if (arg === "--cleanup") {
+      opts.cleanup = true;
     } else if (arg === "--interval" && i + 1 < args.length) {
       opts.interval = parseInt(args[++i], 10);
       if (isNaN(opts.interval) || opts.interval < 1) {
@@ -156,8 +161,18 @@ Options:
   --dry-run           Collect listings but do not save to database
   --watch             Run in watcher mode: loop continuously checking newest pages
   --full              Full scan: fetch all pages + deactivate stale listings
+  --cleanup           Run TTL-based deactivation only (listings not scraped in 14 days)
   --interval <secs>   Seconds between watcher cycles (default: ${env.WATCHER_INTERVAL_S})
   --help, -h          Show this help message
+
+Scheduling (SCR-11):
+  Recommended cron expressions for production:
+    # Incremental scrape every 4 hours
+    0 */4 * * * cd /app && npm run scraper 2>&1 | tee -a /var/log/scraper.log
+    # Full scrape + deactivation once daily at 3 AM
+    0 3 * * * cd /app && npm run scraper -- --full 2>&1 | tee -a /var/log/scraper-full.log
+    # TTL cleanup daily at 5 AM (as safety net)
+    0 5 * * * cd /app && npm run scraper -- --cleanup 2>&1 | tee -a /var/log/scraper-cleanup.log
 `);
       process.exit(0);
     } else {
@@ -168,6 +183,11 @@ Options:
 
   if (opts.watch && opts.full) {
     console.error("Cannot use --watch and --full together.");
+    process.exit(2);
+  }
+
+  if (opts.cleanup && (opts.watch || opts.full)) {
+    console.error("Cannot use --cleanup with --watch or --full.");
     process.exit(2);
   }
 
@@ -260,7 +280,21 @@ function createScraper(source: SourceName): BaseScraper {
 // Convert ScraperResult -> NewListing (handle jsonb field differences)
 // ---------------------------------------------------------------------------
 
+// SCR-04: Non-Czech city blacklist
+const CITY_BLACKLIST = new Set([
+  "spanelsko", "spain", "espana",
+  "nemecko", "germany", "deutschland",
+  "rakousko", "austria",
+  "polsko", "poland",
+  "slovensko", "slovakia",
+  "francie", "france",
+  "italie", "italy",
+]);
+
 function toNewListing(result: ScraperResult): NewListing {
+  // SCR-01: Apply cross-source normalization to all string-enum fields
+  normalizeListingFields(result);
+
   // image_urls comes as a JSON string from the scraper; DB schema expects string[]
   let imageUrls: string[] = [];
   try {
@@ -280,6 +314,34 @@ function toNewListing(result: ScraperResult): NewListing {
     }
   }
 
+  // --- SCR-10: Data validation before DB insert ---
+
+  // Null out negative prices
+  let price = result.price;
+  if (price !== null && price < 0) price = null;
+
+  // Validate coordinates are within Czech Republic bounds (lat 48.5-51.1, lng 12.0-18.9)
+  let latitude = result.latitude;
+  let longitude = result.longitude;
+  if (latitude !== null && longitude !== null) {
+    if (latitude < 48.5 || latitude > 51.1 || longitude < 12.0 || longitude > 18.9) {
+      latitude = null;
+      longitude = null;
+    }
+  } else {
+    // If only one is present, null both
+    if (latitude !== null || longitude !== null) {
+      latitude = null;
+      longitude = null;
+    }
+  }
+
+  // SCR-04: Filter out non-Czech cities
+  let city = result.city;
+  if (city && CITY_BLACKLIST.has(city.toLowerCase().trim())) {
+    city = null;
+  }
+
   return {
     external_id: result.external_id,
     source: result.source,
@@ -287,15 +349,15 @@ function toNewListing(result: ScraperResult): NewListing {
     transaction_type: result.transaction_type,
     title: result.title,
     description: result.description,
-    price: result.price,
+    price,
     currency: result.currency,
     price_note: result.price_note,
     address: result.address,
-    city: result.city,
+    city,
     district: result.district,
     region: result.region,
-    latitude: result.latitude,
-    longitude: result.longitude,
+    latitude,
+    longitude,
     size_m2: result.size_m2,
     layout: result.layout,
     floor: result.floor,
@@ -688,6 +750,56 @@ function printSummary(results: SourceResult[]): void {
     );
   }
   console.log(`${t} ${"=".repeat(60)}`);
+
+  // SCR-08: Scraper failure alerting
+  checkAndAlertFailures(results);
+}
+
+// ---------------------------------------------------------------------------
+// SCR-08: Failure alerting
+// ---------------------------------------------------------------------------
+
+function checkAndAlertFailures(results: SourceResult[]): void {
+  const failures = results.filter((r) => !r.success);
+  const highErrors = results.filter((r) => r.success && r.errorCount > r.newCount && r.errorCount > 10);
+
+  if (failures.length === 0 && highErrors.length === 0) return;
+
+  const t = ts();
+
+  if (failures.length > 0) {
+    console.error(`${t} [ALERT] ${failures.length} scraper(s) FAILED:`);
+    for (const f of failures) {
+      console.error(`${t} [ALERT]   ${f.source}: ${f.fatalError ?? "unknown error"}`);
+    }
+  }
+
+  if (highErrors.length > 0) {
+    console.error(`${t} [ALERT] ${highErrors.length} scraper(s) have HIGH ERROR RATES:`);
+    for (const h of highErrors) {
+      console.error(
+        `${t} [ALERT]   ${h.source}: ${h.errorCount} errors vs ${h.newCount} new (error rate > 100%)`,
+      );
+    }
+  }
+
+  // Log a structured JSON alert that can be picked up by log monitoring systems
+  // (e.g., Datadog, CloudWatch, or a simple log watcher script)
+  const alertPayload = {
+    type: "scraper_alert",
+    timestamp: new Date().toISOString(),
+    failed_sources: failures.map((f) => ({
+      source: f.source,
+      error: f.fatalError,
+      elapsed_ms: f.elapsedMs,
+    })),
+    high_error_sources: highErrors.map((h) => ({
+      source: h.source,
+      error_count: h.errorCount,
+      new_count: h.newCount,
+    })),
+  };
+  console.error(`${t} [ALERT] ${JSON.stringify(alertPayload)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -703,13 +815,13 @@ function sleep(ms: number): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  const { source, dryRun, watch, full, interval } = parseArgs();
+  const { source, dryRun, watch, full, cleanup, interval } = parseArgs();
   const env = getEnv();
 
   const sources: SourceName[] =
     source === "all" ? ALL_SOURCES : [source];
 
-  const mode = watch ? "WATCH" : full ? "FULL" : "INCREMENTAL";
+  const mode = cleanup ? "CLEANUP" : watch ? "WATCH" : full ? "FULL" : "INCREMENTAL";
 
   console.log("=".repeat(60));
   console.log("Flat Finder CZ - Scraper");
@@ -746,6 +858,23 @@ async function main(): Promise<void> {
     watcherDetailConcurrency: env.WATCHER_DETAIL_CONCURRENCY,
   };
 
+  // SCR-09: Standalone cleanup mode — TTL deactivation only
+  if (cleanup) {
+    console.log(`${ts()} [runner] Running TTL-based deactivation (14 day threshold)...`);
+    if (!dryRun) {
+      const conn = createDb();
+      try {
+        const deactivated = await deactivateByTtl(conn.db, 14);
+        console.log(`${ts()} [runner] TTL deactivation complete: ${deactivated} listings deactivated`);
+      } finally {
+        await conn.sql.end();
+      }
+    } else {
+      console.log(`${ts()} [runner] DRY RUN — skipping TTL deactivation`);
+    }
+    process.exit(0);
+  }
+
   if (watch) {
     let cycle = 0;
     while (!shouldStop) {
@@ -764,6 +893,21 @@ async function main(): Promise<void> {
   } else {
     const results = await runCycle(sources, runOpts);
     printSummary(results);
+
+    // SCR-09: Run TTL-based deactivation after incremental/full scrapes as a safety net
+    if (!dryRun) {
+      const conn = createDb();
+      try {
+        const ttlDeactivated = await deactivateByTtl(conn.db, 14);
+        if (ttlDeactivated > 0) {
+          console.log(`${ts()} [runner] TTL deactivation: ${ttlDeactivated} stale listings (>14 days)`);
+        }
+      } catch (err) {
+        console.error(`${ts()} [runner] TTL deactivation error: ${err}`);
+      } finally {
+        await conn.sql.end();
+      }
+    }
 
     // Exit with code 1 if any scraper failed
     const anyFailed = results.some((r) => !r.success);

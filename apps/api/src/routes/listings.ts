@@ -5,20 +5,50 @@ import { rowToListing, parseNumericParam } from "../helpers.js";
 
 const app = new Hono();
 
-// ── Cached total count for common "no filters" queries ──
-let cachedActiveCount: { count: number; ts: number } | null = null;
-const COUNT_CACHE_TTL = 2 * 60_000; // 2 minutes
+// ── Cached total counts per filter-hash with 5-min TTL ──
+const countCache = new Map<string, { count: number; ts: number }>();
+const COUNT_CACHE_TTL = 5 * 60_000; // 5 minutes
+const MAX_COUNT_CACHE = 200;
 
-function hasNonPaginationFilters(filters: ListingFilters): boolean {
-  return !!(
-    filters.property_type || filters.transaction_type || filters.city ||
-    filters.region || filters.source || filters.layout || filters.condition ||
-    filters.construction || filters.ownership || filters.furnishing ||
-    filters.energy_rating || filters.amenities || filters.location ||
-    filters.price_min != null || filters.price_max != null ||
-    filters.size_min != null || filters.size_max != null ||
-    filters.sw_lat != null || filters.include_inactive
-  );
+// ── Allowed sort values (API-10) ──
+const ALLOWED_SORTS = new Set<string>(["newest", "price_asc", "price_desc", "size_asc", "size_desc"]);
+
+// ── Allowed enum values for input validation (API-12) ──
+const ALLOWED_PROPERTY_TYPES = new Set<string>(["flat", "house", "land", "commercial", "garage", "other", "cottage", "residential_building"]);
+const ALLOWED_TRANSACTION_TYPES = new Set<string>(["rent", "sale", "auction", "flatshare"]);
+const ALLOWED_SOURCES = new Set<string>(["sreality", "bezrealitky", "ulovdomov", "bazos", "ereality", "eurobydleni", "ceskereality", "realitymix", "idnes", "realingo"]);
+const MAX_FREE_TEXT_LENGTH = 200;
+
+/** Build a stable cache key from filter params (excludes page/per_page/sort). */
+function buildFilterHash(filters: ListingFilters): string {
+  const parts: string[] = [];
+  const keys: (keyof ListingFilters)[] = [
+    "property_type", "transaction_type", "city", "region", "source", "layout",
+    "condition", "construction", "ownership", "furnishing", "energy_rating",
+    "amenities", "location", "include_inactive",
+  ];
+  for (const k of keys) {
+    const v = filters[k];
+    if (v != null && v !== false && v !== "") parts.push(`${k}=${v}`);
+  }
+  for (const k of ["price_min", "price_max", "size_min", "size_max", "sw_lat", "sw_lng", "ne_lat", "ne_lng"] as const) {
+    const v = filters[k];
+    if (v != null) parts.push(`${k}=${v}`);
+  }
+  return parts.join("&") || "__unfiltered__";
+}
+
+/** Validate comma-separated enum values. Returns true if all values are in the allowed set. */
+function validateEnumParam(value: string | undefined, allowed: Set<string>): boolean {
+  if (!value) return true;
+  return value.split(",").every((v) => allowed.has(v.trim()));
+}
+
+/** Trim and limit free-text filter parameters. */
+function sanitizeFreeText(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > MAX_FREE_TEXT_LENGTH ? trimmed.slice(0, MAX_FREE_TEXT_LENGTH) : trimmed || undefined;
 }
 
 /**
@@ -28,13 +58,32 @@ app.get("/", async (c) => {
   const db = getDb();
   const q = c.req.query();
 
+  // ── API-10: Validate sort param ──
+  if (q.sort && !ALLOWED_SORTS.has(q.sort)) {
+    return c.json(
+      { error: `Invalid sort parameter. Allowed: ${[...ALLOWED_SORTS].join(", ")}` },
+      400,
+    );
+  }
+
+  // ── API-12: Validate enum filter params ──
+  if (!validateEnumParam(q.property_type, ALLOWED_PROPERTY_TYPES)) {
+    return c.json({ error: `Invalid property_type. Allowed: ${[...ALLOWED_PROPERTY_TYPES].join(", ")}` }, 400);
+  }
+  if (!validateEnumParam(q.transaction_type, ALLOWED_TRANSACTION_TYPES)) {
+    return c.json({ error: `Invalid transaction_type. Allowed: ${[...ALLOWED_TRANSACTION_TYPES].join(", ")}` }, 400);
+  }
+  if (!validateEnumParam(q.source, ALLOWED_SOURCES)) {
+    return c.json({ error: `Invalid source. Allowed: ${[...ALLOWED_SOURCES].join(", ")}` }, 400);
+  }
+
   const filters: ListingFilters = {
     page: parseInt(q.page ?? "1", 10) || 1,
     per_page: parseInt(q.per_page ?? "20", 10) || 20,
     property_type: q.property_type || undefined,
     transaction_type: q.transaction_type || undefined,
-    city: q.city || undefined,
-    region: q.region || undefined,
+    city: sanitizeFreeText(q.city),
+    region: sanitizeFreeText(q.region),
     source: q.source || undefined,
     layout: q.layout || undefined,
     condition: q.condition || undefined,
@@ -43,7 +92,7 @@ app.get("/", async (c) => {
     furnishing: q.furnishing || undefined,
     energy_rating: q.energy_rating || undefined,
     amenities: q.amenities || undefined,
-    location: q.location || undefined,
+    location: sanitizeFreeText(q.location),
     price_min: parseNumericParam(q.price_min),
     price_max: parseNumericParam(q.price_max),
     size_min: parseNumericParam(q.size_min),
@@ -56,17 +105,26 @@ app.get("/", async (c) => {
     include_inactive: q.include_inactive === "true" || q.include_inactive === "1",
   };
 
-  // For unfiltered queries, use cached count to skip expensive COUNT(*)
-  const noFilters = !hasNonPaginationFilters(filters);
-  const useCachedCount = noFilters && cachedActiveCount && Date.now() - cachedActiveCount.ts < COUNT_CACHE_TTL;
+  // ── API-01: Cache filtered counts per filter-hash with 5-min TTL ──
+  const filterHash = buildFilterHash(filters);
+  const cachedEntry = countCache.get(filterHash);
+  const now = Date.now();
+  const cachedTotal = cachedEntry && now - cachedEntry.ts < COUNT_CACHE_TTL
+    ? cachedEntry.count
+    : undefined;
 
   const result = await queryListings(db, filters, {
-    cachedTotal: useCachedCount ? cachedActiveCount!.count : undefined,
+    cachedTotal,
   });
 
-  // Cache the count for unfiltered queries
-  if (noFilters && !useCachedCount) {
-    cachedActiveCount = { count: result.total, ts: Date.now() };
+  // Store the count in cache for this filter combination
+  if (cachedTotal == null) {
+    if (countCache.size >= MAX_COUNT_CACHE) {
+      // Evict oldest entry
+      const oldest = countCache.keys().next().value;
+      if (oldest) countCache.delete(oldest);
+    }
+    countCache.set(filterHash, { count: result.total, ts: now });
   }
 
   return c.json({

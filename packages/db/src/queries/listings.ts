@@ -11,11 +11,10 @@ import {
   isNotNull,
   lte,
   or,
-  sql,
   type SQL,
 } from "drizzle-orm";
 import type { ListingFilters } from "@flat-finder/types";
-import { listings, type ListingRow, type NewListing } from "../schema/listings.js";
+import { listings, type NewListing } from "../schema/listings.js";
 import type { Db } from "../client.js";
 
 export function buildWhereConditions(
@@ -205,6 +204,32 @@ export async function findExistingExternalIds(
     .from(listings)
     .where(inArray(listings.external_id, externalIds));
   return new Set(rows.map((r) => r.external_id));
+}
+
+/**
+ * SCR-09: TTL-based deactivation.
+ * Deactivates active listings whose scraped_at is older than `ttlDays` days.
+ * This catches stale listings that accumulate when running in incremental/watch mode.
+ */
+export async function deactivateByTtlListings(
+  db: Db,
+  ttlDays: number,
+): Promise<number> {
+  const cutoff = new Date(Date.now() - ttlDays * 24 * 60 * 60 * 1000).toISOString();
+  const now = new Date().toISOString();
+
+  const result = await db
+    .update(listings)
+    .set({ is_active: false, deactivated_at: now })
+    .where(
+      and(
+        eq(listings.is_active, true),
+        lte(listings.scraped_at, cutoff),
+      ),
+    )
+    .returning({ id: listings.id });
+
+  return result.length;
 }
 
 export async function deactivateStaleListings(
