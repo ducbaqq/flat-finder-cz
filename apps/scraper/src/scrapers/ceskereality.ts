@@ -261,26 +261,68 @@ function isAmenityLabel(label: string): boolean {
 // Scraper
 // ---------------------------------------------------------------------------
 
+export interface CeskeRealityScraperOptions extends ScraperOptions {
+  categoryParallelism?: number;
+  skipEnrichmentHours?: number;
+}
+
 export class CeskeRealityScraper extends BaseScraper {
   readonly name = "ceskereality";
   readonly baseUrl = "https://www.ceskereality.cz";
+  private readonly categoryParallelism: number;
+  readonly skipEnrichmentHours: number;
 
   override get hasDetailPhase() { return true; }
 
-  constructor(opts: ScraperOptions) {
+  constructor(opts: CeskeRealityScraperOptions) {
     super(opts);
+    this.categoryParallelism = opts.categoryParallelism ?? 2;
+    this.skipEnrichmentHours = opts.skipEnrichmentHours ?? 24;
   }
 
   // ─── Phase 1: List Scan ───────────────────────────────────────────
 
   async *fetchPages(): AsyncGenerator<PageResult> {
     this.init();
-    for (const [urlPath, propertyType, transactionType] of CATEGORIES) {
-      const catName = `${transactionType}/${propertyType}`;
-      try {
-        yield* this.fetchCategoryPages(urlPath, propertyType, transactionType, catName);
-      } catch (err) {
-        this.log(`Error scraping ${catName}: ${err}`);
+
+    if (this.categoryParallelism <= 1) {
+      for (const [urlPath, propertyType, transactionType] of CATEGORIES) {
+        const catName = `${transactionType}/${propertyType}`;
+        try {
+          yield* this.fetchCategoryPages(urlPath, propertyType, transactionType, catName);
+        } catch (err) {
+          this.log(`Error scraping ${catName}: ${err}`);
+        }
+      }
+      return;
+    }
+
+    // Parallel categories
+    const chunks: (typeof CATEGORIES)[] = [];
+    for (let i = 0; i < CATEGORIES.length; i += this.categoryParallelism) {
+      chunks.push(CATEGORIES.slice(i, i + this.categoryParallelism));
+    }
+
+    for (const chunk of chunks) {
+      const allResults: PageResult[][] = await Promise.all(
+        chunk.map(async ([urlPath, propertyType, transactionType]) => {
+          const catName = `${transactionType}/${propertyType}`;
+          const pages: PageResult[] = [];
+          try {
+            for await (const page of this.fetchCategoryPages(urlPath, propertyType, transactionType, catName)) {
+              pages.push(page);
+            }
+          } catch (err) {
+            this.log(`Error scraping ${catName}: ${err}`);
+          }
+          return pages;
+        }),
+      );
+
+      for (const pages of allResults) {
+        for (const page of pages) {
+          yield page;
+        }
       }
     }
   }

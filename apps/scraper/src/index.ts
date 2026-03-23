@@ -264,6 +264,8 @@ function createScraper(source: SourceName, watchMode = false): BaseScraper {
         ...common,
         rps: env.CESKEREALITY_RPS,
         concurrency: env.CESKEREALITY_CONCURRENCY,
+        categoryParallelism: env.CESKEREALITY_CATEGORY_PARALLELISM,
+        skipEnrichmentHours: env.CESKEREALITY_SKIP_ENRICHMENT_HOURS,
       });
     case "realitymix":
       return new RealitymixScraper({
