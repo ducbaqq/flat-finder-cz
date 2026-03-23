@@ -1,64 +1,46 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { useStats } from "@/hooks/useStats";
-import { fadeInUp, staggerContainer } from "@/lib/animations";
 
 export function HeroSection({ children }: { children: React.ReactNode }) {
   const { data } = useStats();
   const totalListings = data?.total ?? 0;
 
   return (
-    <section className="relative flex min-h-[85vh] items-center justify-center overflow-hidden" data-testid="hero-section">
-      {/* Warm radial gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-[var(--terracotta)]/5" />
-      <div
-        className="absolute inset-0 opacity-[0.02]"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle at 1px 1px, hsl(var(--foreground)) 1px, transparent 0)",
-          backgroundSize: "40px 40px",
-        }}
-      />
-
-      <motion.div
-        className="relative z-10 mx-auto max-w-5xl px-4 text-center"
-        variants={staggerContainer}
-        initial="hidden"
-        animate="visible"
-      >
-        {/* Eyebrow */}
-        {totalListings > 0 && (
-          <motion.div variants={fadeInUp} className="mb-6 inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5" data-testid="hero-listing-count">
-            <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-            <span className="text-sm font-medium text-primary">
-              Přes {totalListings.toLocaleString("cs-CZ")} ověřených nabídek
-            </span>
-          </motion.div>
-        )}
-
-        <motion.h1
-          variants={fadeInUp}
-          className="font-display leading-[0.95] tracking-tight"
-          style={{ fontSize: "var(--text-hero)" }}
-          data-testid="hero-title"
+    <section
+      className="flex flex-col items-center pt-12 pb-8 px-4"
+      data-testid="hero-section"
+    >
+      {/* App Logo - big centered */}
+      <div className="flex items-center gap-3 mb-6">
+        <div
+          className="flex h-16 w-16 items-center justify-center rounded-full bg-[#CC0000] text-2xl font-bold text-white"
+          style={{ fontFamily: "var(--font-display)" }}
         >
-          Najděte domov{" "}
-          <em className="text-primary not-italic" style={{ fontStyle: "italic" }}>
-            bez starostí
-          </em>
-        </motion.h1>
+          D
+        </div>
+        <span
+          className="text-3xl font-bold tracking-tight"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
+          Domov.cz
+        </span>
+      </div>
 
-        <motion.div variants={fadeInUp} className="mx-auto mt-6 max-w-2xl">
-          <p className="text-muted-foreground" data-testid="hero-subtitle">
-            Prohledáváme všechny největší české portály na jednom místě
-          </p>
-        </motion.div>
+      {/* Headline with count */}
+      <h1
+        className="text-center text-xl sm:text-2xl font-medium text-[#232B3A] mb-8"
+        data-testid="hero-title"
+      >
+        Vyberte si z{" "}
+        <strong className="font-bold">
+          {totalListings.toLocaleString("cs-CZ")} nabídek
+        </strong>{" "}
+        nemovitostí
+      </h1>
 
-        <motion.div variants={fadeInUp} className="mt-10">
-          {children}
-        </motion.div>
-      </motion.div>
+      {/* Children: PropertyTypeTabs + QuickActions */}
+      <div className="w-full max-w-4xl">{children}</div>
     </section>
   );
 }

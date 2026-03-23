@@ -35,10 +35,10 @@ export function LatestListings() {
               style={{ fontSize: "var(--text-3xl)" }}
               data-testid="latest-listings-title"
             >
-              Nejnovější nabídky
+              Doporučené pro Vás
             </h2>
             <p className="mt-1 text-muted-foreground" data-testid="latest-listings-subtitle">
-              Čerstvé nemovitosti ze všech zdrojů
+              Nemovitosti, které by vás mohly zajímat
             </p>
           </div>
           <Button variant="ghost" asChild className="hidden sm:flex" data-testid="latest-listings-view-all">

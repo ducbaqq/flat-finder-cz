@@ -4,11 +4,9 @@ import { Navbar } from "@/components/shared/Navbar";
 import { Footer } from "@/components/shared/Footer";
 import { MobileBottomNav } from "@/components/shared/MobileBottomNav";
 import { HeroSection } from "@/components/home/HeroSection";
-import { SearchTabs } from "@/components/home/SearchTabs";
-import { TrustBar } from "@/components/home/TrustBar";
+import { PropertyTypeTabs } from "@/components/home/PropertyTypeTabs";
+import { QuickActions } from "@/components/home/QuickActions";
 import { LatestListings } from "@/components/home/LatestListings";
-import { FeaturesSection } from "@/components/home/FeaturesSection";
-import { CityExplorer } from "@/components/home/CityExplorer";
 import DetailModal from "@/components/detail/DetailModal";
 import WatchdogModal from "@/components/watchdog/WatchdogModal";
 
@@ -18,12 +16,10 @@ export default function HomePage() {
       <Navbar />
       <main data-testid="home-page">
         <HeroSection>
-          <SearchTabs />
-          <TrustBar />
+          <PropertyTypeTabs />
+          <QuickActions />
         </HeroSection>
         <LatestListings />
-        <FeaturesSection />
-        <CityExplorer />
       </main>
       <Footer />
       <MobileBottomNav />
