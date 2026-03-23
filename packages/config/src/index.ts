@@ -38,8 +38,10 @@ const envSchema = z.object({
   CESKEREALITY_CONCURRENCY: z.coerce.number().default(5), // was 3, server is slow but no errors
   REALITYMIX_RPS: z.coerce.number().default(5),
   REALITYMIX_CONCURRENCY: z.coerce.number().default(5),  // was 3, 57% utilization
-  IDNES_RPS: z.coerce.number().default(5),
-  IDNES_CONCURRENCY: z.coerce.number().default(5),       // was 3, 55% utilization
+  IDNES_RPS: z.coerce.number().default(18),               // was 5, idnes responds in ~0.35s avg
+  IDNES_CONCURRENCY: z.coerce.number().default(12),      // was 5, supports higher parallelism
+  IDNES_CATEGORY_PARALLELISM: z.coerce.number().default(3), // run 3 categories concurrently
+  IDNES_SKIP_ENRICHMENT_HOURS: z.coerce.number().default(24), // skip detail re-fetch if scraped within N hours
   REALINGO_RPS: z.coerce.number().default(5),
   REALINGO_CONCURRENCY: z.coerce.number().default(5),    // was 3, 56% utilization
   MAX_RETRIES: z.coerce.number().default(3),

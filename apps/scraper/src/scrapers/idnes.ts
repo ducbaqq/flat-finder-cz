@@ -33,16 +33,25 @@ interface AjaxResponse {
   snippets?: Record<string, string>;
 }
 
+export interface IdnesScraperOptions extends ScraperOptions {
+  categoryParallelism?: number;
+  skipEnrichmentHours?: number;
+}
+
 export class IdnesScraper extends BaseScraper {
   readonly name = "idnes";
   readonly baseUrl = "https://reality.idnes.cz";
+  private readonly categoryParallelism: number;
+  readonly skipEnrichmentHours: number;
 
   override get hasDetailPhase() {
     return true;
   }
 
-  constructor(opts: ScraperOptions) {
+  constructor(opts: IdnesScraperOptions) {
     super(opts);
+    this.categoryParallelism = opts.categoryParallelism ?? 3;
+    this.skipEnrichmentHours = opts.skipEnrichmentHours ?? 24;
   }
 
   // ─── Phase 1: List scan ────────────────────────────────────────────
@@ -50,14 +59,49 @@ export class IdnesScraper extends BaseScraper {
   async *fetchPages(): AsyncGenerator<PageResult> {
     this.init();
 
-    for (const category of CATEGORIES) {
-      const categoryLabel = `${category.transactionSlug}/${category.propertySlug}`;
-      this.log(`Scraping category: ${categoryLabel}`);
+    if (this.categoryParallelism <= 1) {
+      // Sequential (original behavior)
+      for (const category of CATEGORIES) {
+        const categoryLabel = `${category.transactionSlug}/${category.propertySlug}`;
+        this.log(`Scraping category: ${categoryLabel}`);
+        try {
+          yield* this.fetchCategoryPages(category);
+        } catch (err) {
+          this.log(`  ERROR scraping ${categoryLabel}: ${err}`);
+        }
+      }
+      return;
+    }
 
-      try {
-        yield* this.fetchCategoryPages(category);
-      } catch (err) {
-        this.log(`  ERROR scraping ${categoryLabel}: ${err}`);
+    // Parallel categories: run N categories concurrently, yield results as they come
+    const chunks: Category[][] = [];
+    for (let i = 0; i < CATEGORIES.length; i += this.categoryParallelism) {
+      chunks.push(CATEGORIES.slice(i, i + this.categoryParallelism));
+    }
+
+    for (const chunk of chunks) {
+      // Collect all pages from parallel categories, then yield them
+      const allResults: PageResult[][] = await Promise.all(
+        chunk.map(async (category) => {
+          const categoryLabel = `${category.transactionSlug}/${category.propertySlug}`;
+          this.log(`Scraping category: ${categoryLabel}`);
+          const pages: PageResult[] = [];
+          try {
+            for await (const page of this.fetchCategoryPages(category)) {
+              pages.push(page);
+            }
+          } catch (err) {
+            this.log(`  ERROR scraping ${categoryLabel}: ${err}`);
+          }
+          return pages;
+        }),
+      );
+
+      // Yield all pages from this chunk
+      for (const pages of allResults) {
+        for (const page of pages) {
+          yield page;
+        }
       }
     }
   }

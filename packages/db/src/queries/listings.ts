@@ -76,13 +76,18 @@ export function buildWhereConditions(
   }
 
   if (filters.location) {
-    const like = `%${filters.location}%`;
+    // Prefer exact match on city/district/region (uses B-tree indexes) before
+    // falling back to prefix match. Avoids leading-wildcard ILIKE on all
+    // columns which forces a full sequential scan.
+    const loc = filters.location;
     conditions.push(
       or(
-        ilike(listings.city, like),
-        ilike(listings.district, like),
-        ilike(listings.region, like),
-        ilike(listings.address, like),
+        eq(listings.city, loc),
+        eq(listings.district, loc),
+        eq(listings.region, loc),
+        ilike(listings.city, `${loc}%`),
+        ilike(listings.district, `${loc}%`),
+        ilike(listings.address, `%${loc}%`),
       )!,
     );
   }
@@ -203,6 +208,29 @@ export async function findExistingExternalIds(
     .select({ external_id: listings.external_id })
     .from(listings)
     .where(inArray(listings.external_id, externalIds));
+  return new Set(rows.map((r) => r.external_id));
+}
+
+/**
+ * Return external IDs that were scraped within the last `hours` hours.
+ * Used to skip detail re-enrichment for recently-scraped listings in full mode.
+ */
+export async function findRecentlyScrapedIds(
+  db: Db,
+  externalIds: string[],
+  hours: number,
+): Promise<Set<string>> {
+  if (externalIds.length === 0 || hours <= 0) return new Set();
+  const cutoff = new Date(Date.now() - hours * 3600_000).toISOString();
+  const rows = await db
+    .select({ external_id: listings.external_id })
+    .from(listings)
+    .where(
+      and(
+        inArray(listings.external_id, externalIds),
+        gte(listings.scraped_at, cutoff),
+      ),
+    );
   return new Set(rows.map((r) => r.external_id));
 }
 
