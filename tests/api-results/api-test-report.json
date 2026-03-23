@@ -1,0 +1,137 @@
+{
+  "date": "2026-03-15T14:30:00.000Z",
+  "target": "http://localhost:4000",
+  "database": "PostgreSQL (517500 total, 504838 active listings)",
+  "summary": {
+    "total_tests": 75,
+    "passed": 69,
+    "failed": 4,
+    "pass_rate": "92.0%",
+    "issues_critical": 3,
+    "issues_major": 4,
+    "issues_minor": 7,
+    "issues_total": 14
+  },
+  "issues": [
+    {
+      "severity": "Critical",
+      "title": "Health endpoint extremely slow (34s per call)",
+      "detail": "Uncached COUNT(*) + GROUP BY source on 517k rows every call. No caching.",
+      "endpoint": "GET /api/health",
+      "fix": "Add 60s in-memory cache or reuse /api/stats data"
+    },
+    {
+      "severity": "Critical",
+      "title": "Listings endpoint catastrophically slow (175-315s)",
+      "detail": "COUNT(*) on 500k+ rows for every new filter combination. 2-min cache only helps unfiltered.",
+      "endpoint": "GET /api/listings",
+      "fix": "Approximate counts, cache filtered counts, or skip count for page>1"
+    },
+    {
+      "severity": "Critical",
+      "title": "Server collapses under concurrent load",
+      "detail": "100 concurrent requests to cached endpoint resulted in 100% failure. Server hung for 10+ min after.",
+      "endpoint": "ALL",
+      "fix": "Increase connection pool, add rate limiting, add backpressure"
+    },
+    {
+      "severity": "Major",
+      "title": "CORS allows all origins",
+      "detail": "cors() with no origin restriction. Any website can call the API.",
+      "endpoint": "ALL",
+      "fix": "cors({ origin: ['https://domov.cz', 'http://localhost:3000'] })"
+    },
+    {
+      "severity": "Major",
+      "title": "No rate limiting",
+      "detail": "No rate limiting middleware. Server crashed under burst traffic.",
+      "endpoint": "ALL",
+      "fix": "Add hono-rate-limiter"
+    },
+    {
+      "severity": "Major",
+      "title": "No request body size limit",
+      "detail": "10MB JSON payload not rejected. No body-limit middleware.",
+      "endpoint": "POST /api/watchdogs",
+      "fix": "Add Hono body-limit middleware, 1MB max"
+    },
+    {
+      "severity": "Major",
+      "title": "Filtered markers SQL path timeout",
+      "detail": "SQL GROUP BY clustering with filters on 500k rows times out at 300s+.",
+      "endpoint": "GET /api/markers (filtered)",
+      "fix": "Pre-compute filtered clusters or add composite indexes"
+    },
+    {
+      "severity": "Minor",
+      "title": "Invalid sort value silently ignored",
+      "detail": "sort=invalid_sort returns 200 with default ordering",
+      "endpoint": "GET /api/listings",
+      "fix": "Validate sort against enum"
+    },
+    {
+      "severity": "Minor",
+      "title": "Toggle non-existent watchdog returns 200",
+      "detail": "Returns {id:999999999, active:false} instead of 404",
+      "endpoint": "PATCH /api/watchdogs/:id/toggle",
+      "fix": "Check UPDATE result count"
+    },
+    {
+      "severity": "Minor",
+      "title": "Double delete returns 200",
+      "detail": "DELETE already-deleted watchdog returns {deleted:true} instead of 404",
+      "endpoint": "DELETE /api/watchdogs/:id",
+      "fix": "Check DELETE result count"
+    },
+    {
+      "severity": "Minor",
+      "title": "Large filter payload accepted",
+      "detail": "1000 keys x 100 chars stored without validation",
+      "endpoint": "POST /api/watchdogs",
+      "fix": "Validate filter schema/size"
+    },
+    {
+      "severity": "Minor",
+      "title": "XSS payload stored verbatim in label",
+      "detail": "<script> tag stored as-is. Frontend must handle encoding.",
+      "endpoint": "POST /api/watchdogs",
+      "fix": "Server-side HTML sanitization"
+    },
+    {
+      "severity": "Minor",
+      "title": "Preview returns 200 for invalid IDs",
+      "detail": "Returns {title:null, thumbnail_url:null} instead of 404",
+      "endpoint": "GET /api/markers/preview/:id",
+      "fix": "Optional - graceful null is acceptable for hover previews"
+    },
+    {
+      "severity": "Minor",
+      "title": "Out-of-range page returns empty array",
+      "detail": "page=99999 returns 200 with empty listings instead of hint/404",
+      "endpoint": "GET /api/listings",
+      "fix": "Optional - current behavior is acceptable"
+    }
+  ],
+  "performance": [
+    {"endpoint": "GET /api/stats", "params": "cached", "time_ms": 2, "size_bytes": 566, "cache": "HIT"},
+    {"endpoint": "GET /api/stats", "params": "uncached", "time_ms": 30500, "size_bytes": 566, "cache": "MISS"},
+    {"endpoint": "GET /api/markers", "params": "no params", "time_ms": 1, "size_bytes": 57, "cache": "N/A"},
+    {"endpoint": "GET /api/markers", "params": "Prague z=12 (SC)", "time_ms": 16200, "size_bytes": 8400, "cache": "SC", "note": "Includes SC index rebuild"},
+    {"endpoint": "GET /api/markers", "params": "CZ z=5 (SC)", "time_ms": 2, "size_bytes": 265, "cache": "SC"},
+    {"endpoint": "GET /api/markers", "params": "CZ z=8 (SC)", "time_ms": 1, "size_bytes": 10650, "cache": "SC"},
+    {"endpoint": "GET /api/markers", "params": "CZ z=12 (SC)", "time_ms": 27, "size_bytes": 694000, "cache": "SC"},
+    {"endpoint": "GET /api/markers", "params": "CZ z=15 (SC)", "time_ms": 109, "size_bytes": 4300000, "cache": "SC"},
+    {"endpoint": "GET /api/markers", "params": "filtered (sale)", "time_ms": 300000, "size_bytes": null, "cache": "TIMEOUT"},
+    {"endpoint": "GET /api/markers/preview/:id", "params": "cached", "time_ms": 1, "size_bytes": 153, "cache": "HIT"},
+    {"endpoint": "GET /api/listings/:id", "params": "valid", "time_ms": 144, "size_bytes": 1430, "cache": "N/A"},
+    {"endpoint": "GET /api/listings/:id", "params": "404", "time_ms": 5, "size_bytes": 27, "cache": "N/A"},
+    {"endpoint": "GET /api/listings", "params": "default (uncached)", "time_ms": 175000, "size_bytes": 56000, "cache": "N/A"},
+    {"endpoint": "GET /api/listings", "params": "page=2 (cached count)", "time_ms": 1000, "size_bytes": 56000, "cache": "N/A"},
+    {"endpoint": "GET /api/listings", "params": "city=Praha", "time_ms": 315000, "size_bytes": 46000, "cache": "N/A"},
+    {"endpoint": "GET /api/health", "params": "uncached", "time_ms": 34000, "size_bytes": 306, "cache": "none"},
+    {"endpoint": "POST /api/watchdogs", "params": "create", "time_ms": 12, "size_bytes": 89, "cache": "N/A"},
+    {"endpoint": "GET /api/watchdogs", "params": "by email", "time_ms": 6, "size_bytes": 450, "cache": "N/A"},
+    {"endpoint": "PATCH /api/watchdogs/:id/toggle", "params": "toggle", "time_ms": 8, "size_bytes": 26, "cache": "N/A"},
+    {"endpoint": "DELETE /api/watchdogs/:id", "params": "delete", "time_ms": 5, "size_bytes": 15, "cache": "N/A"}
+  ]
+}

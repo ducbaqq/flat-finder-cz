@@ -15,11 +15,14 @@ dist/
 
 # Build
 build/
+*.tsbuildinfo
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
+*.db-shm
+*.db-wal
 data/
 
 # Environment
@@ -29,6 +32,10 @@ data/
 
 # SSL certificates
 certs/
+
+# Test output
+test-results/
+test-screenshots/
 
 # OS
 .DS_Store
