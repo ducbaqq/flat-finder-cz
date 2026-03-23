@@ -265,7 +265,7 @@ app.get("/", async (c) => {
     }
 
     const tempSc = new Supercluster<{ id: number; price: number | null }>({
-      radius: 120,
+      radius: 160,
       maxZoom: 16,
       minPoints: 2,
     });

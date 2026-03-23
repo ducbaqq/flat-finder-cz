@@ -62,7 +62,7 @@ export async function buildClusterIndex(): Promise<void> {
     }
 
     const sc = new Supercluster<PointProps>({
-      radius: 120,     // cluster merge radius in px — aggressive to get ~30-40 at country zoom
+      radius: 160,     // cluster merge radius in px — very aggressive merging
       maxZoom: 16,     // individual points beyond this
       minZoom: 0,
       minPoints: 2,

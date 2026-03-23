@@ -32,8 +32,8 @@ function formatClusterCount(count: number): string {
 }
 
 function clusterRadius(count: number): number {
-  if (count <= 1) return 8;
-  return Math.min(55, 18 + Math.log10(count) * 14);
+  if (count <= 1) return 6;
+  return Math.min(38, 12 + Math.log10(count) * 10);
 }
 
 function clusterColor(): { fill: string; stroke: string } {
