@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useState, useRef } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -42,7 +42,6 @@ const CLUSTER_SIZE_MAX = 70;
 
 function clusterRadius(count: number): number {
   if (count <= 1) return CLUSTER_SIZE_MIN / 2;
-  // log scale: map log(count) from log(2)..log(100000) to min..max
   const logMin = Math.log(2);
   const logMax = Math.log(100_000);
   const t = Math.min(1, Math.max(0, (Math.log(count) - logMin) / (logMax - logMin)));
@@ -54,12 +53,8 @@ function clusterColor(count: number): { fill: string; stroke: string } {
   const logMin = Math.log(2);
   const logMax = Math.log(100_000);
   const t = Math.min(1, Math.max(0, (Math.log(Math.max(2, count)) - logMin) / (logMax - logMin)));
-
-  // Interpolate hue from 174 (teal) down to 15 (warm orange)
   const hue = Math.round(174 - t * 159);
-  // Saturation from 65% to 80%
   const sat = Math.round(65 + t * 15);
-  // Lightness from 38% (darker teal) to 45% (readable orange)
   const light = Math.round(38 + t * 7);
 
   return {
@@ -71,7 +66,6 @@ function clusterColor(count: number): { fill: string; stroke: string } {
 /** Font size scales with bubble radius */
 function clusterFontSize(count: number): number {
   const r = clusterRadius(count);
-  // radius ranges 15..35, font 11..16
   return Math.round(11 + ((r - 15) / 20) * 5);
 }
 
@@ -114,6 +108,60 @@ function HoverTooltip({ id }: { id: number }) {
       </div>
     </Tooltip>
   );
+}
+
+// ── Geocode location filter and fly map to that area ──
+
+const geocodeCache = new Map<string, L.LatLngBounds | null>();
+
+function geocodeLocation(query: string): Promise<L.LatLngBounds | null> {
+  const cached = geocodeCache.get(query);
+  if (cached !== undefined) return Promise.resolve(cached);
+
+  const url =
+    `https://nominatim.openstreetmap.org/search?` +
+    `q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=cz&accept-language=cs`;
+
+  return fetch(url)
+    .then((r) => (r.ok ? r.json() : []))
+    .then((results: Array<{ boundingbox: [string, string, string, string] }>) => {
+      if (results.length === 0) {
+        geocodeCache.set(query, null);
+        return null;
+      }
+      const bb = results[0].boundingbox;
+      const bounds = L.latLngBounds(
+        [parseFloat(bb[0]), parseFloat(bb[2])],
+        [parseFloat(bb[1]), parseFloat(bb[3])],
+      );
+      geocodeCache.set(query, bounds);
+      return bounds;
+    })
+    .catch(() => {
+      geocodeCache.set(query, null);
+      return null;
+    });
+}
+
+function LocationFlyTo({ location }: { location?: string }) {
+  const map = useMap();
+  const appliedRef = useRef("");
+
+  useEffect(() => {
+    const query = location?.trim() ?? "";
+    if (!query || query === appliedRef.current) return;
+
+    let active = true;
+    geocodeLocation(query).then((bounds) => {
+      if (!active || !bounds) return;
+      appliedRef.current = query;
+      map.fitBounds(bounds, { maxZoom: 14 });
+    });
+
+    return () => { active = false; };
+  }, [location, map]);
+
+  return null;
 }
 
 // ── Map event handler — sets bounds + zoom on mount + moveend ──
@@ -176,8 +224,6 @@ function MarkerLayer({ filters }: { filters: Record<string, string> }) {
             }}
             eventHandlers={{
               click: () => {
-                // Drill-down: use expansion_zoom from server if available,
-                // otherwise jump +3 zoom levels
                 const targetZoom = cluster.expansion_zoom
                   ? Math.min(cluster.expansion_zoom, 18)
                   : Math.min(map.getZoom() + 3, 18);
@@ -240,6 +286,7 @@ export function MapView({ filters }: MapViewProps) {
         maxZoom={20}
       />
       <MapEventsHandler />
+      <LocationFlyTo location={filters.location} />
       <MarkerLayer filters={filters} />
     </MapContainer>
   );
