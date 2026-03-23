@@ -22,10 +22,10 @@ export function PillToggle({
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+        "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200",
         selected
-          ? "bg-[#CC0000] text-white hover:bg-[#AE0000]"
-          : "bg-[#F8F8F8] text-[#232B3A] hover:bg-[#EEEEEE]",
+          ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90"
+          : "bg-muted text-foreground hover:bg-muted/70",
         className,
       )}
     >

@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import {
   Search,
   Building2,
@@ -129,6 +130,23 @@ function toggle(arr: string[], item: string): string[] {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Animation variants                                                 */
+/* ------------------------------------------------------------------ */
+
+const sectionVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: {
+      delay: i * 0.04,
+      duration: 0.4,
+      ease: [0, 0, 0.58, 1] as const,
+    },
+  }),
+};
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -216,218 +234,252 @@ export function FilterPageForm({
       className="space-y-8"
     >
       {/* 1. Property Type */}
-      <FilterSection title="Typ nemovitosti">
-        <div className="flex flex-wrap gap-2">
-          {PROPERTY_TYPES.map(({ value, label, icon }) => (
-            <PillToggle
-              key={value}
-              label={label}
-              icon={icon}
-              selected={propertyTypes.includes(value)}
-              onClick={() => setPropertyTypes((s) => toggle(s, value))}
-            />
-          ))}
-        </div>
-      </FilterSection>
+      <motion.div custom={0} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Typ nemovitosti">
+          <div className="flex flex-wrap gap-2">
+            {PROPERTY_TYPES.map(({ value, label, icon }) => (
+              <PillToggle
+                key={value}
+                label={label}
+                icon={icon}
+                selected={propertyTypes.includes(value)}
+                onClick={() => setPropertyTypes((s) => toggle(s, value))}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
 
       {/* 2. Transaction Type */}
-      <FilterSection title="Typ nabídky">
-        <div className="flex flex-wrap gap-2">
-          {TRANSACTION_TYPES.map(({ value, label }) => (
-            <PillToggle
-              key={value}
-              label={label}
-              selected={transactionTypes.includes(value)}
-              onClick={() => setTransactionTypes((s) => toggle(s, value))}
-            />
-          ))}
-        </div>
-      </FilterSection>
+      <motion.div custom={1} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Typ nabídky">
+          <div className="flex flex-wrap gap-2">
+            {TRANSACTION_TYPES.map(({ value, label }) => (
+              <PillToggle
+                key={value}
+                label={label}
+                selected={transactionTypes.includes(value)}
+                onClick={() => setTransactionTypes((s) => toggle(s, value))}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
 
       {/* 3. Layout / Disposition */}
-      <FilterSection title="Dispozice">
-        <div className="flex flex-wrap gap-2">
-          {LAYOUTS.map((layout) => (
-            <PillToggle
-              key={layout}
-              label={layout}
-              selected={layouts.includes(layout)}
-              onClick={() => setLayouts((s) => toggle(s, layout))}
-            />
-          ))}
-        </div>
-      </FilterSection>
+      <motion.div custom={2} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Dispozice">
+          <div className="flex flex-wrap gap-2">
+            {LAYOUTS.map((layout) => (
+              <PillToggle
+                key={layout}
+                label={layout}
+                selected={layouts.includes(layout)}
+                onClick={() => setLayouts((s) => toggle(s, layout))}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
 
       {/* 4. Location */}
-      <FilterSection title="Lokalita">
-        <div className="relative">
-          <MapPin className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#626D82]" />
-          <input
-            type="text"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="Zadejte adresu nebo lokalitu..."
-            className="w-full rounded-full border border-[#E0E0E0] bg-white py-2.5 pl-10 pr-4 text-sm text-[#232B3A] outline-none transition-colors placeholder:text-[#626D82] focus:border-[#CC0000]"
-          />
-        </div>
-      </FilterSection>
+      <motion.div custom={3} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Lokalita">
+          <div className="relative">
+            <MapPin className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="Zadejte adresu nebo lokalitu..."
+              className="w-full rounded-full border border-divider bg-card py-2.5 pl-10 pr-4 text-sm text-foreground outline-none transition-all duration-200 placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+        </FilterSection>
+      </motion.div>
 
       {/* 5. Price */}
-      <PillRangeInput
-        label="Cena"
-        minValue={priceMin}
-        maxValue={priceMax}
-        onMinChange={setPriceMin}
-        onMaxChange={setPriceMax}
-        unit="Kč"
-      />
+      <motion.div custom={4} variants={sectionVariants} initial="hidden" animate="visible">
+        <PillRangeInput
+          label="Cena"
+          minValue={priceMin}
+          maxValue={priceMax}
+          onMinChange={setPriceMin}
+          onMaxChange={setPriceMax}
+          unit="Kč"
+        />
+      </motion.div>
 
       {/* 6. Area */}
-      <PillRangeInput
-        label="Plocha"
-        minValue={areaMin}
-        maxValue={areaMax}
-        onMinChange={setAreaMin}
-        onMaxChange={setAreaMax}
-        unit="m²"
-      />
+      <motion.div custom={5} variants={sectionVariants} initial="hidden" animate="visible">
+        <PillRangeInput
+          label="Plocha"
+          minValue={areaMin}
+          maxValue={areaMax}
+          onMinChange={setAreaMin}
+          onMaxChange={setAreaMax}
+          unit="m²"
+        />
+      </motion.div>
 
       {/* 7. Building Condition */}
-      <FilterSection title="Stav objektu">
-        <div className="flex flex-wrap gap-2">
-          {BUILDING_CONDITIONS.map(({ value, label }) => (
-            <PillToggle
-              key={value}
-              label={label}
-              selected={conditions.includes(value)}
-              onClick={() => setConditions((s) => toggle(s, value))}
-            />
-          ))}
-        </div>
-      </FilterSection>
+      <motion.div custom={6} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Stav objektu">
+          <div className="flex flex-wrap gap-2">
+            {BUILDING_CONDITIONS.map(({ value, label }) => (
+              <PillToggle
+                key={value}
+                label={label}
+                selected={conditions.includes(value)}
+                onClick={() => setConditions((s) => toggle(s, value))}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
 
       {/* 8. Ownership */}
-      <FilterSection title="Vlastnictví">
-        <div className="flex flex-wrap gap-2">
-          {OWNERSHIP_TYPES.map(({ value, label }) => (
-            <PillToggle
-              key={value}
-              label={label}
-              selected={ownership.includes(value)}
-              onClick={() => setOwnership((s) => toggle(s, value))}
-            />
-          ))}
-        </div>
-      </FilterSection>
+      <motion.div custom={7} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Vlastnictví">
+          <div className="flex flex-wrap gap-2">
+            {OWNERSHIP_TYPES.map(({ value, label }) => (
+              <PillToggle
+                key={value}
+                label={label}
+                selected={ownership.includes(value)}
+                onClick={() => setOwnership((s) => toggle(s, value))}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
 
       {/* 9. Furnishing */}
-      <FilterSection title="Vybavení">
-        <div className="flex flex-wrap gap-2">
-          {FURNISHING_OPTIONS.map(({ value, label }) => (
-            <PillToggle
-              key={value}
-              label={label}
-              selected={furnishing.includes(value)}
-              onClick={() => setFurnishing((s) => toggle(s, value))}
-            />
-          ))}
-        </div>
-      </FilterSection>
+      <motion.div custom={8} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Vybavení">
+          <div className="flex flex-wrap gap-2">
+            {FURNISHING_OPTIONS.map(({ value, label }) => (
+              <PillToggle
+                key={value}
+                label={label}
+                selected={furnishing.includes(value)}
+                onClick={() => setFurnishing((s) => toggle(s, value))}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
 
       {/* 10. Building Type */}
-      <FilterSection title="Stavba">
-        <div className="flex flex-wrap gap-2">
-          {BUILDING_TYPES.map(({ value, label }) => (
-            <PillToggle
-              key={value}
-              label={label}
-              selected={buildingTypes.includes(value)}
-              onClick={() => setBuildingTypes((s) => toggle(s, value))}
-            />
-          ))}
-        </div>
-      </FilterSection>
+      <motion.div custom={9} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Stavba">
+          <div className="flex flex-wrap gap-2">
+            {BUILDING_TYPES.map(({ value, label }) => (
+              <PillToggle
+                key={value}
+                label={label}
+                selected={buildingTypes.includes(value)}
+                onClick={() => setBuildingTypes((s) => toggle(s, value))}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
 
       {/* 11. Outdoor Amenities */}
-      <FilterSection title="Doplňky - Venkovní">
-        <div className="flex flex-wrap gap-2">
-          {OUTDOOR_AMENITIES.map(({ value, label }) => (
-            <PillToggle
-              key={value}
-              label={label}
-              selected={outdoorAmenities.includes(value)}
-              onClick={() => setOutdoorAmenities((s) => toggle(s, value))}
-            />
-          ))}
-        </div>
-      </FilterSection>
+      <motion.div custom={10} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Doplňky - Venkovní">
+          <div className="flex flex-wrap gap-2">
+            {OUTDOOR_AMENITIES.map(({ value, label }) => (
+              <PillToggle
+                key={value}
+                label={label}
+                selected={outdoorAmenities.includes(value)}
+                onClick={() => setOutdoorAmenities((s) => toggle(s, value))}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
 
       {/* 12. Indoor Amenities */}
-      <FilterSection title="Doplňky - Vnitřní">
-        <div className="flex flex-wrap gap-2">
-          {INDOOR_AMENITIES.map(({ value, label }) => (
-            <PillToggle
-              key={value}
-              label={label}
-              selected={indoorAmenities.includes(value)}
-              onClick={() => setIndoorAmenities((s) => toggle(s, value))}
-            />
-          ))}
-        </div>
-      </FilterSection>
+      <motion.div custom={11} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Doplňky - Vnitřní">
+          <div className="flex flex-wrap gap-2">
+            {INDOOR_AMENITIES.map(({ value, label }) => (
+              <PillToggle
+                key={value}
+                label={label}
+                selected={indoorAmenities.includes(value)}
+                onClick={() => setIndoorAmenities((s) => toggle(s, value))}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
 
       {/* 13. Accessibility */}
-      <FilterSection title="Přístupnost">
-        <div className="flex flex-wrap gap-2">
-          {ACCESSIBILITY_OPTIONS.map(({ value, label }) => (
-            <PillToggle
-              key={value}
-              label={label}
-              selected={accessibility.includes(value)}
-              onClick={() => setAccessibility((s) => toggle(s, value))}
-            />
-          ))}
-        </div>
-      </FilterSection>
+      <motion.div custom={12} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Přístupnost">
+          <div className="flex flex-wrap gap-2">
+            {ACCESSIBILITY_OPTIONS.map(({ value, label }) => (
+              <PillToggle
+                key={value}
+                label={label}
+                selected={accessibility.includes(value)}
+                onClick={() => setAccessibility((s) => toggle(s, value))}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
 
       {/* 14. Energy Class */}
-      <FilterSection title="Energetická třída">
-        <div className="flex flex-wrap gap-2">
-          {ENERGY_CLASSES.map(({ value, label, color }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setEnergyClasses((s) => toggle(s, value))}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-all"
-              style={
-                energyClasses.includes(value)
-                  ? {
-                      backgroundColor: color,
-                      color: "#FFFFFF",
-                      boxShadow: `0 0 0 2px ${color}`,
-                    }
-                  : {
-                      backgroundColor: "#F8F8F8",
-                      color,
-                    }
-              }
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </FilterSection>
+      <motion.div custom={13} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Energetická třída">
+          <div className="flex flex-wrap gap-2">
+            {ENERGY_CLASSES.map(({ value, label, color }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setEnergyClasses((s) => toggle(s, value))}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-all duration-200"
+                style={
+                  energyClasses.includes(value)
+                    ? {
+                        backgroundColor: color,
+                        color: "#FFFFFF",
+                        boxShadow: `0 0 0 2px ${color}, 0 2px 8px ${color}40`,
+                      }
+                    : {
+                        backgroundColor: "hsl(var(--muted))",
+                        color,
+                      }
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
 
       {/* Submit */}
-      <div className="pt-4">
+      <motion.div
+        className="pt-4"
+        custom={14}
+        variants={sectionVariants}
+        initial="hidden"
+        animate="visible"
+      >
         <button
           type="submit"
-          className="flex w-full items-center justify-center gap-2 rounded-full bg-[#CC0000] px-8 py-3.5 text-base font-semibold text-white transition-colors hover:bg-[#AE0000] active:bg-[#8B0000] sm:mx-auto sm:w-auto sm:min-w-[280px]"
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-terracotta px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-terracotta/25 transition-all duration-200 hover:bg-terracotta/90 hover:shadow-xl hover:shadow-terracotta/30 hover:-translate-y-0.5 active:translate-y-0 active:shadow-md sm:mx-auto sm:w-auto sm:min-w-[280px]"
         >
           <Search className="h-5 w-5" />
           Zobrazit výsledky
         </button>
-      </div>
+      </motion.div>
     </form>
   );
 }

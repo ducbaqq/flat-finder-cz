@@ -31,10 +31,10 @@ export function QuickActions() {
         <Link
           href="/filter?transaction_type=sale"
           className={cn(
-            "inline-flex items-center justify-center rounded-[100px] border border-[#CC0000] px-5 py-2.5 text-sm font-medium transition-colors",
-            "text-[#CC0000] bg-white",
-            "hover:bg-[#CC0000]/5 hover:text-[#AE0000]",
-            "active:bg-[#CC0000]/10"
+            "inline-flex items-center justify-center rounded-full border border-primary px-5 py-2.5 text-sm font-medium transition-all duration-200",
+            "text-primary bg-card",
+            "hover:bg-primary/5 hover:shadow-sm",
+            "active:bg-primary/10"
           )}
           data-testid="quick-action-sale"
         >
@@ -43,10 +43,10 @@ export function QuickActions() {
         <Link
           href="/filter?transaction_type=rent"
           className={cn(
-            "inline-flex items-center justify-center rounded-[100px] border border-[#CC0000] px-5 py-2.5 text-sm font-medium transition-colors",
-            "text-[#CC0000] bg-white",
-            "hover:bg-[#CC0000]/5 hover:text-[#AE0000]",
-            "active:bg-[#CC0000]/10"
+            "inline-flex items-center justify-center rounded-full border border-primary px-5 py-2.5 text-sm font-medium transition-all duration-200",
+            "text-primary bg-card",
+            "hover:bg-primary/5 hover:shadow-sm",
+            "active:bg-primary/10"
           )}
           data-testid="quick-action-rent"
         >
@@ -62,7 +62,7 @@ export function QuickActions() {
       >
         <div className="relative">
           <Search
-            className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[#626D82] pointer-events-none"
+            className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
             aria-hidden="true"
           />
           <input
@@ -71,10 +71,10 @@ export function QuickActions() {
             onChange={(e) => setLocationQuery(e.target.value)}
             placeholder="Zadejte adresu nebo lokalitu..."
             className={cn(
-              "w-full rounded-[100px] border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm text-[#232B3A]",
-              "placeholder:text-[#626D82]",
-              "focus:outline-none focus:border-[#CC0000] focus:ring-2 focus:ring-[#CC0000]/20",
-              "transition-[border-color,box-shadow]"
+              "w-full rounded-full border border-border bg-card py-2.5 pl-10 pr-4 text-sm text-foreground",
+              "placeholder:text-muted-foreground",
+              "focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20",
+              "transition-all duration-200"
             )}
             aria-label="Hledat lokalitu"
             data-testid="location-search-input"
