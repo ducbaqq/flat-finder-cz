@@ -1,64 +1,91 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { Building2, Globe } from "lucide-react";
 import { useStats } from "@/hooks/useStats";
-import { fadeInUp, staggerContainer } from "@/lib/animations";
+import { fadeInUp } from "@/lib/animations";
 
 export function HeroSection({ children }: { children: React.ReactNode }) {
   const { data } = useStats();
   const totalListings = data?.total ?? 0;
+  const sourcesCount = Object.keys(data?.by_source ?? {}).length;
 
   return (
-    <section className="relative flex min-h-[85vh] items-center justify-center overflow-hidden" data-testid="hero-section">
-      {/* Warm radial gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-[var(--terracotta)]/5" />
+    <section
+      className="relative flex flex-col items-center pt-16 pb-10 px-4 overflow-hidden"
+      data-testid="hero-section"
+    >
+      {/* Warm gradient background */}
       <div
-        className="absolute inset-0 opacity-[0.02]"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle at 1px 1px, hsl(var(--foreground)) 1px, transparent 0)",
-          backgroundSize: "40px 40px",
-        }}
-      />
+        className="pointer-events-none absolute inset-0 -z-10"
+        aria-hidden="true"
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,hsl(var(--primary)/0.08),transparent_70%)]" />
+        <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle, hsl(var(--foreground)) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+          }}
+        />
+      </div>
 
+      {/* App Logo - big centered */}
       <motion.div
-        className="relative z-10 mx-auto max-w-5xl px-4 text-center"
-        variants={staggerContainer}
+        className="flex items-center gap-3 mb-8"
+        variants={fadeInUp}
         initial="hidden"
         animate="visible"
       >
-        {/* Eyebrow */}
-        {totalListings > 0 && (
-          <motion.div variants={fadeInUp} className="mb-6 inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5" data-testid="hero-listing-count">
-            <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-            <span className="text-sm font-medium text-primary">
-              Přes {totalListings.toLocaleString("cs-CZ")} ověřených nabídek
-            </span>
-          </motion.div>
-        )}
-
-        <motion.h1
-          variants={fadeInUp}
-          className="font-display leading-[0.95] tracking-tight"
-          style={{ fontSize: "var(--text-hero)" }}
-          data-testid="hero-title"
+        <div
+          className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-2xl font-bold text-primary-foreground shadow-lg shadow-primary/20"
+          style={{ fontFamily: "var(--font-display)" }}
         >
-          Najděte domov{" "}
-          <em className="text-primary not-italic" style={{ fontStyle: "italic" }}>
-            bez starostí
-          </em>
-        </motion.h1>
-
-        <motion.div variants={fadeInUp} className="mx-auto mt-6 max-w-2xl">
-          <p className="text-muted-foreground" data-testid="hero-subtitle">
-            Prohledáváme všechny největší české portály na jednom místě
-          </p>
-        </motion.div>
-
-        <motion.div variants={fadeInUp} className="mt-10">
-          {children}
-        </motion.div>
+          D
+        </div>
+        <span className="font-display text-3xl font-bold tracking-tight text-foreground">
+          Domov.cz
+        </span>
       </motion.div>
+
+      {/* Children: PropertyTypeTabs + QuickActions */}
+      <motion.div
+        className="w-full max-w-4xl"
+        variants={fadeInUp}
+        initial="hidden"
+        animate="visible"
+        transition={{ delay: 0.15 }}
+      >
+        {children}
+      </motion.div>
+
+      {/* Stats bar below filters */}
+      {totalListings > 0 && (
+        <motion.div
+          className="mt-8 flex items-center justify-center gap-8 sm:gap-12 text-muted-foreground"
+          data-testid="hero-stats"
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+          transition={{ delay: 0.4 }}
+        >
+          <div className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-primary" />
+            <span className="text-lg font-bold text-foreground tabular-nums">
+              {totalListings.toLocaleString("cs-CZ")}
+            </span>
+            <span className="text-sm">aktivních nabídek</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Globe className="h-4 w-4 text-primary" />
+            <span className="text-lg font-bold text-foreground tabular-nums">
+              {sourcesCount}
+            </span>
+            <span className="text-sm">zdrojů</span>
+          </div>
+        </motion.div>
+      )}
     </section>
   );
 }

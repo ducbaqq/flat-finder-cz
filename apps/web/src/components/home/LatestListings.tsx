@@ -10,7 +10,7 @@ import { apiGet } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { PropertyCard } from "@/components/shared/PropertyCard";
 import { PropertyCardSkeleton } from "@/components/shared/PropertyCardSkeleton";
-import { staggerContainer } from "@/lib/animations";
+import { staggerContainer, fadeInUp } from "@/lib/animations";
 
 export function LatestListings() {
   const { ref, inView } = useInView({ triggerOnce: true, threshold: 0.1 });
@@ -28,17 +28,22 @@ export function LatestListings() {
   return (
     <section ref={ref} className="py-16 sm:py-20" data-testid="latest-listings-section">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <div className="mb-8 flex items-end justify-between">
+        <motion.div
+          className="mb-8 flex items-end justify-between"
+          variants={fadeInUp}
+          initial="hidden"
+          animate={inView ? "visible" : "hidden"}
+        >
           <div>
             <h2
-              className="font-display font-normal"
+              className="font-display font-normal text-foreground"
               style={{ fontSize: "var(--text-3xl)" }}
               data-testid="latest-listings-title"
             >
-              Nejnovější nabídky
+              Doporučené pro Vás
             </h2>
             <p className="mt-1 text-muted-foreground" data-testid="latest-listings-subtitle">
-              Čerstvé nemovitosti ze všech zdrojů
+              Nemovitosti, které by vás mohly zajímat
             </p>
           </div>
           <Button variant="ghost" asChild className="hidden sm:flex" data-testid="latest-listings-view-all">
@@ -47,7 +52,7 @@ export function LatestListings() {
               <ArrowRight className="ml-1 h-4 w-4" />
             </Link>
           </Button>
-        </div>
+        </motion.div>
 
         <motion.div
           className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"

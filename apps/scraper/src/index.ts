@@ -22,6 +22,7 @@ import {
   createDb,
   upsertListing,
   findExistingExternalIds,
+  findRecentlyScrapedIds,
   createScraperRun,
   finishScraperRun,
   type Db,
@@ -206,13 +207,14 @@ Scheduling (SCR-11):
 // Scraper factory
 // ---------------------------------------------------------------------------
 
-function createScraper(source: SourceName): BaseScraper {
+function createScraper(source: SourceName, watchMode = false): BaseScraper {
   const env = getEnv();
 
   const common = {
     maxRetries: env.MAX_RETRIES,
     retryBaseMs: env.RETRY_BASE_MS,
     timeoutMs: env.REQUEST_TIMEOUT_MS,
+    watchMode,
   };
 
   switch (source) {
@@ -262,6 +264,8 @@ function createScraper(source: SourceName): BaseScraper {
         ...common,
         rps: env.CESKEREALITY_RPS,
         concurrency: env.CESKEREALITY_CONCURRENCY,
+        categoryParallelism: env.CESKEREALITY_CATEGORY_PARALLELISM,
+        skipEnrichmentHours: env.CESKEREALITY_SKIP_ENRICHMENT_HOURS,
       });
     case "realitymix":
       return new RealitymixScraper({
@@ -274,6 +278,8 @@ function createScraper(source: SourceName): BaseScraper {
         ...common,
         rps: env.IDNES_RPS,
         concurrency: env.IDNES_CONCURRENCY,
+        categoryParallelism: env.IDNES_CATEGORY_PARALLELISM,
+        skipEnrichmentHours: env.IDNES_SKIP_ENRICHMENT_HOURS,
       });
     case "realingo":
       return new ReaLingoScraper({
@@ -460,7 +466,7 @@ async function runSource(
   let deactivatedCount = 0;
 
   try {
-    const scraper = createScraper(source);
+    const scraper = createScraper(source, opts.watch);
 
     if (opts.watch) {
       // ----------------------------------------------------------------
@@ -480,7 +486,7 @@ async function runSource(
         }
         categoryPageCount++;
 
-        if (dashboard) dashboard.addPageFetched(source, page.listings.length);
+        if (dashboard) dashboard.addPageFetched(source, page.listings.length, page.totalPages);
 
         // Skip categories we've already decided to skip
         if (skippedCategories.has(page.category)) continue;
@@ -509,11 +515,6 @@ async function runSource(
           log(`  ${page.category} page ${page.page}: all known, skipping rest`);
           skippedCategories.add(page.category);
           scraper.skipCategory(page.category);
-          // Still upsert the page to update scraped_at etc.
-          const stats = await upsertBatch(db, page.listings, log);
-          updatedCount += stats.updatedCount;
-          errorCount += stats.errorCount;
-          if (dashboard) dashboard.addUpsertResults(source, 0, stats.updatedCount, stats.errorCount);
           continue;
         }
 
@@ -528,8 +529,8 @@ async function runSource(
           if (dashboard) dashboard.setStatus(source, "scanning");
         }
 
-        // Upsert the full page (new + updated)
-        const stats = await upsertBatch(db, page.listings, log);
+        // Upsert only new listings (watch mode skips known ones)
+        const stats = await upsertBatch(db, newListings, log);
         newCount += stats.newCount;
         updatedCount += stats.updatedCount;
         errorCount += stats.errorCount;
@@ -547,7 +548,7 @@ async function runSource(
 
         if (dashboard) {
           dashboard.setCategory(source, page.category);
-          dashboard.addPageFetched(source, page.listings.length);
+          dashboard.addPageFetched(source, page.listings.length, page.totalPages);
         }
 
         if (opts.dryRun || !db) {
@@ -559,10 +560,27 @@ async function runSource(
         }
 
         // Enrich this page's listings inline (not after all pages)
+        // Skip detail enrichment for listings recently scraped (within skipEnrichmentHours)
         if (scraper.hasDetailPhase && page.listings.length > 0) {
-          if (dashboard) dashboard.setStatus(source, "enriching");
-          await scraper.enrichListings(page.listings);
-          if (dashboard) dashboard.setStatus(source, "scanning");
+          let toEnrich = page.listings;
+
+          const skipHours = (scraper as any).skipEnrichmentHours;
+          if (skipHours && skipHours > 0) {
+            const externalIds = page.listings.map((l) => l.external_id);
+            const recentlyScraped = await findRecentlyScrapedIds(db, externalIds, skipHours);
+            if (recentlyScraped.size > 0) {
+              toEnrich = page.listings.filter((l) => !recentlyScraped.has(l.external_id));
+              if (toEnrich.length < page.listings.length) {
+                log(`  Skipping enrichment for ${page.listings.length - toEnrich.length} recently-scraped listings`);
+              }
+            }
+          }
+
+          if (toEnrich.length > 0) {
+            if (dashboard) dashboard.setStatus(source, "enriching");
+            await scraper.enrichListings(toEnrich);
+            if (dashboard) dashboard.setStatus(source, "scanning");
+          }
         }
 
         // Upsert this page
@@ -607,7 +625,7 @@ async function runSource(
 
         if (dashboard) {
           dashboard.setCategory(source, page.category);
-          dashboard.addPageFetched(source, page.listings.length);
+          dashboard.addPageFetched(source, page.listings.length, page.totalPages);
         }
 
         if (opts.dryRun || !db) {
