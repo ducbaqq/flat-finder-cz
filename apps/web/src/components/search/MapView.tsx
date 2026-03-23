@@ -61,10 +61,23 @@ function MarkerWithPreview({ pt, openDetail }: { pt: { id: number; lat: number; 
   const [preview, setPreview] = useState<PreviewData | null>(
     previewCache.get(pt.id) ?? null
   );
+  const markerRef = useRef<L.Marker>(null);
+  const isHovered = useRef(false);
+
+  // When preview data arrives while hovered, open the tooltip
+  useEffect(() => {
+    if (preview && isHovered.current && markerRef.current) {
+      // Small delay to let React render the Tooltip child first
+      requestAnimationFrame(() => {
+        markerRef.current?.openTooltip();
+      });
+    }
+  }, [preview]);
 
   const handleMouseOver = useCallback(() => {
-    if (preview || previewCache.has(pt.id)) {
-      if (!preview) setPreview(previewCache.get(pt.id)!);
+    isHovered.current = true;
+    if (previewCache.has(pt.id)) {
+      setPreview(previewCache.get(pt.id)!);
       return;
     }
     apiGet<PreviewData>(`/markers/preview/${pt.id}`)
@@ -73,15 +86,21 @@ function MarkerWithPreview({ pt, openDetail }: { pt: { id: number; lat: number; 
         setPreview(data);
       })
       .catch(() => {});
-  }, [pt.id, preview]);
+  }, [pt.id]);
+
+  const handleMouseOut = useCallback(() => {
+    isHovered.current = false;
+  }, []);
 
   return (
     <Marker
+      ref={markerRef}
       position={[pt.lat, pt.lng]}
       icon={dotIcon}
       eventHandlers={{
         click: () => openDetail(pt.id),
         mouseover: handleMouseOver,
+        mouseout: handleMouseOut,
       }}
     >
       {preview && (preview.title || preview.thumbnail_url) && (
