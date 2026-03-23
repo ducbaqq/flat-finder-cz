@@ -112,6 +112,11 @@ export function buildWhereConditions(
   return conditions;
 }
 
+function hasViewportBounds(filters: ListingFilters): boolean {
+  return filters.sw_lat != null && filters.sw_lng != null &&
+    filters.ne_lat != null && filters.ne_lng != null;
+}
+
 export function getSortOrder(sort?: string) {
   switch (sort) {
     case "price_asc":
@@ -163,11 +168,17 @@ export async function queryListings(
 
   if (hasCachedTotal) {
     total = opts!.cachedTotal!;
-  } else if (rows.length < perPage && page === 1) {
-    // If the first page is not full, we know the exact total
-    total = rows.length;
+  } else if (rows.length < perPage) {
+    // Page is not full — we know the exact total
+    total = offset + rows.length;
+  } else if (hasViewportBounds(filters)) {
+    // Viewport-bounded queries: skip the expensive COUNT entirely.
+    // The frontend uses infinite scroll for map views — it only needs to
+    // know "are there more pages?", not the exact total. Estimate high
+    // enough that the frontend keeps paginating.
+    total = offset + rows.length + perPage;
   } else {
-    // COUNT with a statement timeout to prevent runaway scans
+    // Non-viewport queries: run a capped COUNT
     try {
       const totalResult = await db.execute<{ cnt: string }>(
         sql`SELECT COUNT(*) AS cnt FROM (
@@ -178,8 +189,7 @@ export async function queryListings(
       );
       total = Number(totalResult[0]?.cnt ?? 0);
     } catch {
-      // If count times out, estimate from page position
-      total = offset + rows.length + (rows.length === perPage ? perPage : 0);
+      total = offset + rows.length + perPage;
     }
   }
 
