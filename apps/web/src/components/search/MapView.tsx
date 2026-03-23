@@ -57,35 +57,46 @@ interface PreviewData {
 
 const previewCache = new Map<number, PreviewData>();
 
-function HoverTooltip({ id }: { id: number }) {
+function MarkerWithPreview({ pt, openDetail }: { pt: { id: number; lat: number; lng: number }; openDetail: (id: number) => void }) {
   const [preview, setPreview] = useState<PreviewData | null>(
-    previewCache.get(id) ?? null
+    previewCache.get(pt.id) ?? null
   );
 
-  useEffect(() => {
-    if (preview) return;
-    let cancelled = false;
-    apiGet<PreviewData>(`/markers/preview/${id}`).then((data) => {
-      if (cancelled) return;
-      previewCache.set(id, data);
-      setPreview(data);
-    });
-    return () => { cancelled = true; };
-  }, [id, preview]);
-
-  if (!preview || (!preview.title && !preview.thumbnail_url)) return null;
+  const handleMouseOver = useCallback(() => {
+    if (preview || previewCache.has(pt.id)) {
+      if (!preview) setPreview(previewCache.get(pt.id)!);
+      return;
+    }
+    apiGet<PreviewData>(`/markers/preview/${pt.id}`)
+      .then((data) => {
+        previewCache.set(pt.id, data);
+        setPreview(data);
+      })
+      .catch(() => {});
+  }, [pt.id, preview]);
 
   return (
-    <Tooltip direction="top" offset={[0, -10]} className="marker-hover-tooltip">
-      <div className="marker-tooltip-inner" data-testid="map-marker-tooltip">
-        {preview.thumbnail_url && (
-          <img src={preview.thumbnail_url} alt="" className="marker-tooltip-img" data-testid="map-marker-tooltip-image" />
-        )}
-        {preview.title && (
-          <div className="marker-tooltip-title" data-testid="map-marker-tooltip-title">{preview.title}</div>
-        )}
-      </div>
-    </Tooltip>
+    <Marker
+      position={[pt.lat, pt.lng]}
+      icon={dotIcon}
+      eventHandlers={{
+        click: () => openDetail(pt.id),
+        mouseover: handleMouseOver,
+      }}
+    >
+      {preview && (preview.title || preview.thumbnail_url) && (
+        <Tooltip direction="top" offset={[0, -10]} className="marker-hover-tooltip">
+          <div className="marker-tooltip-inner" data-testid="map-marker-tooltip">
+            {preview.thumbnail_url && (
+              <img src={preview.thumbnail_url} alt="" className="marker-tooltip-img" />
+            )}
+            {preview.title && (
+              <div className="marker-tooltip-title">{preview.title}</div>
+            )}
+          </div>
+        </Tooltip>
+      )}
+    </Marker>
   );
 }
 
@@ -238,16 +249,7 @@ function MarkerLayer({ filters }: { filters: Record<string, string> }) {
 
       {/* Individual points */}
       {markers.map((pt) => (
-          <Marker
-            key={`pt-${pt.id}`}
-            position={[pt.lat, pt.lng]}
-            icon={dotIcon}
-            eventHandlers={{
-              click: () => openDetail(pt.id),
-            }}
-          >
-            <HoverTooltip id={pt.id} />
-          </Marker>
+          <MarkerWithPreview key={`pt-${pt.id}`} pt={pt} openDetail={openDetail} />
       ))}
     </>
   );
