@@ -17,7 +17,7 @@ export function PriceRangeSlider({
   onMaxChange,
 }: PriceRangeSliderProps) {
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 gap-2" data-testid="filter-price-range">
       <div>
         <Label className="text-xs text-muted-foreground">Od (Kč)</Label>
         <Input
@@ -26,6 +26,7 @@ export function PriceRangeSlider({
           value={minValue}
           onChange={(e) => onMinChange(e.target.value)}
           className="mt-1"
+          data-testid="filter-price-min"
         />
       </div>
       <div>
@@ -36,6 +37,7 @@ export function PriceRangeSlider({
           value={maxValue}
           onChange={(e) => onMaxChange(e.target.value)}
           className="mt-1"
+          data-testid="filter-price-max"
         />
       </div>
     </div>

@@ -17,6 +17,7 @@ export function LocationAutocomplete({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className="w-full"
+      data-testid="filter-location"
     />
   );
 }

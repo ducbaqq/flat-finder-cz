@@ -33,9 +33,9 @@ export function SourceFilter({ value, onChange }: SourceFilterProps) {
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-testid="filter-source">
       {sources.map(({ key, label, color }) => (
-        <div key={key} className="flex items-center gap-2">
+        <div key={key} className="flex items-center gap-2" data-testid={`filter-source-${key}`}>
           <Checkbox
             id={`source-${key}`}
             checked={selected.includes(key)}

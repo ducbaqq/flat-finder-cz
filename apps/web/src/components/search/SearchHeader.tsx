@@ -34,11 +34,11 @@ export function SearchHeader({
   const activePropertyType = filters.property_type || "";
 
   return (
-    <div className="sticky top-16 z-30 border-b border-divider bg-background/95 backdrop-blur-md">
+    <div className="sticky top-16 z-30 border-b border-divider bg-background/95 backdrop-blur-md" data-testid="search-header">
       <div className="flex items-center justify-between px-4 py-2.5">
         <div className="flex items-center gap-3">
           {/* Quick filter chips */}
-          <div className="hidden items-center gap-1.5 sm:flex">
+          <div className="hidden items-center gap-1.5 sm:flex" data-testid="quick-filters">
             {quickFilters.map(({ label, value }) => (
               <button
                 key={label}
@@ -49,13 +49,14 @@ export function SearchHeader({
                     ? "bg-primary text-white"
                     : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
                 )}
+                data-testid={`quick-filter-${value || "all"}`}
               >
                 {label}
               </button>
             ))}
           </div>
 
-          <span className="text-sm text-muted-foreground">
+          <span className="text-sm text-muted-foreground" data-testid="search-results-count">
             <strong className="text-foreground">
               {total.toLocaleString("cs-CZ")}
             </strong>{" "}
@@ -71,14 +72,15 @@ export function SearchHeader({
             value={view}
             onValueChange={(v) => v && onViewChange(v)}
             className="hidden sm:flex"
+            data-testid="view-toggle"
           >
-            <ToggleGroupItem value="list" size="sm">
+            <ToggleGroupItem value="list" size="sm" data-testid="view-toggle-list">
               <List className="h-4 w-4" />
             </ToggleGroupItem>
-            <ToggleGroupItem value="hybrid" size="sm">
+            <ToggleGroupItem value="hybrid" size="sm" data-testid="view-toggle-hybrid">
               <LayoutGrid className="h-4 w-4" />
             </ToggleGroupItem>
-            <ToggleGroupItem value="map" size="sm">
+            <ToggleGroupItem value="map" size="sm" data-testid="view-toggle-map">
               <Map className="h-4 w-4" />
             </ToggleGroupItem>
           </ToggleGroup>

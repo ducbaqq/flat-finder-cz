@@ -29,7 +29,7 @@ export function EnergyRatingFilter({ value, onChange }: EnergyRatingFilterProps)
   };
 
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-1" data-testid="filter-energy-rating">
       {ratings.map((r) => (
         <button
           key={r}
@@ -40,6 +40,7 @@ export function EnergyRatingFilter({ value, onChange }: EnergyRatingFilterProps)
               ? `${ratingColors[r]} text-white shadow-sm`
               : "bg-muted text-muted-foreground hover:bg-muted/80"
           )}
+          data-testid={`filter-energy-rating-${r}`}
         >
           {r}
         </button>

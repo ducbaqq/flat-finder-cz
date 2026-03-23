@@ -53,6 +53,7 @@ export default function MiniMap({ lat, lng }: MiniMapProps) {
       className="overflow-hidden rounded-lg border"
       id="detailMapContainer"
       style={{ height: 200 }}
+      data-testid="listing-detail-minimap"
     />
   );
 }

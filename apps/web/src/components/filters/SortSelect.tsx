@@ -24,12 +24,12 @@ const sortOptions = [
 export function SortSelect({ value, onChange }: SortSelectProps) {
   return (
     <Select value={value || "newest"} onValueChange={onChange}>
-      <SelectTrigger className="w-[140px]">
+      <SelectTrigger className="w-[140px]" data-testid="sort-select-trigger">
         <SelectValue />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent data-testid="sort-select-content">
         {sortOptions.map((opt) => (
-          <SelectItem key={opt.value} value={opt.value}>
+          <SelectItem key={opt.value} value={opt.value} data-testid={`sort-option-${opt.value}`}>
             {opt.label}
           </SelectItem>
         ))}

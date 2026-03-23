@@ -16,7 +16,7 @@ export default function HomePage() {
   return (
     <>
       <Navbar />
-      <main>
+      <main data-testid="home-page">
         <HeroSection>
           <SearchTabs />
           <TrustBar />

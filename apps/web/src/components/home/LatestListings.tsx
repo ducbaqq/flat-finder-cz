@@ -26,21 +26,22 @@ export function LatestListings() {
   });
 
   return (
-    <section ref={ref} className="py-16 sm:py-20">
+    <section ref={ref} className="py-16 sm:py-20" data-testid="latest-listings-section">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="mb-8 flex items-end justify-between">
           <div>
             <h2
               className="font-display font-normal"
               style={{ fontSize: "var(--text-3xl)" }}
+              data-testid="latest-listings-title"
             >
               Nejnovější nabídky
             </h2>
-            <p className="mt-1 text-muted-foreground">
+            <p className="mt-1 text-muted-foreground" data-testid="latest-listings-subtitle">
               Čerstvé nemovitosti ze všech zdrojů
             </p>
           </div>
-          <Button variant="ghost" asChild className="hidden sm:flex">
+          <Button variant="ghost" asChild className="hidden sm:flex" data-testid="latest-listings-view-all">
             <Link href="/search">
               Zobrazit vše
               <ArrowRight className="ml-1 h-4 w-4" />
@@ -53,6 +54,7 @@ export function LatestListings() {
           variants={staggerContainer}
           initial="hidden"
           animate={inView ? "visible" : "hidden"}
+          data-testid="latest-listings-grid"
         >
           {isLoading
             ? Array.from({ length: 8 }).map((_, i) => (
@@ -63,7 +65,7 @@ export function LatestListings() {
               ))}
         </motion.div>
 
-        <div className="mt-8 text-center sm:hidden">
+        <div className="mt-8 text-center sm:hidden" data-testid="latest-listings-view-all-mobile">
           <Button variant="outline" asChild>
             <Link href="/search">
               Zobrazit vše

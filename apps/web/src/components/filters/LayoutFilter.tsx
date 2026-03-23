@@ -21,9 +21,10 @@ export function LayoutFilter({ value, onChange }: LayoutFilterProps) {
       value={selected}
       onValueChange={(values) => onChange(values.join(","))}
       className="flex flex-wrap gap-1"
+      data-testid="filter-layout"
     >
       {layouts.map((l) => (
-        <ToggleGroupItem key={l} value={l} className="text-xs" size="sm">
+        <ToggleGroupItem key={l} value={l} className="text-xs" size="sm" data-testid={`filter-layout-${l}`}>
           {l}
         </ToggleGroupItem>
       ))}

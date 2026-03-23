@@ -24,9 +24,9 @@ export function CheckboxGroupFilter({
   };
 
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 gap-2" data-testid="filter-checkbox-group">
       {Object.entries(options).map(([key, label]) => (
-        <div key={key} className="flex items-center gap-2">
+        <div key={key} className="flex items-center gap-2" data-testid={`filter-checkbox-${key}`}>
           <Checkbox
             id={`filter-${key}`}
             checked={selected.includes(key)}

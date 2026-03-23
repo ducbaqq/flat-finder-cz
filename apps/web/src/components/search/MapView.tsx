@@ -15,30 +15,6 @@ import { useUiStore } from "@/store/ui-store";
 import { useMarkers } from "@/hooks/useMarkers";
 import { apiGet } from "@/lib/api-client";
 
-// ── Price formatting ──
-
-function formatMarkerPrice(price: number): string {
-  if (price >= 1_000_000) {
-    const m = price / 1_000_000;
-    return m % 1 === 0 ? `${m}M` : `${m.toFixed(1)}M`;
-  }
-  if (price >= 1_000) {
-    const k = price / 1_000;
-    return k % 1 === 0 ? `${k}K` : `${k.toFixed(0)}K`;
-  }
-  return String(price);
-}
-
-function createPriceIcon(price: number) {
-  const label = formatMarkerPrice(price);
-  return L.divIcon({
-    className: "",
-    html: `<div class="custom-marker-price">${label}</div>`,
-    iconSize: [0, 0],
-    iconAnchor: [0, 0],
-  });
-}
-
 const dotIcon = L.divIcon({
   className: "",
   html: '<div class="custom-marker-dot"></div>',
@@ -49,13 +25,54 @@ const dotIcon = L.divIcon({
 // ── Cluster display helpers ──
 
 function formatClusterCount(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
+  if (count >= 1_000_000) {
+    const m = count / 1_000_000;
+    return m >= 10 ? `${Math.round(m)}M` : `${m.toFixed(1)}M`;
+  }
+  if (count >= 1_000) {
+    const k = count / 1_000;
+    return k >= 10 ? `${Math.round(k)}K` : `${k.toFixed(1)}K`;
+  }
   return String(count);
 }
 
+/** Logarithmic scaling: 30px at count=2, up to 70px for very large clusters */
+const CLUSTER_SIZE_MIN = 30;
+const CLUSTER_SIZE_MAX = 70;
+
 function clusterRadius(count: number): number {
-  return Math.min(35, 12 + Math.log10(count) * 8);
+  if (count <= 1) return CLUSTER_SIZE_MIN / 2;
+  // log scale: map log(count) from log(2)..log(100000) to min..max
+  const logMin = Math.log(2);
+  const logMax = Math.log(100_000);
+  const t = Math.min(1, Math.max(0, (Math.log(count) - logMin) / (logMax - logMin)));
+  return (CLUSTER_SIZE_MIN + t * (CLUSTER_SIZE_MAX - CLUSTER_SIZE_MIN)) / 2;
+}
+
+/** Color gradient: cool teal for small clusters -> warm orange/red for large */
+function clusterColor(count: number): { fill: string; stroke: string } {
+  const logMin = Math.log(2);
+  const logMax = Math.log(100_000);
+  const t = Math.min(1, Math.max(0, (Math.log(Math.max(2, count)) - logMin) / (logMax - logMin)));
+
+  // Interpolate hue from 174 (teal) down to 15 (warm orange)
+  const hue = Math.round(174 - t * 159);
+  // Saturation from 65% to 80%
+  const sat = Math.round(65 + t * 15);
+  // Lightness from 38% (darker teal) to 45% (readable orange)
+  const light = Math.round(38 + t * 7);
+
+  return {
+    fill: `hsl(${hue}, ${sat}%, ${light}%)`,
+    stroke: `hsl(${hue}, ${sat}%, ${Math.max(20, light - 10)}%)`,
+  };
+}
+
+/** Font size scales with bubble radius */
+function clusterFontSize(count: number): number {
+  const r = clusterRadius(count);
+  // radius ranges 15..35, font 11..16
+  return Math.round(11 + ((r - 15) / 20) * 5);
 }
 
 // ── Lazy hover tooltip — fetches preview on first hover ──
@@ -87,12 +104,12 @@ function HoverTooltip({ id }: { id: number }) {
 
   return (
     <Tooltip direction="top" offset={[0, -10]} className="marker-hover-tooltip">
-      <div className="marker-tooltip-inner">
+      <div className="marker-tooltip-inner" data-testid="map-marker-tooltip">
         {preview.thumbnail_url && (
-          <img src={preview.thumbnail_url} alt="" className="marker-tooltip-img" />
+          <img src={preview.thumbnail_url} alt="" className="marker-tooltip-img" data-testid="map-marker-tooltip-image" />
         )}
         {preview.title && (
-          <div className="marker-tooltip-title">{preview.title}</div>
+          <div className="marker-tooltip-title" data-testid="map-marker-tooltip-title">{preview.title}</div>
         )}
       </div>
     </Tooltip>
@@ -132,67 +149,70 @@ function MapEventsHandler() {
 
 // ── Marker layer — renders server-side clusters + individual points ──
 
-// Zoom threshold: at this level and above, show pin dots instead of price labels
-const PIN_ONLY_ZOOM = 16;
-
 function MarkerLayer({ filters }: { filters: Record<string, string> }) {
   const map = useMap();
   const openDetail = useUiStore((s) => s.openDetail);
-  const mapZoom = useUiStore((s) => s.mapZoom);
   const { data } = useMarkers(filters);
 
   const clusters = data?.clusters ?? [];
   const markers = data?.markers ?? [];
-  const useDots = (mapZoom ?? map.getZoom()) >= PIN_ONLY_ZOOM;
 
   return (
     <>
       {/* Server-side clusters */}
-      {clusters.map((cluster) => (
-        <CircleMarker
-          key={`cl-${cluster.lat}-${cluster.lng}`}
-          center={[cluster.lat, cluster.lng]}
-          radius={clusterRadius(cluster.count)}
-          pathOptions={{
-            fillColor: "#0F766E",
-            fillOpacity: 0.7,
-            color: "#0D6359",
-            weight: 2,
-          }}
-          eventHandlers={{
-            click: () => {
-              const z = map.getZoom();
-              map.setView([cluster.lat, cluster.lng], Math.min(z + 2, 18));
-            },
-          }}
-        >
-          <Tooltip
-            direction="center"
-            permanent
-            className="cluster-count-tooltip"
-          >
-            {formatClusterCount(cluster.count)}
-          </Tooltip>
-        </CircleMarker>
-      ))}
-
-      {/* Individual points — dots at high zoom, price labels otherwise */}
-      {markers.map((pt) => {
-        const icon =
-          useDots || pt.price == null ? dotIcon : createPriceIcon(pt.price);
+      {clusters.map((cluster) => {
+        const colors = clusterColor(cluster.count);
+        const fontSize = clusterFontSize(cluster.count);
         return (
+          <CircleMarker
+            key={`cl-${cluster.lat}-${cluster.lng}`}
+            center={[cluster.lat, cluster.lng]}
+            radius={clusterRadius(cluster.count)}
+            pathOptions={{
+              fillColor: colors.fill,
+              fillOpacity: 0.75,
+              color: colors.stroke,
+              weight: 2,
+            }}
+            eventHandlers={{
+              click: () => {
+                // Drill-down: use expansion_zoom from server if available,
+                // otherwise jump +3 zoom levels
+                const targetZoom = cluster.expansion_zoom
+                  ? Math.min(cluster.expansion_zoom, 18)
+                  : Math.min(map.getZoom() + 3, 18);
+                map.flyTo([cluster.lat, cluster.lng], targetZoom, {
+                  duration: 0.5,
+                });
+              },
+            }}
+          >
+            <Tooltip
+              direction="center"
+              permanent
+              className="cluster-count-tooltip"
+            >
+              <span style={{ fontSize: `${fontSize}px` }}>
+                {formatClusterCount(cluster.count)}
+              </span>
+            </Tooltip>
+          </CircleMarker>
+        );
+      })}
+
+      {/* Individual points */}
+      {markers.map((pt) => (
           <Marker
             key={`pt-${pt.id}`}
             position={[pt.lat, pt.lng]}
-            icon={icon}
+            icon={dotIcon}
             eventHandlers={{
               click: () => openDetail(pt.id),
             }}
           >
             <HoverTooltip id={pt.id} />
           </Marker>
-        );
-      })}
+      ))}
     </>
   );
 }
@@ -207,10 +227,11 @@ export function MapView({ filters }: MapViewProps) {
   return (
     <MapContainer
       center={[50.0755, 14.4378]}
-      zoom={12}
+      zoom={11}
       zoomControl
       attributionControl
       style={{ width: "100%", height: "100%" }}
+      data-testid="map-view"
     >
       <TileLayer
         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"

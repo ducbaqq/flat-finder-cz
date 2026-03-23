@@ -17,7 +17,7 @@ export function SizeRangeSlider({
   onMaxChange,
 }: SizeRangeSliderProps) {
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 gap-2" data-testid="filter-size-range">
       <div>
         <Label className="text-xs text-muted-foreground">Od (m²)</Label>
         <Input
@@ -26,6 +26,7 @@ export function SizeRangeSlider({
           value={minValue}
           onChange={(e) => onMinChange(e.target.value)}
           className="mt-1"
+          data-testid="filter-size-min"
         />
       </div>
       <div>
@@ -36,6 +37,7 @@ export function SizeRangeSlider({
           value={maxValue}
           onChange={(e) => onMaxChange(e.target.value)}
           className="mt-1"
+          data-testid="filter-size-max"
         />
       </div>
     </div>

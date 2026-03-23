@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function PropertyCardSkeleton() {
   return (
-    <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+    <div className="overflow-hidden rounded-xl border bg-card shadow-sm" data-testid="listing-card-skeleton">
       <Skeleton className="aspect-[16/10] w-full" />
       <div className="space-y-2.5 p-3.5">
         <Skeleton className="h-4 w-3/4" />

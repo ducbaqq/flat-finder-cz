@@ -92,6 +92,10 @@ export interface ClusterPoint {
   lng: number;
   count: number;
   avg_price: number | null;
+  /** Supercluster internal id — used for getClusterExpansionZoom */
+  cluster_id?: number;
+  /** Pre-computed zoom level that splits this cluster */
+  expansion_zoom?: number;
 }
 
 export interface MarkersResponse {

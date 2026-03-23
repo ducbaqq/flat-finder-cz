@@ -72,17 +72,17 @@ export default function WatchdogForm({
   );
 
   return (
-    <div className="space-y-4">
-      <div>
+    <div className="space-y-4" data-testid="watchdog-form">
+      <div data-testid="watchdog-form-filters-summary">
         <p className="mb-2 text-sm text-muted-foreground">Aktuální filtry:</p>
         {filterSummaryTags.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground" data-testid="watchdog-form-no-filters">
             Žádné filtry — hlídací pes bude sledovat všechny nabídky.
           </p>
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {filterSummaryTags.map((t, i) => (
-              <Badge key={i} variant="secondary" className="text-xs">
+              <Badge key={i} variant="secondary" className="text-xs" data-testid="watchdog-form-filter-tag">
                 {t.label}: {t.value}
               </Badge>
             ))}
@@ -103,9 +103,10 @@ export default function WatchdogForm({
           className={emailError ? "border-destructive ring-destructive/20 ring-2" : ""}
           aria-invalid={!!emailError}
           aria-describedby={emailError ? "watchdogEmailError" : undefined}
+          data-testid="watchdog-form-email"
         />
         {emailError && (
-          <p id="watchdogEmailError" className="text-sm text-destructive mt-1">
+          <p id="watchdogEmailError" className="text-sm text-destructive mt-1" data-testid="watchdog-form-email-error">
             {emailError}
           </p>
         )}
@@ -119,6 +120,7 @@ export default function WatchdogForm({
           placeholder="např. Byt 2+kk Praha do 20 000"
           value={localLabel}
           onChange={(e) => setLocalLabel(e.target.value)}
+          data-testid="watchdog-form-label"
         />
       </div>
 
@@ -126,6 +128,7 @@ export default function WatchdogForm({
         className="w-full"
         onClick={handleSave}
         disabled={isCreating}
+        data-testid="watchdog-form-submit"
       >
         <Save className="mr-2 h-4 w-4" />
         {isCreating ? "Ukládám..." : "Uložit hlídacího psa"}

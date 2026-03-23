@@ -79,6 +79,7 @@ export default function RootLayout({
       </head>
       <body
         className={`${inter.variable} ${dmSerif.variable} font-sans antialiased`}
+        data-testid="app-body"
       >
         <NuqsAdapter>
           <ThemeProvider>

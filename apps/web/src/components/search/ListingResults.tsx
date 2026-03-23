@@ -29,12 +29,12 @@ export function ListingResults({
 }: ListingResultsProps) {
   if (isError) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="listings-error">
         <AlertTriangle className="mb-4 h-12 w-12 text-destructive/60" />
-        <h3 className="text-lg font-semibold font-display">
+        <h3 className="text-lg font-semibold font-display" data-testid="listings-error-title">
           Nepodařilo se načíst nabídky
         </h3>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground" data-testid="listings-error-message">
           Zkontrolujte připojení k internetu a zkuste to znovu.
         </p>
         {refetch && (
@@ -43,6 +43,7 @@ export function ListingResults({
             size="sm"
             className="mt-4 rounded-lg"
             onClick={() => refetch()}
+            data-testid="listings-error-retry"
           >
             Zkusit znovu
           </Button>
@@ -57,6 +58,7 @@ export function ListingResults({
         className={`grid gap-4 ${
           singleColumn ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
         }`}
+        data-testid="listings-loading"
       >
         {Array.from({ length: 8 }).map((_, i) => (
           <PropertyCardSkeleton key={i} />
@@ -67,12 +69,12 @@ export function ListingResults({
 
   if (!data || data.listings.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="listings-empty">
         <SearchX className="mb-4 h-12 w-12 text-muted-foreground/50" />
-        <h3 className="text-lg font-semibold font-display">
+        <h3 className="text-lg font-semibold font-display" data-testid="listings-empty-title">
           Žádné výsledky
         </h3>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground" data-testid="listings-empty-message">
           Zkuste upravit filtry nebo rozšířit vyhledávání pro více výsledků.
         </p>
       </div>
@@ -80,7 +82,7 @@ export function ListingResults({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="listings-results">
       <motion.div
         className={`grid gap-4 ${
           singleColumn ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
@@ -88,6 +90,7 @@ export function ListingResults({
         variants={staggerContainer}
         initial="hidden"
         animate="visible"
+        data-testid="listings-grid"
       >
         {data.listings.map((listing, i) => (
           <PropertyCard key={listing.id} listing={listing} index={i} />
@@ -95,17 +98,18 @@ export function ListingResults({
       </motion.div>
 
       {data.total_pages > 1 && (
-        <div className="flex items-center justify-center gap-2 py-4">
+        <div className="flex items-center justify-center gap-2 py-4" data-testid="pagination">
           <Button
             variant="outline"
             size="sm"
             disabled={page <= 1}
             onClick={() => onPageChange(page - 1)}
             className="rounded-lg"
+            data-testid="pagination-prev"
           >
             Předchozí
           </Button>
-          <span className="text-sm text-muted-foreground">
+          <span className="text-sm text-muted-foreground" data-testid="pagination-info">
             {page} / {data.total_pages}
           </span>
           <Button
@@ -114,6 +118,7 @@ export function ListingResults({
             disabled={page >= data.total_pages}
             onClick={() => onPageChange(page + 1)}
             className="rounded-lg"
+            data-testid="pagination-next"
           >
             Další
           </Button>

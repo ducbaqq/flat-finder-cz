@@ -61,7 +61,7 @@ export default function DetailModal() {
 
   return (
     <Dialog open={detailModalOpen} onOpenChange={(open) => !open && closeDetail()}>
-      <DialogContent className="max-w-4xl gap-0 overflow-hidden rounded-xl border-divider p-0">
+      <DialogContent className="max-w-4xl gap-0 overflow-hidden rounded-xl border-divider p-0" data-testid="listing-detail-modal">
         <DialogTitle className="sr-only">
           {listing?.title || "Detail nabídky"}
         </DialogTitle>
@@ -77,6 +77,7 @@ export default function DetailModal() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 className="space-y-4 p-6"
+                data-testid="listing-detail-loading"
               >
                 <Skeleton className="aspect-[16/9] w-full rounded-lg" />
                 <Skeleton className="h-6 w-3/4" />
@@ -91,8 +92,9 @@ export default function DetailModal() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="p-8 text-center"
+                data-testid="listing-detail-error"
               >
-                <p className="text-destructive">
+                <p className="text-destructive" data-testid="listing-detail-error-message">
                   Nepodařilo se načíst detail nabídky.
                 </p>
               </motion.div>
@@ -109,16 +111,17 @@ export default function DetailModal() {
 
                 <div className="space-y-5 p-5 sm:p-6">
                   {/* Badges */}
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-1.5" data-testid="listing-detail-badges">
                     <Badge
                       className={
                         sourceColors[listing.source] ||
                         "bg-primary text-primary-foreground"
                       }
+                      data-testid="listing-detail-source"
                     >
                       {listing.source}.cz
                     </Badge>
-                    <Badge variant="secondary">
+                    <Badge variant="secondary" data-testid="listing-detail-property-type">
                       {propertyTypeLabels[listing.property_type] ||
                         listing.property_type}
                     </Badge>
@@ -126,10 +129,10 @@ export default function DetailModal() {
 
                   {/* Title + Price */}
                   <div>
-                    <h2 className="font-display text-xl leading-tight sm:text-2xl">
+                    <h2 className="font-display text-xl leading-tight sm:text-2xl" data-testid="listing-detail-title">
                       {listing.title || "\u2014"}
                     </h2>
-                    <div className="mt-2 flex items-baseline gap-2">
+                    <div className="mt-2 flex items-baseline gap-2" data-testid="listing-detail-price">
                       <span className="text-2xl font-bold text-primary sm:text-3xl">
                         {formatPrice(listing.price, listing.currency)}
                       </span>
@@ -143,7 +146,7 @@ export default function DetailModal() {
                       )}
                     </div>
                     {(listing.address || listing.city) && (
-                      <div className="mt-1.5 flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <div className="mt-1.5 flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="listing-detail-address">
                         <MapPin className="h-3.5 w-3.5" />
                         {[listing.address, listing.city]
                           .filter(Boolean)
@@ -161,7 +164,7 @@ export default function DetailModal() {
                   {listing.description && (
                     <>
                       <Separator className="bg-divider" />
-                      <div>
+                      <div data-testid="listing-detail-description">
                         <h3 className="mb-2 text-sm font-semibold">Popis</h3>
                         <p className="max-w-[72ch] whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
                           {listing.description}
@@ -178,6 +181,7 @@ export default function DetailModal() {
                         className="w-full rounded-lg bg-[var(--terracotta)] text-white hover:bg-[var(--terracotta)]/90"
                         size="lg"
                         asChild
+                        data-testid="listing-detail-source-link"
                       >
                         <a
                           href={sourceUrl}

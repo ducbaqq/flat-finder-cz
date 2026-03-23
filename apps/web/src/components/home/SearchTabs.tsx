@@ -23,9 +23,9 @@ export function SearchTabs() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-3xl overflow-hidden rounded-xl border border-divider bg-card/95 shadow-lg backdrop-blur-md">
+    <div className="mx-auto w-full max-w-3xl overflow-hidden rounded-xl border border-divider bg-card/95 shadow-lg backdrop-blur-md" data-testid="search-tabs">
       {/* Transaction type tabs */}
-      <div className="flex border-b border-divider">
+      <div className="flex border-b border-divider" data-testid="search-tabs-toggle">
         <button
           onClick={() => setTransactionType("sale")}
           className={cn(
@@ -34,6 +34,7 @@ export function SearchTabs() {
               ? "bg-primary text-white"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
           )}
+          data-testid="search-tab-sale"
         >
           Koupit
         </button>
@@ -45,13 +46,14 @@ export function SearchTabs() {
               ? "bg-primary text-white"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
           )}
+          data-testid="search-tab-rent"
         >
           Pronajmout
         </button>
       </div>
 
       {/* Search fields */}
-      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-0 sm:divide-x sm:divide-divider sm:p-0">
+      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-0 sm:divide-x sm:divide-divider sm:p-0" data-testid="search-fields">
         {/* Lokalita */}
         <div className="flex-1 sm:px-4 sm:py-3">
           <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground sm:mb-0">
@@ -64,6 +66,7 @@ export function SearchTabs() {
             onChange={(e) => setLocation(e.target.value)}
             onKeyDown={handleKeyDown}
             className="w-full bg-transparent text-sm font-medium outline-none placeholder:text-muted-foreground/60"
+            data-testid="search-location-input"
           />
         </div>
 
@@ -73,6 +76,7 @@ export function SearchTabs() {
             onClick={handleSearch}
             size="lg"
             className="w-full bg-primary text-white hover:bg-primary/90 sm:w-auto sm:rounded-lg"
+            data-testid="search-submit-button"
           >
             <Search className="mr-2 h-4 w-4" />
             Hledat

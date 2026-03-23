@@ -51,7 +51,7 @@ export function ActiveFilterChips({
   };
 
   return (
-    <div className="flex items-center gap-2 overflow-x-auto px-4 py-2">
+    <div className="flex items-center gap-2 overflow-x-auto px-4 py-2" data-testid="active-filter-chips">
       <AnimatePresence>
         {tags.map((tag) => (
           <motion.div
@@ -63,11 +63,13 @@ export function ActiveFilterChips({
             <Badge
               variant="secondary"
               className="flex shrink-0 items-center gap-1 text-xs"
+              data-testid="active-filter-chip"
             >
               <span className="font-medium">{tag.label}:</span> {tag.value}
               <button
                 onClick={() => handleRemove(tag.label)}
                 className="ml-0.5 rounded-full hover:bg-muted"
+                data-testid="active-filter-chip-remove"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -80,6 +82,7 @@ export function ActiveFilterChips({
         size="sm"
         onClick={clearFilters}
         className="shrink-0 text-xs text-muted-foreground"
+        data-testid="clear-all-filters"
       >
         Vymazat vše
       </Button>

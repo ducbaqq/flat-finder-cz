@@ -32,7 +32,7 @@ interface FilterSidebarProps {
 
 export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
   return (
-    <ScrollArea className="h-[calc(100vh-64px)]">
+    <ScrollArea className="h-[calc(100vh-64px)]" data-testid="filter-sidebar">
       <div className="space-y-4 p-4">
         <TransactionToggle
           value={filters.transaction_type}
@@ -41,7 +41,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
 
         <Separator />
 
-        <div>
+        <div data-testid="filter-location-group">
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             Lokalita
           </label>
@@ -53,7 +53,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
 
         <Separator />
 
-        <div>
+        <div data-testid="filter-property-type-group">
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             Typ nemovitosti
           </label>
@@ -65,7 +65,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
 
         <Separator />
 
-        <div>
+        <div data-testid="filter-price-group">
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             Cena
           </label>
@@ -77,7 +77,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
           />
         </div>
 
-        <div>
+        <div data-testid="filter-size-group">
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             Plocha
           </label>
@@ -91,7 +91,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
 
         <Separator />
 
-        <div>
+        <div data-testid="filter-layout-group">
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             Dispozice
           </label>
@@ -103,8 +103,8 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
 
         <Separator />
 
-        <Accordion type="multiple" className="w-full">
-          <AccordionItem value="condition">
+        <Accordion type="multiple" className="w-full" data-testid="filter-accordion">
+          <AccordionItem value="condition" data-testid="filter-condition-group">
             <AccordionTrigger className="text-xs">Stav</AccordionTrigger>
             <AccordionContent>
               <CheckboxGroupFilter
@@ -115,7 +115,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="construction">
+          <AccordionItem value="construction" data-testid="filter-construction-group">
             <AccordionTrigger className="text-xs">Konstrukce</AccordionTrigger>
             <AccordionContent>
               <CheckboxGroupFilter
@@ -126,7 +126,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="ownership">
+          <AccordionItem value="ownership" data-testid="filter-ownership-group">
             <AccordionTrigger className="text-xs">Vlastnictví</AccordionTrigger>
             <AccordionContent>
               <CheckboxGroupFilter
@@ -137,7 +137,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="furnishing">
+          <AccordionItem value="furnishing" data-testid="filter-furnishing-group">
             <AccordionTrigger className="text-xs">Vybavenost</AccordionTrigger>
             <AccordionContent>
               <CheckboxGroupFilter
@@ -148,7 +148,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="amenities">
+          <AccordionItem value="amenities" data-testid="filter-amenities-group">
             <AccordionTrigger className="text-xs">Vybavení</AccordionTrigger>
             <AccordionContent>
               <CheckboxGroupFilter
@@ -159,7 +159,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="energy">
+          <AccordionItem value="energy" data-testid="filter-energy-group">
             <AccordionTrigger className="text-xs">PENB</AccordionTrigger>
             <AccordionContent>
               <EnergyRatingFilter
@@ -169,7 +169,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="source">
+          <AccordionItem value="source" data-testid="filter-source-group">
             <AccordionTrigger className="text-xs">Zdroj</AccordionTrigger>
             <AccordionContent>
               <SourceFilter

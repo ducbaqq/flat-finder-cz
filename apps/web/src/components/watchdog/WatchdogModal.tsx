@@ -87,7 +87,7 @@ export default function WatchdogModal() {
         open={watchdogModalOpen}
         onOpenChange={(open) => !open && closeWatchdogModal()}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg" data-testid="watchdog-modal">
           <DialogHeader>
             <div className="flex items-center gap-2">
               <Dog className="h-6 w-6 text-primary" />
@@ -99,17 +99,17 @@ export default function WatchdogModal() {
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs defaultValue="create">
+          <Tabs defaultValue="create" data-testid="watchdog-tabs">
             <TabsList className="w-full">
-              <TabsTrigger value="create" className="flex-1">
+              <TabsTrigger value="create" className="flex-1" data-testid="watchdog-tab-create">
                 Nový hlídací pes
               </TabsTrigger>
-              <TabsTrigger value="list" className="flex-1">
+              <TabsTrigger value="list" className="flex-1" data-testid="watchdog-tab-list">
                 Moji psi{watchdogs.length > 0 && ` (${watchdogs.length})`}
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="create" className="mt-4">
+            <TabsContent value="create" className="mt-4" data-testid="watchdog-create-panel">
               <WatchdogForm
                 email={localEmail}
                 onEmailChange={setLocalEmail}
@@ -119,7 +119,7 @@ export default function WatchdogModal() {
               />
             </TabsContent>
 
-            <TabsContent value="list" className="mt-4">
+            <TabsContent value="list" className="mt-4" data-testid="watchdog-list-panel">
               <WatchdogList
                 email={localEmail}
                 onEmailChange={setLocalEmail}
@@ -134,7 +134,7 @@ export default function WatchdogModal() {
       </Dialog>
 
       {toast && (
-        <div className="fixed top-20 left-1/2 z-[100] -translate-x-1/2 rounded-lg bg-foreground px-4 py-2 text-sm text-background shadow-lg">
+        <div className="fixed top-20 left-1/2 z-[100] -translate-x-1/2 rounded-lg bg-foreground px-4 py-2 text-sm text-background shadow-lg" data-testid="watchdog-toast">
           {toast}
         </div>
       )}

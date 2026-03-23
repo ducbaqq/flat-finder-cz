@@ -33,16 +33,17 @@ export function FeaturesSection() {
   const { ref, inView } = useInView({ triggerOnce: true, threshold: 0.2 });
 
   return (
-    <section ref={ref} className="bg-muted/30 py-16 sm:py-20">
+    <section ref={ref} className="bg-muted/30 py-16 sm:py-20" data-testid="features-section">
       <div className="mx-auto max-w-5xl px-4 sm:px-6">
         <div className="mb-12 text-center">
           <h2
             className="font-display font-normal"
             style={{ fontSize: "var(--text-3xl)" }}
+            data-testid="features-title"
           >
             Proč Domov.cz?
           </h2>
-          <p className="mt-2 text-muted-foreground">
+          <p className="mt-2 text-muted-foreground" data-testid="features-subtitle">
             Všechno, co potřebujete k nalezení nového bydlení
           </p>
         </div>
@@ -52,20 +53,22 @@ export function FeaturesSection() {
           variants={staggerContainer}
           initial="hidden"
           animate={inView ? "visible" : "hidden"}
+          data-testid="features-grid"
         >
           {features.map(({ icon: Icon, color, title, description }) => (
             <motion.div
               key={title}
               variants={fadeInUp}
               className="rounded-xl border border-divider bg-card p-8 text-center transition-shadow hover:shadow-md"
+              data-testid="feature-card"
             >
               <div
                 className={`mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full ${color}`}
               >
                 <Icon className="h-6 w-6" />
               </div>
-              <h3 className="mb-2 text-lg font-semibold">{title}</h3>
-              <p className="text-sm leading-relaxed text-muted-foreground">
+              <h3 className="mb-2 text-lg font-semibold" data-testid="feature-card-title">{title}</h3>
+              <p className="text-sm leading-relaxed text-muted-foreground" data-testid="feature-card-description">
                 {description}
               </p>
             </motion.div>

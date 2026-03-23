@@ -2,10 +2,10 @@ import { Logo } from "./Logo";
 
 export function Footer() {
   return (
-    <footer className="border-t border-divider bg-card pb-20 md:pb-0">
+    <footer className="border-t border-divider bg-card pb-20 md:pb-0" data-testid="app-footer">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
+          <div data-testid="footer-about">
             <Logo className="mb-3" />
             <p className="text-sm text-muted-foreground">
               Hledáte byt nebo dům v Česku? Prohledáváme všechny největší
@@ -13,7 +13,7 @@ export function Footer() {
             </p>
           </div>
 
-          <div>
+          <div data-testid="footer-navigation">
             <h3 className="mb-3 text-sm font-semibold font-display">
               Navigace
             </h3>
@@ -22,6 +22,7 @@ export function Footer() {
                 <a
                   href="/"
                   className="transition-colors hover:text-foreground"
+                  data-testid="footer-link-home"
                 >
                   Domů
                 </a>
@@ -30,6 +31,7 @@ export function Footer() {
                 <a
                   href="/search"
                   className="transition-colors hover:text-foreground"
+                  data-testid="footer-link-search"
                 >
                   Hledat
                 </a>
@@ -37,7 +39,7 @@ export function Footer() {
             </ul>
           </div>
 
-          <div>
+          <div data-testid="footer-sources">
             <h3 className="mb-3 text-sm font-semibold font-display">Zdroje</h3>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
@@ -73,7 +75,7 @@ export function Footer() {
             </ul>
           </div>
 
-          <div>
+          <div data-testid="footer-contact">
             <h3 className="mb-3 text-sm font-semibold font-display">
               Kontakt
             </h3>
@@ -83,7 +85,7 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="mt-8 border-t border-divider pt-6 text-center text-xs text-muted-foreground">
+        <div className="mt-8 border-t border-divider pt-6 text-center text-xs text-muted-foreground" data-testid="footer-copyright">
           &copy; {new Date().getFullYear()} Domov.cz. Všechna práva vyhrazena.
         </div>
       </div>

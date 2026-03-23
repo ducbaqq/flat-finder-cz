@@ -14,11 +14,12 @@ export function TransactionToggle({ value, onChange }: TransactionToggleProps) {
       value={value}
       onValueChange={(v) => onChange(v || "")}
       className="w-full"
+      data-testid="filter-transaction-type"
     >
-      <ToggleGroupItem value="rent" className="flex-1 text-xs">
+      <ToggleGroupItem value="rent" className="flex-1 text-xs" data-testid="filter-transaction-rent">
         Pronájem
       </ToggleGroupItem>
-      <ToggleGroupItem value="sale" className="flex-1 text-xs">
+      <ToggleGroupItem value="sale" className="flex-1 text-xs" data-testid="filter-transaction-sale">
         Prodej
       </ToggleGroupItem>
     </ToggleGroup>

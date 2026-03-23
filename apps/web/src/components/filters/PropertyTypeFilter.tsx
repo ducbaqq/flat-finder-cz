@@ -27,6 +27,7 @@ export function PropertyTypeFilter({ value, onChange }: PropertyTypeFilterProps)
       value={selected}
       onValueChange={(values) => onChange(values.join(","))}
       className="flex flex-wrap gap-1"
+      data-testid="filter-property-type"
     >
       {types.map(({ value: v, label, icon: Icon }) => (
         <ToggleGroupItem
@@ -34,6 +35,7 @@ export function PropertyTypeFilter({ value, onChange }: PropertyTypeFilterProps)
           value={v}
           className="flex items-center gap-1 text-xs"
           size="sm"
+          data-testid={`filter-property-type-${v}`}
         >
           <Icon className="h-3.5 w-3.5" />
           {label}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { Navbar } from "@/components/shared/Navbar";
 import { MobileBottomNav } from "@/components/shared/MobileBottomNav";
@@ -12,6 +12,7 @@ import DetailModal from "@/components/detail/DetailModal";
 import WatchdogModal from "@/components/watchdog/WatchdogModal";
 import { useSearchFilters } from "@/hooks/useSearchFilters";
 import { useListings } from "@/hooks/useListings";
+import { useUiStore } from "@/store/ui-store";
 import { cn } from "@/lib/cn";
 
 const MapView = dynamic(
@@ -22,7 +23,7 @@ const MapView = dynamic(
 
 function MapSkeleton() {
   return (
-    <div className="flex h-full items-center justify-center bg-muted">
+    <div className="flex h-full items-center justify-center bg-muted" data-testid="map-skeleton">
       <span className="text-sm text-muted-foreground">Načítání mapy...</span>
     </div>
   );
@@ -31,14 +32,29 @@ function MapSkeleton() {
 function SearchPageContent() {
   const { filters, page, setPage, view, setView, setFilter, clearFilters } =
     useSearchFilters();
-  const { data, isLoading, isError, refetch } = useListings({ filters, page });
-  const total = data?.total ?? 0;
 
   const showMap = view === "map" || view === "hybrid";
   const showList = view === "list" || view === "hybrid";
 
+  // Reset to page 1 when map viewport changes
+  const mapBounds = useUiStore((s) => s.mapBounds);
+  const prevBoundsRef = useRef(mapBounds);
+  useEffect(() => {
+    if (showMap && mapBounds && prevBoundsRef.current && mapBounds !== prevBoundsRef.current) {
+      setPage(1);
+    }
+    prevBoundsRef.current = mapBounds;
+  }, [mapBounds, showMap, setPage]);
+
+  const { data, isLoading, isError, refetch } = useListings({
+    filters,
+    page,
+    boundToMap: showMap,
+  });
+  const total = data?.total ?? 0;
+
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col" data-testid="search-page">
       <Navbar />
 
       <SearchHeader
@@ -59,12 +75,12 @@ function SearchPageContent() {
 
       <div className="flex flex-1">
         {/* Desktop sidebar */}
-        <aside className="hidden w-72 shrink-0 border-r border-divider md:block">
+        <aside className="hidden w-72 shrink-0 border-r border-divider md:block sticky top-[128px] h-[calc(100vh-128px)] overflow-y-auto" data-testid="filters-panel">
           <FilterSidebar filters={filters} setFilter={setFilter} />
         </aside>
 
         {/* Main content area */}
-        <div className="flex flex-1 flex-col lg:flex-row">
+        <div className="flex flex-1 flex-col lg:flex-row" data-testid="search-content">
           {/* Listings */}
           {showList && (
             <div
@@ -72,6 +88,7 @@ function SearchPageContent() {
                 "flex-1 overflow-y-auto p-4",
                 showMap && "lg:w-[25%] lg:min-w-[280px] lg:max-w-[25%] lg:flex-none"
               )}
+              data-testid="listings-panel"
             >
               <ListingResults
                 data={data}
@@ -92,6 +109,7 @@ function SearchPageContent() {
                 "sticky top-[128px] h-[calc(100vh-128px)]",
                 showList ? "hidden lg:block lg:flex-1" : "flex-1"
               )}
+              data-testid="map-container"
             >
               <Suspense fallback={<MapSkeleton />}>
                 <MapView filters={filters} />

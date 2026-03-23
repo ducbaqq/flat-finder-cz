@@ -57,9 +57,9 @@ async function ensureIndex(): Promise<Supercluster<PointProps>> {
       .where(and(eq(listings.is_active, true), isNotNull(listings.latitude), isNotNull(listings.longitude)));
 
     const sc = new Supercluster<PointProps>({
-      radius: 80,
+      radius: 120,
       maxZoom: INDIVIDUAL_ZOOM_THRESHOLD - 1,
-      minPoints: 2,
+      minPoints: 3,
     });
 
     const points: Supercluster.PointFeature<PointProps>[] = rows.map((r) => ({
@@ -92,9 +92,9 @@ const SQL_CACHE_TTL = 5 * 60_000;
 const MAX_SQL_CACHE = 100;
 
 function getClusterPrecision(zoom: number): number {
-  if (zoom <= 7) return 0;   // ~111 km grid
-  if (zoom <= 9) return 1;   // ~11 km grid
-  if (zoom <= 12) return 2;  // ~1.1 km grid
+  if (zoom <= 8) return 0;   // ~111 km grid
+  if (zoom <= 10) return 1;  // ~11 km grid
+  if (zoom <= 13) return 2;  // ~1.1 km grid
   return 3;                   // ~110 m grid
 }
 
@@ -182,11 +182,20 @@ app.get("/", async (c) => {
       const props = f.properties;
 
       if ("cluster" in props && props.cluster) {
+        const clusterId = props.cluster_id as number;
+        let expansionZoom: number;
+        try {
+          expansionZoom = index.getClusterExpansionZoom(clusterId);
+        } catch {
+          expansionZoom = zoom + 2;
+        }
         clusters.push({
           lat,
           lng,
           count: props.point_count,
-          avg_price: null, // Supercluster doesn't aggregate properties
+          avg_price: null,
+          cluster_id: clusterId,
+          expansion_zoom: expansionZoom,
         });
       } else {
         const pt = props as PointProps;
