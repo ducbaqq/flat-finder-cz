@@ -1,13 +1,16 @@
 import { Hono } from "hono";
-import { and, count, eq, isNotNull, sql } from "drizzle-orm";
-import Supercluster from "supercluster";
-import {
-  getDb,
-  listings,
-  buildWhereConditions,
-} from "@flat-finder/db";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { getDb, listings } from "@flat-finder/db";
 import type { ListingFilters, ClusterPoint, MarkerPoint, MarkersResponse } from "@flat-finder/types";
+import Supercluster from "supercluster";
 import { parseNumericParam } from "../helpers.js";
+import {
+  getClusters as scGetClusters,
+  getExpansionZoom,
+  startClusterRefresh,
+  stopClusterRefresh,
+  isReady,
+} from "../services/cluster-index.js";
 
 const app = new Hono();
 
@@ -19,84 +22,13 @@ const INDIVIDUAL_ZOOM_THRESHOLD = 17;
 /** Safety cap for individual marker queries */
 const MAX_INDIVIDUAL_MARKERS = 5_000;
 
-/** How often to refresh the full-dataset Supercluster index */
-const INDEX_REFRESH_MS = 5 * 60_000; // 5 minutes
+/** Max points to fetch for filtered requests */
+const MAX_FILTERED_POINTS = 1_000;
 
-// ── Server-side Supercluster index (for unfiltered requests) ──
-
-type PointProps = { id: number; price: number | null };
-
-let scIndex: Supercluster<PointProps> | null = null;
-let scIndexTs = 0;
-let scIndexLoading: Promise<void> | null = null;
-let scPointCount = 0;
-
-async function ensureIndex(): Promise<Supercluster<PointProps>> {
-  const now = Date.now();
-  if (scIndex && now - scIndexTs < INDEX_REFRESH_MS) return scIndex;
-
-  // Prevent multiple parallel loads
-  if (scIndexLoading) {
-    await scIndexLoading;
-    return scIndex!;
-  }
-
-  scIndexLoading = (async () => {
-    const db = getDb();
-    console.log("[markers] Loading Supercluster index…");
-    const start = performance.now();
-
-    const rows = await db
-      .select({
-        id: listings.id,
-        lat: listings.latitude,
-        lng: listings.longitude,
-        price: listings.price,
-      })
-      .from(listings)
-      .where(and(eq(listings.is_active, true), isNotNull(listings.latitude), isNotNull(listings.longitude)));
-
-    const sc = new Supercluster<PointProps>({
-      radius: 120,
-      maxZoom: INDIVIDUAL_ZOOM_THRESHOLD - 1,
-      minPoints: 3,
-    });
-
-    const points: Supercluster.PointFeature<PointProps>[] = rows.map((r) => ({
-      type: "Feature" as const,
-      geometry: { type: "Point" as const, coordinates: [r.lng!, r.lat!] },
-      properties: { id: r.id, price: r.price },
-    }));
-
-    sc.load(points);
-    scIndex = sc;
-    scIndexTs = Date.now();
-    scPointCount = rows.length;
-
-    console.log(`[markers] Supercluster index built: ${rows.length} points in ${((performance.now() - start) / 1000).toFixed(1)}s`);
-  })();
-
-  try {
-    await scIndexLoading;
-  } finally {
-    scIndexLoading = null;
-  }
-
-  return scIndex!;
-}
-
-// ── SQL clustering fallback (for filtered requests) ──
-
-const sqlCache = new Map<string, { data: MarkersResponse; ts: number }>();
-const SQL_CACHE_TTL = 5 * 60_000;
-const MAX_SQL_CACHE = 100;
-
-function getClusterPrecision(zoom: number): number {
-  if (zoom <= 8) return 0;   // ~111 km grid
-  if (zoom <= 10) return 1;  // ~11 km grid
-  if (zoom <= 13) return 2;  // ~1.1 km grid
-  return 3;                   // ~110 m grid
-}
+// ── Cache for filtered marker requests ──
+const filteredCache = new Map<string, { data: MarkersResponse; ts: number }>();
+const FILTERED_CACHE_TTL = 60_000; // 1 minute
+const MAX_FILTERED_CACHE = 100;
 
 function buildCacheKey(q: Record<string, string>): string {
   return Object.entries(q)
@@ -120,11 +52,46 @@ function hasContentFilters(filters: ListingFilters): boolean {
   );
 }
 
+/** Convert Supercluster GeoJSON features to our response types. */
+function formatSuperclusterResults(
+  features: GeoJSON.Feature<GeoJSON.Point>[],
+): { clusters: ClusterPoint[]; markers: MarkerPoint[] } {
+  const clusters: ClusterPoint[] = [];
+  const markers: MarkerPoint[] = [];
+
+  for (const f of features) {
+    const [lng, lat] = f.geometry.coordinates;
+    const props = f.properties as Record<string, unknown>;
+
+    if (props.cluster) {
+      clusters.push({
+        lat,
+        lng,
+        count: props.point_count as number,
+        avg_price: null,
+        cluster_id: props.cluster_id as number,
+        expansion_zoom: undefined, // fetched on-demand via /expansion-zoom
+      });
+    } else {
+      markers.push({
+        id: props.id as number,
+        lat,
+        lng,
+        price: (props.price as number) ?? null,
+        title: null,
+        thumbnail_url: null,
+      });
+    }
+  }
+
+  return { clusters, markers };
+}
+
 /**
- * GET /api/markers — Map points with server-side clustering
+ * GET /api/markers — Map points with Supercluster-based clustering
  *
- * Unfiltered: queries a pre-built Supercluster in-memory index (~ms).
- * Filtered:   SQL GROUP BY ROUND(lat/lng), cached 5 min.
+ * Unfiltered: uses pre-built global Supercluster index (sub-ms queries).
+ * Filtered:   builds a temporary Supercluster from filtered DB results.
  * High zoom:  individual points (capped at 5k).
  */
 app.get("/", async (c) => {
@@ -168,133 +135,171 @@ app.get("/", async (c) => {
 
   const filtered = hasContentFilters(filters);
 
-  // ── Fast path: unfiltered → Supercluster in-memory index ──
+  // ── Fast path: unfiltered → global Supercluster index ──
   if (!filtered) {
-    const index = await ensureIndex();
-
-    const features = index.getClusters(bbox, zoom);
-
-    const clusters: ClusterPoint[] = [];
-    const markers: MarkerPoint[] = [];
-
-    for (const f of features) {
-      const [lng, lat] = f.geometry.coordinates;
-      const props = f.properties;
-
-      if ("cluster" in props && props.cluster) {
-        const clusterId = props.cluster_id as number;
-        let expansionZoom: number;
-        try {
-          expansionZoom = index.getClusterExpansionZoom(clusterId);
-        } catch {
-          expansionZoom = zoom + 2;
-        }
-        clusters.push({
-          lat,
-          lng,
-          count: props.point_count,
-          avg_price: null,
-          cluster_id: clusterId,
-          expansion_zoom: expansionZoom,
-        });
-      } else {
-        const pt = props as PointProps;
-        markers.push({ id: pt.id, lat, lng, price: pt.price, title: null, thumbnail_url: null });
-      }
+    if (!isReady()) {
+      return c.json(emptyResponse);
     }
 
-    const isClustered = clusters.length > 0;
+    // High zoom: individual points from DB (for titles/thumbnails)
+    if (zoom >= INDIVIDUAL_ZOOM_THRESHOLD) {
+      const db = getDb();
+      const rows = await db
+        .select({
+          id: listings.id,
+          lat: listings.latitude,
+          lng: listings.longitude,
+          price: listings.price,
+          title: listings.title,
+          thumbnail_url: listings.thumbnail_url,
+        })
+        .from(listings)
+        .where(
+          and(
+            eq(listings.is_active, true),
+            isNotNull(listings.latitude),
+            isNotNull(listings.longitude),
+            sql`${listings.latitude} >= ${sw_lat}`,
+            sql`${listings.latitude} <= ${ne_lat}`,
+            sql`${listings.longitude} >= ${sw_lng}`,
+            sql`${listings.longitude} <= ${ne_lng}`,
+          ),
+        )
+        .limit(MAX_INDIVIDUAL_MARKERS);
+
+      const markers: MarkerPoint[] = rows.map((r) => ({
+        id: r.id,
+        lat: r.lat!,
+        lng: r.lng!,
+        price: r.price,
+        title: r.title,
+        thumbnail_url: r.thumbnail_url,
+      }));
+      return c.json({ markers, clusters: [], total: markers.length, clustered: false });
+    }
+
+    // Supercluster query — sub-millisecond
+    const features = scGetClusters(bbox, zoom);
+    const { clusters, markers } = formatSuperclusterResults(features);
     const total = clusters.reduce((s, cl) => s + cl.count, 0) + markers.length;
 
-    c.header("X-Cache", "SC");
-    c.header("X-SC-Points", String(scPointCount));
-    return c.json({ markers, clusters, total, clustered: isClustered } satisfies MarkersResponse);
+    return c.json({ markers, clusters, total, clustered: clusters.length > 0 });
   }
 
-  // ── Slow path: filtered → SQL GROUP BY with caching ──
+  // ── Filtered path: build temporary Supercluster from filtered results ──
+
   const cacheKey = buildCacheKey(q);
-  const cached = sqlCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < SQL_CACHE_TTL) {
+  const cached = filteredCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < FILTERED_CACHE_TTL) {
     c.header("X-Cache", "HIT");
     return c.json(cached.data);
   }
 
   const db = getDb();
-  const conditions = buildWhereConditions(filters, { includeInactive: filters.include_inactive });
-  conditions.push(isNotNull(listings.latitude));
-  conditions.push(isNotNull(listings.longitude));
-  const where = and(...conditions);
+  const pointLimit = zoom >= INDIVIDUAL_ZOOM_THRESHOLD ? MAX_INDIVIDUAL_MARKERS : MAX_FILTERED_POINTS;
 
-  if (zoom >= INDIVIDUAL_ZOOM_THRESHOLD) {
-    // Individual points at very high zoom
-    const rows = await db
-      .select({ id: listings.id, lat: listings.latitude, lng: listings.longitude, price: listings.price, title: listings.title, thumbnail_url: listings.thumbnail_url })
-      .from(listings)
-      .where(where)
-      .limit(MAX_INDIVIDUAL_MARKERS);
-
-    const markers: MarkerPoint[] = rows.map((r) => ({ id: r.id, lat: r.lat!, lng: r.lng!, price: r.price, title: r.title, thumbnail_url: r.thumbnail_url }));
-    const response: MarkersResponse = { markers, clusters: [], total: markers.length, clustered: false };
-
-    sqlCache.set(cacheKey, { data: response, ts: Date.now() });
-    return c.json(response);
+  // Index-friendly WHERE clause
+  const indexConditions = [];
+  if (!filters.include_inactive) {
+    indexConditions.push(eq(listings.is_active, true));
   }
+  if (filters.property_type) {
+    indexConditions.push(eq(listings.property_type, filters.property_type));
+  }
+  if (filters.transaction_type) {
+    indexConditions.push(eq(listings.transaction_type, filters.transaction_type));
+  }
+  indexConditions.push(isNotNull(listings.latitude));
+  indexConditions.push(isNotNull(listings.longitude));
+  indexConditions.push(sql`${listings.latitude} >= ${sw_lat}`);
+  indexConditions.push(sql`${listings.latitude} <= ${ne_lat}`);
+  indexConditions.push(sql`${listings.longitude} >= ${sw_lng}`);
+  indexConditions.push(sql`${listings.longitude} <= ${ne_lng}`);
 
-  // SQL clustering with statement timeout to prevent runaway queries
-  const precision = getClusterPrecision(zoom);
-  const roundLat = sql`ROUND(${listings.latitude}::numeric, ${sql.raw(String(precision))})`;
-  const roundLng = sql`ROUND(${listings.longitude}::numeric, ${sql.raw(String(precision))})`;
+  const rawRows = await db
+    .select({
+      id: listings.id,
+      lat: listings.latitude,
+      lng: listings.longitude,
+      price: listings.price,
+      size_m2: listings.size_m2,
+      title: listings.title,
+      thumbnail_url: listings.thumbnail_url,
+    })
+    .from(listings)
+    .where(and(...indexConditions))
+    .limit(pointLimit);
 
-  let rows: { lat: number; lng: number; count: number; avg_price: number | null }[];
-  try {
-    rows = await db.transaction(async (tx) => {
-      await tx.execute(sql`SET LOCAL statement_timeout = '5000'`);
-      return tx
-        .select({
-          lat: sql<number>`${roundLat}::float8`,
-          lng: sql<number>`${roundLng}::float8`,
-          count: count(),
-          avg_price: sql<number | null>`AVG(${listings.price})::float8`,
-        })
-        .from(listings)
-        .where(where)
-        .groupBy(roundLat, roundLng);
-    });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("statement timeout") || message.includes("canceling statement")) {
-      return c.json(
-        { error: "Query timed out. Try zooming in or reducing filters.", markers: [], clusters: [], total: 0, clustered: false },
-        408,
-      );
+  // Apply remaining filters in-memory
+  const rows = rawRows.filter((r) => {
+    if (filters.price_min != null && (r.price == null || r.price < filters.price_min)) return false;
+    if (filters.price_max != null && (r.price == null || r.price > filters.price_max)) return false;
+    if (filters.size_min != null && (r.size_m2 == null || r.size_m2 < filters.size_min)) return false;
+    if (filters.size_max != null && (r.size_m2 == null || r.size_m2 > filters.size_max)) return false;
+    return true;
+  });
+
+  let response: MarkersResponse;
+
+  if (zoom >= INDIVIDUAL_ZOOM_THRESHOLD || rows.length <= 50) {
+    // Few results or high zoom: return individual markers
+    const markers: MarkerPoint[] = rows.map((r) => ({
+      id: r.id,
+      lat: r.lat!,
+      lng: r.lng!,
+      price: r.price,
+      title: r.title,
+      thumbnail_url: r.thumbnail_url,
+    }));
+    response = { markers, clusters: [], total: markers.length, clustered: false };
+  } else {
+    // Build a temporary Supercluster from filtered points
+    const features: GeoJSON.Feature<GeoJSON.Point, { id: number; price: number | null }>[] = [];
+    for (const r of rows) {
+      if (r.lat == null || r.lng == null) continue;
+      features.push({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [r.lng, r.lat] },
+        properties: { id: r.id, price: r.price },
+      });
     }
-    throw err;
+
+    const tempSc = new Supercluster<{ id: number; price: number | null }>({
+      radius: 120,
+      maxZoom: 16,
+      minPoints: 2,
+    });
+    tempSc.load(features);
+
+    const scFeatures = tempSc.getClusters(bbox, zoom);
+    const { clusters, markers } = formatSuperclusterResults(scFeatures);
+    const total = clusters.reduce((s, cl) => s + cl.count, 0) + markers.length;
+    response = { markers, clusters, total, clustered: clusters.length > 0 };
   }
-
-  const sqlClusters: ClusterPoint[] = rows.map((r) => ({
-    lat: r.lat,
-    lng: r.lng,
-    count: r.count,
-    avg_price: r.avg_price,
-  }));
-
-  const total = sqlClusters.reduce((sum, cl) => sum + cl.count, 0);
-  const response: MarkersResponse = { markers: [], clusters: sqlClusters, total, clustered: true };
 
   // Cache
-  if (sqlCache.size >= MAX_SQL_CACHE) {
-    const oldest = sqlCache.keys().next().value;
-    if (oldest) sqlCache.delete(oldest);
+  if (filteredCache.size >= MAX_FILTERED_CACHE) {
+    const oldest = filteredCache.keys().next().value;
+    if (oldest) filteredCache.delete(oldest);
   }
-  sqlCache.set(cacheKey, { data: response, ts: Date.now() });
+  filteredCache.set(cacheKey, { data: response, ts: Date.now() });
   c.header("X-Cache", "MISS");
 
   return c.json(response);
 });
 
 /**
+ * GET /api/markers/expansion-zoom/:clusterId — Get the zoom level that splits a cluster.
+ */
+app.get("/expansion-zoom/:clusterId", (c) => {
+  const clusterId = Number(c.req.param("clusterId"));
+  if (isNaN(clusterId)) return c.json({ zoom: 18 });
+  const zoom = getExpansionZoom(clusterId);
+  return c.json({ zoom });
+});
+
+/**
  * GET /api/markers/preview/:id — Lightweight hover preview for a single listing.
- * Returns just title + thumbnail_url. Cached in an LRU map for fast repeated hovers.
  */
 const previewCache = new Map<number, { title: string | null; thumbnail_url: string | null }>();
 const MAX_PREVIEW_CACHE = 2_000;
@@ -327,9 +332,13 @@ app.get("/preview/:id", async (c) => {
   return c.json(result);
 });
 
-/** Pre-warm the Supercluster index. Called from server startup. */
+// ── Exports for server lifecycle ──
+
+export { startClusterRefresh as startMarkerRefresh, stopClusterRefresh as stopMarkerRefresh };
+
+/** Backwards-compat stub. */
 export async function warmMarkerIndex(): Promise<void> {
-  await ensureIndex();
+  console.log("[markers] Using Supercluster index (built in background).");
 }
 
 export default app;

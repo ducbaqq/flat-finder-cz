@@ -206,12 +206,18 @@ function MarkerLayer({ filters }: { filters: Record<string, string> }) {
             }}
             eventHandlers={{
               click: () => {
-                const targetZoom = cluster.expansion_zoom
-                  ? Math.min(cluster.expansion_zoom, 18)
-                  : Math.min(map.getZoom() + 3, 18);
-                map.flyTo([cluster.lat, cluster.lng], targetZoom, {
-                  duration: 0.5,
-                });
+                if (cluster.cluster_id != null) {
+                  // Fetch the exact zoom that splits this cluster
+                  apiGet<{ zoom: number }>(`/markers/expansion-zoom/${cluster.cluster_id}`)
+                    .then(({ zoom: expZoom }) => {
+                      map.flyTo([cluster.lat, cluster.lng], Math.min(expZoom, 18), { duration: 0.5 });
+                    })
+                    .catch(() => {
+                      map.flyTo([cluster.lat, cluster.lng], Math.min(map.getZoom() + 3, 18), { duration: 0.5 });
+                    });
+                } else {
+                  map.flyTo([cluster.lat, cluster.lng], Math.min(map.getZoom() + 3, 18), { duration: 0.5 });
+                }
               },
             }}
           >
