@@ -25,48 +25,27 @@ const dotIcon = L.divIcon({
 // ── Cluster display helpers ──
 
 function formatClusterCount(count: number): string {
-  if (count >= 1_000_000) {
-    const m = count / 1_000_000;
-    return m >= 10 ? `${Math.round(m)}M` : `${m.toFixed(1)}M`;
-  }
-  if (count >= 1_000) {
-    const k = count / 1_000;
-    return k >= 10 ? `${Math.round(k)}K` : `${k.toFixed(1)}K`;
-  }
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 10_000) return `${Math.round(count / 1_000)}k`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
   return String(count);
 }
 
-/** Logarithmic scaling: 30px at count=2, up to 70px for very large clusters */
-const CLUSTER_SIZE_MIN = 30;
-const CLUSTER_SIZE_MAX = 70;
-
 function clusterRadius(count: number): number {
-  if (count <= 1) return CLUSTER_SIZE_MIN / 2;
-  const logMin = Math.log(2);
-  const logMax = Math.log(100_000);
-  const t = Math.min(1, Math.max(0, (Math.log(count) - logMin) / (logMax - logMin)));
-  return (CLUSTER_SIZE_MIN + t * (CLUSTER_SIZE_MAX - CLUSTER_SIZE_MIN)) / 2;
+  if (count <= 1) return 8;
+  return Math.min(55, 18 + Math.log10(count) * 14);
 }
 
-/** Color gradient: cool teal for small clusters -> warm orange/red for large */
-function clusterColor(count: number): { fill: string; stroke: string } {
-  const logMin = Math.log(2);
-  const logMax = Math.log(100_000);
-  const t = Math.min(1, Math.max(0, (Math.log(Math.max(2, count)) - logMin) / (logMax - logMin)));
-  const hue = Math.round(174 - t * 159);
-  const sat = Math.round(65 + t * 15);
-  const light = Math.round(38 + t * 7);
-
+function clusterColor(): { fill: string; stroke: string } {
   return {
-    fill: `hsl(${hue}, ${sat}%, ${light}%)`,
-    stroke: `hsl(${hue}, ${sat}%, ${Math.max(20, light - 10)}%)`,
+    fill: "hsl(174, 65%, 38%)",
+    stroke: "hsl(174, 65%, 28%)",
   };
 }
 
-/** Font size scales with bubble radius */
 function clusterFontSize(count: number): number {
   const r = clusterRadius(count);
-  return Math.round(11 + ((r - 15) / 20) * 5);
+  return Math.max(10, Math.min(18, Math.round(r * 0.55)));
 }
 
 // ── Lazy hover tooltip — fetches preview on first hover ──
@@ -209,16 +188,19 @@ function MarkerLayer({ filters }: { filters: Record<string, string> }) {
     <>
       {/* Server-side clusters */}
       {clusters.map((cluster) => {
-        const colors = clusterColor(cluster.count);
+        const isSmall = cluster.count <= 2;
+        const colors = clusterColor();
+        const radius = isSmall ? 6 : clusterRadius(cluster.count);
         const fontSize = clusterFontSize(cluster.count);
+
         return (
           <CircleMarker
             key={`cl-${cluster.lat}-${cluster.lng}`}
             center={[cluster.lat, cluster.lng]}
-            radius={clusterRadius(cluster.count)}
+            radius={radius}
             pathOptions={{
               fillColor: colors.fill,
-              fillOpacity: 0.75,
+              fillOpacity: isSmall ? 0.5 : 0.65,
               color: colors.stroke,
               weight: 2,
             }}
@@ -233,15 +215,17 @@ function MarkerLayer({ filters }: { filters: Record<string, string> }) {
               },
             }}
           >
-            <Tooltip
-              direction="center"
-              permanent
-              className="cluster-count-tooltip"
-            >
-              <span style={{ fontSize: `${fontSize}px` }}>
-                {formatClusterCount(cluster.count)}
-              </span>
-            </Tooltip>
+            {!isSmall && (
+              <Tooltip
+                direction="center"
+                permanent
+                className="cluster-count-tooltip"
+              >
+                <span style={{ fontSize: `${fontSize}px` }}>
+                  {formatClusterCount(cluster.count)}
+                </span>
+              </Tooltip>
+            )}
           </CircleMarker>
         );
       })}
