@@ -1,35 +1,43 @@
-# Flat Finder CZ
+# Flat Finder CZ (Domov.cz)
 
-Czech property listing aggregator — collects rentals and sales from **sreality.cz**, **bezrealitky.cz**, and **ulovdomov.cz** into a single dashboard with interactive map, filters, and watchdog email alerts.
+Czech property listing aggregator — collects rentals and sales from **10 major Czech real estate portals** into a single dashboard with interactive map, filters, and watchdog email alerts.
 
 ## Features
 
-- **100k+ real listings** from 3 major Czech real estate portals
-- **Interactive map** with Leaflet.js + marker clustering (CARTO Voyager tiles)
-- **Comprehensive filters** — transaction type, property type, location, price, size, layout, condition, construction, ownership, furnishing, energy rating, amenities, source
-- **Bilingual UI** — Czech labels with English translations
+- **350k+ real listings** from 10 Czech real estate portals
+- **Interactive map** with Supercluster-based clustering, geocoded location search, and drill-down zoom
+- **Sreality-style homepage** with property type tabs, transaction pills, and location search
+- **Full-page filter form** (`/filter`) with 14 filter sections — property type, disposition, location, price, area, condition, ownership, furnishing, building type, amenities, accessibility, energy class
+- **Comprehensive search** — URL-synced filters, paginated results, sidebar refinement
 - **Watchdog alerts** (Hlídací pes) — save filter criteria + email, get notified when new matching listings appear
-- **Paginated listings** with detail modals, image galleries, and source links
 - **Listing deactivation** — listings removed from source sites are automatically marked inactive
 - **Dark mode** support
 - **Mobile responsive** layout
 
 ## Data Sources
 
-| Source | Categories | Listings |
-|--------|-----------|----------|
+| Source | Categories | Est. Listings |
+|--------|-----------|---------------|
 | **Sreality.cz** | Flats, houses, land, commercial, garages | ~92,000 |
 | **Bezrealitky.cz** | Flats, houses, land | ~6,000 |
 | **UlovDomov.cz** | Flats, houses | ~5,800 |
+| **Idnes Reality** | Flats, houses, land, commercial, garages | ~15,000 |
+| **Bazos.cz** | Flats, houses, land | ~10,000 |
+| **CeskeReality.cz** | Flats, houses, land, commercial, cottages | ~8,000 |
+| **Realitymix.cz** | Flats, houses, land, commercial | ~5,000 |
+| **eReality.cz** | Flats, houses, land | ~3,000 |
+| **Eurobydleni.cz** | Flats, houses | ~2,000 |
+| **Realingo.cz** | Flats, houses, land | ~1,500 |
 
 ## Tech Stack
 
-- **Frontend**: Next.js 15 + React 19, TanStack Query, Zustand, Leaflet.js
+- **Frontend**: Next.js 15 + React 19, TanStack Query, Zustand, Framer Motion, shadcn/ui
 - **Backend**: Hono (Node.js HTTP framework)
-- **Scraper**: TypeScript, async generators, parallel source execution
+- **Scraper**: TypeScript, async generators, parallel source execution, live terminal dashboard
 - **Notifier**: Brevo (email API) for watchdog alerts
 - **Database**: PostgreSQL + Drizzle ORM
-- **Maps**: Leaflet + CARTO Voyager tiles + MarkerCluster plugin
+- **Maps**: Leaflet + CARTO Voyager tiles + Supercluster (server-side spatial index)
+- **Geocoding**: OpenStreetMap Nominatim (location search → map zoom)
 - **Monorepo**: npm workspaces
 
 ## Project Structure
@@ -86,7 +94,7 @@ npm run build
 
 ### 4. Populate the database
 
-Run the scraper to fetch real listings from all 3 sources:
+Run the scraper to fetch real listings from all sources:
 
 ```bash
 npm run scraper
@@ -100,7 +108,7 @@ See [Scraper](#scraper) for details on run modes.
 npm run dev:api
 ```
 
-The API starts on `http://localhost:4000`.
+The API starts on `http://localhost:4000`. On startup it builds a Supercluster spatial index over all listing coordinates (~1-2 min for 350K+ points) and rebuilds every 15 minutes.
 
 ### 6. Start the frontend
 
@@ -116,7 +124,9 @@ The frontend starts on `http://localhost:3000`.
 |--------|----------|-------------|
 | GET | `/api/listings` | Paginated listings with filters |
 | GET | `/api/listings/<id>` | Single listing detail |
-| GET | `/api/markers` | Map markers with clustering |
+| GET | `/api/markers` | Map markers with Supercluster clustering |
+| GET | `/api/markers/expansion-zoom/<id>` | Get zoom level to split a cluster |
+| GET | `/api/markers/preview/<id>` | Lightweight hover preview (title + thumbnail) |
 | GET | `/api/stats` | Aggregate statistics |
 | GET | `/api/health` | Health check |
 | POST | `/api/watchdogs` | Create a watchdog |
@@ -130,75 +140,101 @@ The frontend starts on `http://localhost:3000`.
 
 ## Scraper
 
-The scraper fetches listings from all 3 source APIs with parallel source execution (each source gets its own DB connection):
+The scraper fetches listings from 10 source sites with parallel source execution (each source gets its own DB connection):
 
-- **Sreality**: REST API (`/api/cs/v2/estates`) — flats, houses, land, commercial, garages (sale/rent/auction)
-- **Bezrealitky**: Next.js data routes with Apollo cache — flats, houses, land (sale/rent)
-- **UlovDomov**: REST API (`/v1/offer/find`) — flats, houses (sale/rent)
+- **Sreality**: REST API — flats, houses, land, commercial, garages (sale/rent/auction)
+- **Bezrealitky**: Next.js data routes — flats, houses, land (sale/rent)
+- **UlovDomov**: REST API — flats, houses (sale/rent)
+- **Idnes Reality**: AJAX pagination + detail enrichment (GPS, description, seller info)
+- **Bazos.cz**: HTML scraping — flats, houses, land
+- **CeskeReality.cz**: HTML + JSON-LD — flats, houses, land, commercial, cottages (sale/rent/auction)
+- **Realitymix.cz**: HTML scraping — flats, houses, land, commercial
+- **eReality.cz**: HTML scraping — flats, houses, land
+- **Eurobydleni.cz**: HTML scraping — flats, houses
+- **Realingo.cz**: HTML scraping — flats, houses, land
 
 ### Run Modes
 
-**Incremental** (default) — stops fetching a category early when all listings on a page are already known. No deactivation since it doesn't see everything.
+**Incremental** (default) — stops fetching a category early when all listings on a page are already known.
 
 ```bash
 npm run scraper
-npm run scraper -- --source sreality    # single source
-npm run scraper -- --dry-run            # no DB writes
+npm run scraper -- --source sreality              # single source
+npm run scraper -- --source idnes,ceskereality    # multiple sources
+npm run scraper -- --dry-run                      # no DB writes
 ```
 
-**Full** (`--full`) — fetches all pages from all sources, then deactivates listings that were not seen (i.e. removed from the source site).
+**Full** (`--full`) — fetches all pages from all sources, then deactivates listings that were not seen. Skips detail re-enrichment for listings scraped within the last 24 hours.
 
 ```bash
 npm run scraper -- --full
+npm run scraper -- --source idnes,ceskereality,realingo --full
 ```
 
-**Watcher** (`--watch`) — loops continuously, checking only the newest pages per category. New listings are enriched with detail data and upserted inline. Exits cleanly on SIGINT/SIGTERM.
+**Watcher** (`--watch`) — loops continuously, checking only the newest pages per category.
 
 ```bash
 npm run scraper -- --watch                    # default 300s interval
 npm run scraper -- --watch --interval 60      # 60s between cycles
 ```
 
-### Architecture
-
-Scrapers are async generators that yield one page at a time. The runner controls when to stop (incremental early-stop), when to enrich (inline vs batch), and when to deactivate.
-
-```
-Runner (index.ts)                    Scraper (sreality.ts etc.)
-─────────────────                    ──────────────────────────
-                                     async *fetchPages()
-for await (page of fetchPages())  ←── yield { category, page, listings }
-  check if all known (early-stop)     yield { category, page, listings }
-  watcher: enrich inline + upsert    yield ...
-full: enrichListings(all), upsert    (generator done)
-deactivate if --full
-```
-
 ### CLI Options
 
 | Flag | Description |
 |------|-------------|
-| `--source <name>` | `sreality`, `bezrealitky`, `ulovdomov`, or `all` (default: `all`) |
+| `--source <names>` | Comma-separated sources or `all` (default: `all`) |
 | `--dry-run` | Collect listings but skip all DB writes |
 | `--full` | Full scan + deactivate stale listings |
 | `--watch` | Watcher mode: loop checking newest pages |
 | `--interval <secs>` | Seconds between watcher cycles (default: 300) |
+| `--no-dashboard` | Disable live terminal dashboard |
+| `--cleanup` | Run TTL-based deactivation only (14 day threshold) |
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SREALITY_RPS` | 5 | Sreality requests per second |
-| `SREALITY_CONCURRENCY` | 10 | Sreality max concurrent requests |
+| `SREALITY_RPS` | 25 | Sreality requests per second |
+| `SREALITY_CONCURRENCY` | 50 | Sreality max concurrent requests |
 | `BEZREALITKY_RPS` | 3 | Bezrealitky requests per second |
 | `BEZREALITKY_CONCURRENCY` | 5 | Bezrealitky max concurrent requests |
-| `ULOVDOMOV_RPS` | 5 | UlovDomov requests per second |
+| `ULOVDOMOV_RPS` | 8 | UlovDomov requests per second |
 | `ULOVDOMOV_CONCURRENCY` | 10 | UlovDomov max concurrent requests |
+| `IDNES_RPS` | 20 | Idnes requests per second |
+| `IDNES_CONCURRENCY` | 15 | Idnes max concurrent requests |
+| `IDNES_CATEGORY_PARALLELISM` | 3 | Categories to scrape in parallel |
+| `IDNES_SKIP_ENRICHMENT_HOURS` | 24 | Skip detail re-fetch if scraped within N hours |
+| `CESKEREALITY_RPS` | 3 | CeskeReality requests per second (hard 429 limit) |
+| `CESKEREALITY_CONCURRENCY` | 3 | CeskeReality max concurrent requests |
+| `CESKEREALITY_CATEGORY_PARALLELISM` | 2 | Categories to scrape in parallel |
 | `WATCHER_INTERVAL_S` | 300 | Default watcher loop interval (seconds) |
 | `WATCHER_MAX_PAGES` | 3 | Max pages per category in watch mode |
-| `WATCHER_DETAIL_CONCURRENCY` | 8 | Concurrent detail fetches in watch mode |
 | `MAX_RETRIES` | 3 | HTTP retry attempts |
 | `DETAIL_BATCH_SIZE` | 20 | Listings per detail-fetch batch |
+
+### Recommended Cron Schedule
+
+```bash
+# Incremental scrape every 4 hours
+0 */4 * * * cd /app && npm run scraper 2>&1 | tee -a /var/log/scraper.log
+
+# Full scrape + deactivation once daily at 3 AM
+0 3 * * * cd /app && npm run scraper -- --full 2>&1 | tee -a /var/log/scraper-full.log
+
+# TTL cleanup daily at 5 AM (safety net)
+0 5 * * * cd /app && npm run scraper -- --cleanup 2>&1 | tee -a /var/log/scraper-cleanup.log
+```
+
+## Map Clustering
+
+The map uses **Supercluster** (KD-tree spatial index) for zoom-aware hierarchical clustering:
+
+- Builds an index over all ~355K listing coordinates on API startup
+- Sub-millisecond viewport queries at any zoom level
+- ~35 clusters at country zoom, scaling naturally as the user zooms in
+- Cluster click drills down to the exact expansion zoom level
+- Filtered queries build a temporary Supercluster from DB results
+- Index rebuilds every 15 minutes to pick up new/deactivated listings
 
 ## Notifier
 
