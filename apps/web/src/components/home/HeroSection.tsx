@@ -1,12 +1,14 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { Building2, Globe } from "lucide-react";
 import { useStats } from "@/hooks/useStats";
 import { fadeInUp } from "@/lib/animations";
 
 export function HeroSection({ children }: { children: React.ReactNode }) {
   const { data } = useStats();
   const totalListings = data?.total ?? 0;
+  const sourcesCount = Object.keys(data?.by_source ?? {}).length;
 
   return (
     <section
@@ -18,9 +20,7 @@ export function HeroSection({ children }: { children: React.ReactNode }) {
         className="pointer-events-none absolute inset-0 -z-10"
         aria-hidden="true"
       >
-        {/* Radial teal/terracotta glow */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,hsl(var(--primary)/0.08),transparent_70%)]" />
-        {/* Subtle dot pattern texture */}
         <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
@@ -49,32 +49,43 @@ export function HeroSection({ children }: { children: React.ReactNode }) {
         </span>
       </motion.div>
 
-      {/* Headline with count */}
-      <motion.h1
-        className="text-center text-xl sm:text-2xl font-medium text-foreground mb-10"
-        data-testid="hero-title"
-        variants={fadeInUp}
-        initial="hidden"
-        animate="visible"
-        transition={{ delay: 0.15 }}
-      >
-        Vyberte si z{" "}
-        <strong className="font-bold text-primary">
-          {totalListings.toLocaleString("cs-CZ")} nabídek
-        </strong>{" "}
-        nemovitostí
-      </motion.h1>
-
       {/* Children: PropertyTypeTabs + QuickActions */}
       <motion.div
         className="w-full max-w-4xl"
         variants={fadeInUp}
         initial="hidden"
         animate="visible"
-        transition={{ delay: 0.3 }}
+        transition={{ delay: 0.15 }}
       >
         {children}
       </motion.div>
+
+      {/* Stats bar below filters */}
+      {totalListings > 0 && (
+        <motion.div
+          className="mt-8 flex items-center justify-center gap-8 sm:gap-12 text-muted-foreground"
+          data-testid="hero-stats"
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+          transition={{ delay: 0.4 }}
+        >
+          <div className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-primary" />
+            <span className="text-lg font-bold text-foreground tabular-nums">
+              {totalListings.toLocaleString("cs-CZ")}
+            </span>
+            <span className="text-sm">aktivních nabídek</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Globe className="h-4 w-4 text-primary" />
+            <span className="text-lg font-bold text-foreground tabular-nums">
+              {sourcesCount}
+            </span>
+            <span className="text-sm">zdrojů</span>
+          </div>
+        </motion.div>
+      )}
     </section>
   );
 }
