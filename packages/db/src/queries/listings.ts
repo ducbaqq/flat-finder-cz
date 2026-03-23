@@ -112,11 +112,6 @@ export function buildWhereConditions(
   return conditions;
 }
 
-function hasViewportBounds(filters: ListingFilters): boolean {
-  return filters.sw_lat != null && filters.sw_lng != null &&
-    filters.ne_lat != null && filters.ne_lng != null;
-}
-
 export function getSortOrder(sort?: string) {
   switch (sort) {
     case "price_asc":
@@ -171,25 +166,24 @@ export async function queryListings(
   } else if (rows.length < perPage) {
     // Page is not full — we know the exact total
     total = offset + rows.length;
-  } else if (hasViewportBounds(filters)) {
-    // Viewport-bounded queries: skip the expensive COUNT entirely.
-    // The frontend uses infinite scroll for map views — it only needs to
-    // know "are there more pages?", not the exact total. Estimate high
-    // enough that the frontend keeps paginating.
-    total = offset + rows.length + perPage;
   } else {
-    // Non-viewport queries: run a capped COUNT
+    // Run COUNT with a 2s timeout. Fast for small result sets, falls back
+    // to a generous estimate for large viewport scans that would take 10s+.
     try {
-      const totalResult = await db.execute<{ cnt: string }>(
-        sql`SELECT COUNT(*) AS cnt FROM (
-          SELECT 1 FROM listings
-          WHERE ${where ?? sql`true`}
-          LIMIT 100000
-        ) sub`,
-      );
-      total = Number(totalResult[0]?.cnt ?? 0);
+      const [totalResult] = await db.transaction(async (tx) => {
+        await tx.execute(sql`SET LOCAL statement_timeout = '2000'`);
+        return tx.execute<{ cnt: string }>(
+          sql`SELECT COUNT(*) AS cnt FROM (
+            SELECT 1 FROM listings
+            WHERE ${where ?? sql`true`}
+            LIMIT 100000
+          ) sub`,
+        );
+      });
+      total = Number(totalResult?.cnt ?? 0);
     } catch {
-      total = offset + rows.length + perPage;
+      // COUNT timed out — estimate generously so pagination keeps working
+      total = Math.max(10000, offset + rows.length + perPage);
     }
   }
 
