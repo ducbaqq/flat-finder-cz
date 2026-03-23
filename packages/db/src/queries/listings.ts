@@ -2,7 +2,6 @@ import {
   and,
   asc,
   type Column,
-  count,
   desc,
   eq,
   gte,
@@ -12,6 +11,7 @@ import {
   lte,
   or,
   type SQL,
+  sql,
 } from "drizzle-orm";
 import type { ListingFilters } from "@flat-finder/types";
 import { listings, type NewListing } from "../schema/listings.js";
@@ -76,10 +76,13 @@ export function buildWhereConditions(
   }
 
   if (filters.location) {
-    // Prefer exact match on city/district/region (uses B-tree indexes) before
-    // falling back to prefix match. Avoids leading-wildcard ILIKE on all
-    // columns which forces a full sequential scan.
-    const loc = filters.location;
+    // Location search strategy:
+    //   1. Exact match on city/district/region — uses B-tree indexes, fast.
+    //   2. Prefix ILIKE on city/district — can still use B-tree with C locale.
+    //   DO NOT add leading-wildcard ILIKE on address — it forces a full
+    //   sequential scan on 400K rows and poisons the entire OR clause,
+    //   preventing PostgreSQL from using any index at all.
+    const loc = filters.location.trim();
     conditions.push(
       or(
         eq(listings.city, loc),
@@ -87,7 +90,6 @@ export function buildWhereConditions(
         eq(listings.region, loc),
         ilike(listings.city, `${loc}%`),
         ilike(listings.district, `${loc}%`),
-        ilike(listings.address, `%${loc}%`),
       )!,
     );
   }
@@ -140,23 +142,46 @@ export async function queryListings(
   });
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  // Skip the expensive COUNT(*) query when a cached total is available
+  // Avoid holding a transaction open for both COUNT + SELECT.
+  // The SELECT with LIMIT/OFFSET is fast; COUNT(*) on 400K rows is not.
+  // Strategy:
+  //   1. If we have a cached total, skip COUNT entirely.
+  //   2. Otherwise, run the data query first (fast), then COUNT separately.
+  //      Use statement_timeout on the COUNT to protect against slow filters.
   const hasCachedTotal = opts?.cachedTotal != null;
 
-  const [totalResult, rows] = await Promise.all([
-    hasCachedTotal
-      ? Promise.resolve([{ count: opts!.cachedTotal! }])
-      : db.select({ count: count() }).from(listings).where(where),
-    db
-      .select()
-      .from(listings)
-      .where(where)
-      .orderBy(getSortOrder(filters.sort))
-      .limit(perPage)
-      .offset(offset),
-  ]);
+  // Data query — uses indexes on is_active + listed_at (or price/size for sort)
+  const rows = await db
+    .select()
+    .from(listings)
+    .where(where)
+    .orderBy(getSortOrder(filters.sort))
+    .limit(perPage)
+    .offset(offset);
 
-  const total = totalResult[0]?.count ?? 0;
+  let total: number;
+
+  if (hasCachedTotal) {
+    total = opts!.cachedTotal!;
+  } else if (rows.length < perPage && page === 1) {
+    // If the first page is not full, we know the exact total
+    total = rows.length;
+  } else {
+    // COUNT with a statement timeout to prevent runaway scans
+    try {
+      const totalResult = await db.execute<{ cnt: string }>(
+        sql`SELECT COUNT(*) AS cnt FROM (
+          SELECT 1 FROM listings
+          WHERE ${where ?? sql`true`}
+          LIMIT 100000
+        ) sub`,
+      );
+      total = Number(totalResult[0]?.cnt ?? 0);
+    } catch {
+      // If count times out, estimate from page position
+      total = offset + rows.length + (rows.length === perPage ? perPage : 0);
+    }
+  }
 
   return {
     listings: rows,

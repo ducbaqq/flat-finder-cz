@@ -26,9 +26,9 @@ query SearchOffer($filter: OfferFilterInput!, $sort: OfferSort, $first: Int, $sk
   searchOffer(filter: $filter, sort: $sort, first: $first, skip: $skip) {
     items {
       id url purpose property reserved createdAt category
-      price { total canonical currency }
-      area { main plot }
-      photos { main }
+      price { total canonical currency note }
+      area { main plot floor cellar balcony terrace loggia }
+      photos { main list }
       location { address addressUrl locationPrecision latitude longitude }
     }
     total
@@ -71,13 +71,20 @@ interface ReaLingoListItem {
     total: number | null;
     canonical: number | null;
     currency: string;
+    note: string | null;
   } | null;
   area: {
     main: number | null;
     plot: number | null;
+    floor: number | null;
+    cellar: number | null;
+    balcony: number | null;
+    terrace: number | null;
+    loggia: number | null;
   } | null;
   photos: {
     main: string | null;
+    list: string[] | null;
   } | null;
   location: {
     address: string | null;
@@ -577,9 +584,19 @@ export class ReaLingoScraper extends BaseScraper {
     const price = item.price?.total ?? item.price?.canonical ?? null;
     const currency = item.price?.currency ?? "CZK";
 
-    const mainPhoto = item.photos?.main ?? null;
-    const imageUrl = buildImageUrl(mainPhoto);
-    const imageUrls = imageUrl ? JSON.stringify([imageUrl]) : "[]";
+    // Use full photo list if available, fall back to main photo
+    const photoList = item.photos?.list;
+    let imageUrls: string;
+    let imageUrl: string | null;
+    if (photoList && photoList.length > 0) {
+      const urls = photoList.map(p => buildImageUrl(p)).filter((u): u is string => u !== null);
+      imageUrls = JSON.stringify(urls);
+      imageUrl = urls[0] ?? null;
+    } else {
+      const mainPhoto = item.photos?.main ?? null;
+      imageUrl = buildImageUrl(mainPhoto);
+      imageUrls = imageUrl ? JSON.stringify([imageUrl]) : "[]";
+    }
 
     const sourceUrl = item.url ? `${BASE_URL}${item.url}` : null;
 
@@ -596,7 +613,7 @@ export class ReaLingoScraper extends BaseScraper {
       description: null,
       price,
       currency,
-      price_note: null,
+      price_note: item.price?.note ?? null,
       address,
       city,
       district: null,
@@ -629,6 +646,11 @@ export class ReaLingoScraper extends BaseScraper {
         realingo_category: item.category,
         location_precision: item.location?.locationPrecision ?? null,
         plot_area: item.area?.plot ?? null,
+        floor_area: item.area?.floor ?? null,
+        cellar_area: item.area?.cellar ?? null,
+        balcony_area: item.area?.balcony ?? null,
+        terrace_area: item.area?.terrace ?? null,
+        loggia_area: item.area?.loggia ?? null,
       }),
     };
   }

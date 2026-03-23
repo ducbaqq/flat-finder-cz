@@ -113,9 +113,25 @@ app.get("/", async (c) => {
     ? cachedEntry.count
     : undefined;
 
-  const result = await queryListings(db, filters, {
-    cachedTotal,
-  });
+  let result;
+  try {
+    result = await queryListings(db, filters, {
+      cachedTotal,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const causeMessage = err instanceof Error && err.cause instanceof Error ? err.cause.message : "";
+    if (
+      message.includes("canceling statement") || message.includes("statement timeout") ||
+      causeMessage.includes("canceling statement") || causeMessage.includes("statement timeout")
+    ) {
+      return c.json(
+        { error: "Query timed out. Try narrowing your filters.", listings: [], total: 0, page: 1, per_page: 20, total_pages: 1 },
+        408,
+      );
+    }
+    throw err;
+  }
 
   // Store the count in cache for this filter combination
   if (cachedTotal == null) {

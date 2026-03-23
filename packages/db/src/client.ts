@@ -6,8 +6,10 @@ import { getEnv, getDatabaseUrl } from "@flat-finder/config";
 import * as listingsSchema from "./schema/listings.js";
 import * as watchdogsSchema from "./schema/watchdogs.js";
 import * as scraperRunsSchema from "./schema/scraper-runs.js";
+import * as listingStatsSchema from "./schema/listing-stats.js";
+import * as markerClustersSchema from "./schema/marker-clusters.js";
 
-const schema = { ...listingsSchema, ...watchdogsSchema, ...scraperRunsSchema };
+const schema = { ...listingsSchema, ...watchdogsSchema, ...scraperRunsSchema, ...listingStatsSchema, ...markerClustersSchema };
 
 // ---------------------------------------------------------------------------
 // SSL helpers
@@ -39,10 +41,12 @@ function createPostgresClient(): ReturnType<typeof postgres> {
   const url = getDatabaseUrl();
   return postgres(url, {
     ssl: buildSslOption(),
-    max: 20,
-    idle_timeout: 30,
-    connect_timeout: 10,
-    max_lifetime: 60 * 30, // 30 minutes
+    // Managed DBs (DigitalOcean / Render) typically allow ~25 connections.
+    // Keep pool small so the API + scraper + migrations can co-exist.
+    max: 5,
+    idle_timeout: 20,
+    connect_timeout: 15,
+    max_lifetime: 60 * 10, // 10 minutes — recycle before the DB force-closes
   });
 }
 

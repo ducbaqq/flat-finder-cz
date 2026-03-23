@@ -5,12 +5,12 @@ import { bodyLimit } from "hono/body-limit";
 import { logger } from "hono/logger";
 import { serve } from "@hono/node-server";
 import { sql } from "drizzle-orm";
-import { getDb } from "@flat-finder/db";
+import { getDb, closeDb } from "@flat-finder/db";
 
 import { errorHandler } from "./middleware/error-handler.js";
 import listingsRoutes from "./routes/listings.js";
-import markersRoutes, { warmMarkerIndex } from "./routes/markers.js";
-import statsRoutes from "./routes/stats.js";
+import markersRoutes, { startMarkerRefresh, stopMarkerRefresh } from "./routes/markers.js";
+import statsRoutes, { startStatsRefresh, stopStatsRefresh } from "./routes/stats.js";
 import watchdogsRoutes from "./routes/watchdogs.js";
 
 const app = new Hono();
@@ -115,21 +115,49 @@ app.get("/api/health", async (c) => {
 // Start server
 const port = 4000;
 
-serve({ fetch: app.fetch, port }, () => {
+const prewarmAbort = new AbortController();
+
+const server = serve({ fetch: app.fetch, port }, () => {
   console.log(
     `Flat Finder CZ API server running on http://localhost:${port}`,
   );
 
-  // Pre-warm caches in background so first visitor doesn't wait
-  const base = `http://localhost:${port}`;
-  console.log("Pre-warming caches…");
-  Promise.all([
-    fetch(`${base}/api/stats`),
-    warmMarkerIndex(),
-    fetch(`${base}/api/listings?per_page=20&sort=newest`),
-  ])
-    .then(() => console.log("Caches pre-warmed ✓"))
-    .catch((e) => console.error("Cache pre-warm failed:", e));
+  // Start the background stats refresh (computes once immediately, then every 15min).
+  startStatsRefresh();
+
+  // Start the background marker cluster refresh (computes once immediately, then every 15min).
+  // This replaces the old 107s+ Supercluster in-memory index build.
+  startMarkerRefresh();
+
+  // Pre-warm other caches sequentially so we don't saturate the small DB pool.
+  const signal = prewarmAbort.signal;
+  (async () => {
+    try {
+      const base = `http://localhost:${port}`;
+
+      if (signal.aborted) return;
+
+      console.log("Pre-warming listings cache…");
+      await fetch(`${base}/api/listings?per_page=20&sort=newest`, { signal });
+      console.log("Listings cache warmed.");
+    } catch (e) {
+      if (!signal.aborted) console.error("Cache pre-warm failed:", e);
+    }
+  })();
 });
+
+// Graceful shutdown so tsx watch can restart cleanly
+function shutdown() {
+  console.log("Shutting down…");
+  prewarmAbort.abort();
+  stopStatsRefresh();
+  stopMarkerRefresh();
+  server.close(() => void 0);
+  closeDb().finally(() => process.exit(0));
+  // Hard exit if cleanup hangs
+  setTimeout(() => process.exit(1), 2000);
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 
 export default app;

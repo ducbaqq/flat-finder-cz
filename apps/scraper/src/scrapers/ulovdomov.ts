@@ -8,7 +8,7 @@ import { normalizeAmenities } from "../amenity-normalizer.js";
 // ---------------------------------------------------------------------------
 
 const API_URL = "https://ud.api.ulovdomov.cz/v1/offer/find";
-const PER_PAGE = 20;
+const PER_PAGE = 100;
 
 /** Czech Republic bounding box */
 const CZ_BOUNDS = {

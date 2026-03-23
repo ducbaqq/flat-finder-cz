@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
+    "start:watch": "tsx src/index.ts --watch --interval 120",
+    "start:full": "tsx src/index.ts --full",
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {

@@ -1,7 +1,5 @@
-import pLimit from "p-limit";
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
 import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
-import { HttpError } from "../http-client.js";
 import { normalizeAmenities } from "../amenity-normalizer.js";
 
 // ---------------------------------------------------------------------------
@@ -9,20 +7,21 @@ import { normalizeAmenities } from "../amenity-normalizer.js";
 // ---------------------------------------------------------------------------
 
 const BASE_URL = "https://www.bezrealitky.cz";
-const ITEMS_PER_PAGE = 15;
+const GRAPHQL_URL = "https://api.bezrealitky.cz/graphql/";
+const ITEMS_PER_PAGE = 100; // API max per request
 
 /**
- * [offer_slug, estate_slug, transaction_type, property_type]
+ * [offerType, estateType, transactionType, propertyType]
  */
-const SLUGS: [string, string, TransactionType, PropertyType][] = [
-  ["nabidka-pronajem", "byt",                "rent",  "flat"],
-  ["nabidka-prodej",   "byt",                "sale",  "flat"],
-  ["nabidka-pronajem", "dum",                "rent",  "house"],
-  ["nabidka-prodej",   "dum",                "sale",  "house"],
-  ["nabidka-prodej",   "pozemek",            "sale",  "land"],
-  ["nabidka-prodej",   "garaz",              "sale",  "garage"],
-  ["nabidka-prodej",   "komercni-prostory",  "sale",  "commercial"],
-  ["nabidka-pronajem", "komercni-prostory",  "rent",  "commercial"],
+const CATEGORIES: [string, string, TransactionType, PropertyType][] = [
+  ["PRONAJEM", "BYT",              "rent",  "flat"],
+  ["PRODEJ",   "BYT",              "sale",  "flat"],
+  ["PRONAJEM", "DUM",              "rent",  "house"],
+  ["PRODEJ",   "DUM",              "sale",  "house"],
+  ["PRODEJ",   "POZEMEK",          "sale",  "land"],
+  ["PRODEJ",   "GARAZ",            "sale",  "garage"],
+  ["PRODEJ",   "KOMERCNI_PROSTOR", "sale",  "commercial"],
+  ["PRONAJEM", "KOMERCNI_PROSTOR", "rent",  "commercial"],
 ];
 
 const DISPOSITION_MAP: Record<string, string> = {
@@ -60,16 +59,128 @@ const OFFER_TYPE_MAP: Record<string, TransactionType> = {
 };
 
 // ---------------------------------------------------------------------------
-// Bezrealitky scraper
+// GraphQL query — fetches ALL fields in a single request (no detail phase)
+// ---------------------------------------------------------------------------
+
+const LIST_ADVERTS_QUERY = `
+query ListAdverts(
+  $offerType: [OfferType],
+  $estateType: [EstateType],
+  $order: ResultOrder,
+  $limit: Int,
+  $offset: Int,
+  $currency: Currency
+) {
+  listAdverts(
+    offerType: $offerType,
+    estateType: $estateType,
+    order: $order,
+    limit: $limit,
+    offset: $offset,
+    currency: $currency
+  ) {
+    totalCount
+    list {
+      id
+      uri
+      offerType
+      estateType
+      disposition
+      surface
+      surfaceLand
+      price
+      charges
+      currency
+      gps { lat lng }
+      address(locale: CS)
+      mainImage { url(filter: RECORD_THUMB) }
+      publicImages(limit: 20) { url(filter: RECORD_MAIN) }
+      tags(locale: CS)
+      descriptionByLocale(locale: CS)
+      condition
+      construction
+      ownership
+      equipped
+      penb
+      etage
+      totalFloors
+      balcony
+      terrace
+      loggia
+      cellar
+      lift
+      parking
+      garage
+      barrierFree
+      frontGarden
+    }
+  }
+}`;
+
+// ---------------------------------------------------------------------------
+// Response types
+// ---------------------------------------------------------------------------
+
+interface GqlImage {
+  url: string | null;
+}
+
+interface GqlAdvert {
+  id: string;
+  uri: string;
+  offerType: string;
+  estateType: string;
+  disposition: string | null;
+  surface: number | null;
+  surfaceLand: number | null;
+  price: number | null;
+  charges: number | null;
+  currency: string | null;
+  gps: { lat: number; lng: number } | null;
+  address: string | null;
+  mainImage: GqlImage | null;
+  publicImages: GqlImage[] | null;
+  tags: string[] | null;
+  descriptionByLocale: string | null;
+  condition: string | null;
+  construction: string | null;
+  ownership: string | null;
+  equipped: string | null;
+  penb: string | null;
+  etage: number | null;
+  totalFloors: number | null;
+  balcony: boolean | number | null;
+  terrace: boolean | number | null;
+  loggia: boolean | number | null;
+  cellar: boolean | number | null;
+  lift: boolean | null;
+  parking: boolean | null;
+  garage: boolean | null;
+  barrierFree: boolean | null;
+  frontGarden: number | null;
+}
+
+interface GqlListResponse {
+  data?: {
+    listAdverts?: {
+      totalCount: number;
+      list: GqlAdvert[];
+    };
+  };
+  errors?: Array<{ message: string }>;
+}
+
+// ---------------------------------------------------------------------------
+// Bezrealitky scraper — uses direct GraphQL API
 // ---------------------------------------------------------------------------
 
 export class BezrealitkyScraper extends BaseScraper {
   readonly name = "bezrealitky";
   readonly baseUrl = BASE_URL;
 
-  override get hasDetailPhase() { return true; }
+  // No detail phase needed — GraphQL returns all fields
+  override get hasDetailPhase() { return false; }
 
-  private buildId: string | null = null;
   private readonly batchMultiplier: number;
 
   constructor(
@@ -87,75 +198,52 @@ export class BezrealitkyScraper extends BaseScraper {
     this.init();
     const batchSize = this.batchMultiplier * this.concurrency;
 
-    // Get fresh buildId
-    this.buildId = await this.getBuildId();
-    if (!this.buildId) {
-      this.log("Could not get Bezrealitky buildId -- skipping");
-      return;
-    }
-    this.log(`buildId: ${this.buildId}`);
+    for (const [offerType, estateType, transactionType, propertyType] of CATEGORIES) {
+      const catLabel = `${transactionType}/${propertyType}`;
+      this.log(`Fetching: ${catLabel}`);
 
-    for (const [offerSlug, estateSlug, transactionType, propertyType] of SLUGS) {
-      const slugLabel = `${offerSlug}/${estateSlug}`;
-      this.log(`Fetching: ${slugLabel}`);
-
-      // Refresh buildId if invalidated
-      if (!this.buildId) {
-        this.buildId = await this.getBuildId();
-        if (!this.buildId) {
-          this.log(`Could not refresh buildId for ${slugLabel}`);
-          continue;
-        }
+      // Fetch page 1 to discover totalCount
+      let firstPage: GqlListResponse;
+      try {
+        firstPage = await this.fetchGraphQL(offerType, estateType, 0);
+      } catch (err) {
+        this.log(`Error fetching ${catLabel} page 1: ${err}`);
+        continue;
       }
 
-      // Fetch page 1 to discover total_pages
-      const firstData = await this.fetchNextData(this.buildId, offerSlug, estateSlug, 1);
-      if (firstData == null) {
-        if (!this.buildId) {
-          this.buildId = await this.getBuildId();
+      const listData = firstPage.data?.listAdverts;
+      if (!listData || listData.list.length === 0) {
+        if (firstPage.errors) {
+          this.log(`GraphQL errors for ${catLabel}: ${firstPage.errors.map(e => e.message).join(", ")}`);
         }
         continue;
       }
 
-      const pageProps = getPageProps(firstData);
-      const totalCount = this.getTotalCount(pageProps);
-      let totalPages = 1;
-      if (totalCount > 0) {
-        totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE));
-        this.log(`  ${slugLabel}: ${totalCount} listings, ${totalPages} pages`);
-      }
+      const totalCount = listData.totalCount;
+      const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE));
+      this.log(`  ${catLabel}: ${totalCount} listings, ${totalPages} pages`);
 
-      // Yield page 1 immediately
-      const page1Results = this.processPageData(firstData);
-      yield { category: slugLabel, page: 1, totalPages, listings: page1Results };
+      // Parse and yield page 1
+      const page1Results = listData.list.map(a => this.parseAdvert(a));
+      yield { category: catLabel, page: 1, totalPages, listings: page1Results };
 
       if (totalPages <= 1) continue;
 
       // Batch-concurrent fetching of remaining pages
-      const remaining = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+      const remaining = Array.from({ length: totalPages - 1 }, (_, i) => i + 1);
 
       for (let bStart = 0; bStart < remaining.length; bStart += batchSize) {
-        if (this.isCategorySkipped(slugLabel)) break;
-        const batchPages = remaining.slice(bStart, bStart + batchSize);
-
-        // Ensure buildId is still valid before each batch
-        if (!this.buildId) {
-          this.buildId = await this.getBuildId();
-          if (!this.buildId) {
-            this.log(`Could not refresh buildId during ${slugLabel}`);
-            break;
-          }
-        }
+        if (this.isCategorySkipped(catLabel)) break;
+        const batchOffsets = remaining.slice(bStart, bStart + batchSize);
 
         this.log(
-          `  ${slugLabel}: Fetching pages ${batchPages[0]}-${batchPages[batchPages.length - 1]} concurrently`,
+          `  ${catLabel}: Fetching pages ${batchOffsets[0] + 1}-${batchOffsets[batchOffsets.length - 1] + 1} concurrently`,
         );
 
-        const currentBuildId = this.buildId;
-        const pagePromises = batchPages.map((p) =>
+        const pagePromises = batchOffsets.map((pageIdx) =>
           this.limiter(() =>
-            this.fetchNextData(currentBuildId, offerSlug, estateSlug, p).catch((err) => {
-              this.log(`Error fetching ${slugLabel} page ${p}: ${err}`);
+            this.fetchGraphQL(offerType, estateType, pageIdx * ITEMS_PER_PAGE).catch((err) => {
+              this.log(`Error fetching ${catLabel} offset ${pageIdx * ITEMS_PER_PAGE}: ${err}`);
               return null;
             }),
           ),
@@ -164,175 +252,113 @@ export class BezrealitkyScraper extends BaseScraper {
         const pageResults = await Promise.all(pagePromises);
 
         for (let j = 0; j < pageResults.length; j++) {
-          if (this.isCategorySkipped(slugLabel)) break;
+          if (this.isCategorySkipped(catLabel)) break;
           const pgData = pageResults[j];
-          if (pgData == null) continue;
-          const parsed = this.processPageData(pgData);
-          yield { category: slugLabel, page: batchPages[j], totalPages, listings: parsed };
-        }
-
-        // Check if buildId was invalidated during this batch
-        if (!this.buildId) {
-          this.log(`buildId invalidated during ${slugLabel} -- breaking to next category`);
-          break;
+          if (!pgData?.data?.listAdverts?.list?.length) continue;
+          const parsed = pgData.data.listAdverts.list.map(a => this.parseAdvert(a));
+          yield { category: catLabel, page: batchOffsets[j] + 1, totalPages, listings: parsed };
         }
       }
     }
   }
 
   // ------------------------------------------------------------------
-  // Detail enrichment
+  // GraphQL fetching
   // ------------------------------------------------------------------
 
-  override async enrichListings(
-    listings: ScraperResult[],
-    opts?: { concurrency?: number; batchSize?: number },
-  ): Promise<void> {
-    if (listings.length === 0) return;
-
-    this.init();
-    this.log(`Enriching ${listings.length} new listings...`);
-
-    // Get fresh buildId for detail fetches
-    if (!this.buildId) {
-      this.buildId = await this.getBuildId();
-    }
-    if (!this.buildId) {
-      this.log("Could not get buildId for detail enrichment -- skipping");
-      return;
-    }
-
-    const limit = opts?.concurrency ? pLimit(opts.concurrency) : this.limiter;
-
-    await Promise.all(
-      listings.map((listing) =>
-        limit(async () => {
-          try {
-            await this.enrichOne(listing);
-          } catch (err) {
-            this.log(`Failed to enrich ${listing.external_id}: ${err}`);
-          }
-        }),
-      ),
-    );
-
-    const withDesc = listings.filter((l) => l.description !== null).length;
-    const withFloor = listings.filter((l) => l.floor !== null).length;
-    const withAmenities = listings.filter((l) => l.amenities !== null).length;
-    this.log(
-      `Enrichment: ${withDesc}/${listings.length} description, ${withFloor}/${listings.length} floor, ${withAmenities}/${listings.length} amenities`,
-    );
+  private async fetchGraphQL(
+    offerType: string,
+    estateType: string,
+    offset: number,
+  ): Promise<GqlListResponse> {
+    return this.http.post<GqlListResponse>(GRAPHQL_URL, {
+      query: LIST_ADVERTS_QUERY,
+      variables: {
+        offerType: [offerType],
+        estateType: [estateType],
+        order: "TIMEORDER_DESC",
+        limit: ITEMS_PER_PAGE,
+        offset,
+        currency: "CZK",
+      },
+    }, {
+      Origin: BASE_URL,
+      Referer: `${BASE_URL}/`,
+    });
   }
 
-  private async enrichOne(listing: ScraperResult): Promise<void> {
-    if (!listing.source_url) return;
+  // ------------------------------------------------------------------
+  // Parsing — direct from GraphQL response (no Apollo cache indirection)
+  // ------------------------------------------------------------------
 
-    // Extract slug from source_url: https://www.bezrealitky.cz/nemovitosti-byty-domy/12345
-    // Detail endpoint: /_next/data/{buildId}/cs/detail/{slug}.json
-    const urlPath = listing.source_url.replace(BASE_URL, "");
-    // The slug is the last path segment
-    const slug = urlPath.split("/").filter(Boolean).pop();
-    if (!slug) return;
+  private parseAdvert(advert: GqlAdvert): ScraperResult {
+    const externalId = `bezrealitky_${advert.id}`;
 
-    if (!this.buildId) return;
+    // Types
+    const propertyType = ESTATE_TYPE_MAP[advert.estateType] ?? "other";
+    const transactionType = OFFER_TYPE_MAP[advert.offerType] ?? "sale";
 
-    const detailUrl = `${BASE_URL}/_next/data/${this.buildId}/cs/detail/${slug}.json?id=${slug}`;
+    // Layout
+    const layout = advert.disposition ? (DISPOSITION_MAP[advert.disposition] ?? null) : null;
 
-    let data: Record<string, unknown>;
-    try {
-      data = await this.http.get<Record<string, unknown>>(detailUrl, {
-        Referer: listing.source_url,
-      });
-    } catch (err) {
-      if (err instanceof HttpError && err.status === 404) {
-        // buildId might be stale
-        this.buildId = null;
-      }
-      return;
+    // Size
+    let sizeM2 = advert.surface != null ? Number(advert.surface) : null;
+    if (!sizeM2 && advert.surfaceLand != null) {
+      sizeM2 = Number(advert.surfaceLand);
     }
 
-    const pageProps = getPageProps(data);
-    const apolloCache = getApolloCache(pageProps);
-    if (!apolloCache) return;
+    // Price
+    let price: number | null = advert.price != null ? Number(advert.price) : null;
+    if (price != null && isNaN(price)) price = null;
+    const charges = advert.charges || 0;
+    const currency = advert.currency || "CZK";
+    const priceNote = charges ? `+ ${charges} Kč poplatky` : null;
 
-    // Find the main Advert entry in the cache.
-    // The detail page Apollo cache includes the main advert (with all fields)
-    // plus related adverts (with minimal fields).  Select the entry with the
-    // most keys to ensure we get the full detail object.
-    let advert: Record<string, unknown> | null = null;
-    let maxKeys = 0;
-    for (const [key, val] of Object.entries(apolloCache)) {
-      if (key.startsWith("Advert:") && typeof val === "object" && val !== null) {
-        const numKeys = Object.keys(val as Record<string, unknown>).length;
-        if (numKeys > maxKeys) {
-          maxKeys = numKeys;
-          advert = val as Record<string, unknown>;
-        }
+    // GPS
+    const lat = advert.gps?.lat ?? null;
+    const lng = advert.gps?.lng ?? null;
+
+    // Address & city
+    const addressRaw = advert.address ?? "";
+    const city = extractCityFromAddress(addressRaw);
+
+    // Images
+    const imageUrls: string[] = [];
+    if (advert.publicImages) {
+      for (const img of advert.publicImages) {
+        if (img.url) imageUrls.push(img.url);
       }
     }
-    if (!advert) return;
+    const thumbnailUrl = advert.mainImage?.url ?? imageUrls[0] ?? null;
 
-    // Description — prefer the locale-specific key, fall back to plain
-    if (!listing.description) {
-      let desc: string | undefined;
-      for (const k of Object.keys(advert)) {
-        if (k.startsWith("descriptionByLocale") || k === "description") {
-          const v = advert[k];
-          if (typeof v === "string" && v) { desc = v; break; }
-        }
-      }
-      if (desc) listing.description = desc;
+    // Source URL
+    let uri = advert.uri ?? "";
+    let sourceUrl: string;
+    if (uri && !uri.startsWith("http")) {
+      if (!uri.startsWith("/")) uri = `/nemovitosti-byty-domy/${uri}`;
+      sourceUrl = `${BASE_URL}${uri}`;
+    } else if (uri) {
+      sourceUrl = uri;
+    } else {
+      sourceUrl = `${BASE_URL}/nemovitosti-byty-domy/${advert.id}`;
     }
 
-    // Floor info
-    if (listing.floor === null) {
-      const etage = advert.etage as number | undefined;
-      if (etage != null) listing.floor = etage;
-    }
-    if (listing.total_floors === null) {
-      const totalFloors = advert.totalFloors as number | undefined;
-      if (totalFloors != null) listing.total_floors = totalFloors;
+    // Title
+    let title = "";
+    if (layout && sizeM2) {
+      const transCz: Record<string, string> = { rent: "Pronájem", sale: "Prodej", auction: "Aukce" };
+      const typeCz: Record<string, string> = { flat: "bytu", house: "domu", land: "pozemku", garage: "garáže", commercial: "prostoru" };
+      title = `${transCz[transactionType] ?? "Nabídka"} ${typeCz[propertyType] ?? ""} ${layout} ${Math.floor(sizeM2)} m²`.trim();
     }
 
-    // Construction — field is called "construction" (not "buildingType")
-    if (!listing.construction) {
-      const ct = (advert.construction as string | undefined)
-        ?? (advert.buildingType as string | undefined);
-      if (ct) listing.construction = normalizeBezrealitkyEnum(ct, CONSTRUCTION_NORMALIZE);
-    }
+    // Description
+    const description = advert.descriptionByLocale ?? null;
 
-    // Condition — field is called "condition" (not "buildingCondition")
-    if (!listing.condition) {
-      const cond = (advert.condition as string | undefined)
-        ?? (advert.buildingCondition as string | undefined);
-      if (cond) listing.condition = normalizeBezrealitkyEnum(cond, CONDITION_NORMALIZE);
-    }
+    // Tags as amenities
+    const tags = advert.tags ?? [];
+    const amenitiesRaw = tags.length > 0 ? tags.filter(Boolean).join(",") : null;
 
-    // Ownership — field name is correct, but add normalization for Czech values
-    if (!listing.ownership) {
-      const own = advert.ownership as string | undefined;
-      if (own) listing.ownership = normalizeBezrealitkyEnum(own, OWNERSHIP_NORMALIZE);
-    }
-
-    // Furnishing — field is called "equipped" (not "furnished")
-    if (!listing.furnishing) {
-      const furn = (advert.equipped as string | undefined)
-        ?? (advert.furnished as string | undefined);
-      if (furn) listing.furnishing = normalizeBezrealitkyEnum(furn, FURNISHING_NORMALIZE);
-    }
-
-    // Energy rating — field is called "penb" (not "energyEfficiencyRating")
-    if (!listing.energy_rating) {
-      const er = (advert.penb as string | undefined)
-        ?? (advert.energyEfficiencyRating as string | undefined);
-      if (er) {
-        const letter = er.charAt(0).toUpperCase();
-        if (letter >= "A" && letter <= "G") listing.energy_rating = letter;
-        else listing.energy_rating = er;
-      }
-    }
-
-    // Amenities from boolean flags
+    // Amenity boolean flags
     const amenityFlags: string[] = [];
     if (advert.balcony) amenityFlags.push("balcony");
     if (advert.terrace) amenityFlags.push("terrace");
@@ -344,285 +370,41 @@ export class BezrealitkyScraper extends BaseScraper {
     if (advert.barrierFree) amenityFlags.push("barrier_free");
     if (advert.frontGarden) amenityFlags.push("garden");
 
-    if (amenityFlags.length > 0) {
-      // Merge with existing amenities from tags
-      const existing = listing.amenities;
-      const merged = normalizeAmenities(
-        existing
-          ? JSON.stringify([...JSON.parse(existing), ...amenityFlags])
-          : JSON.stringify(amenityFlags),
-      );
-      listing.amenities = merged;
+    const allAmenities = amenitiesRaw
+      ? amenityFlags.length > 0
+        ? `${amenitiesRaw},${amenityFlags.join(",")}`
+        : amenitiesRaw
+      : amenityFlags.length > 0
+        ? amenityFlags.join(",")
+        : null;
+    const amenities = normalizeAmenities(allAmenities);
+
+    // Condition, construction, etc. — normalize enums
+    const condition = advert.condition ? normEnum(advert.condition, CONDITION_NORMALIZE) : null;
+    const construction = advert.construction ? normEnum(advert.construction, CONSTRUCTION_NORMALIZE) : null;
+    const ownership = advert.ownership ? normEnum(advert.ownership, OWNERSHIP_NORMALIZE) : null;
+    const furnishing = advert.equipped ? normEnum(advert.equipped, FURNISHING_NORMALIZE) : null;
+
+    // Energy rating
+    let energyRating: string | null = null;
+    if (advert.penb) {
+      const letter = advert.penb.charAt(0).toUpperCase();
+      energyRating = (letter >= "A" && letter <= "G") ? letter : advert.penb;
     }
-  }
-
-  // ------------------------------------------------------------------
-  // Build ID
-  // ------------------------------------------------------------------
-
-  private async getBuildId(): Promise<string | null> {
-    try {
-      const url = `${BASE_URL}/vypis/nabidka-pronajem/byt`;
-      const raw: string = await this.http.get(url);
-      const rawStr = typeof raw === "string" ? raw : String(raw);
-
-      const m = rawStr.match(
-        /<script[^>]+id=["']__NEXT_DATA__["'][^>]*>(.*?)<\/script>/s,
-      );
-      if (m) {
-        const nextData = JSON.parse(m[1]);
-        return nextData.buildId ?? null;
-      }
-    } catch (err) {
-      this.log(`Failed to extract buildId: ${err}`);
-    }
-    return null;
-  }
-
-  // ------------------------------------------------------------------
-  // Page fetching
-  // ------------------------------------------------------------------
-
-  private async fetchNextData(
-    buildId: string,
-    offerSlug: string,
-    estateSlug: string,
-    page: number,
-  ): Promise<Record<string, unknown> | null> {
-    const url =
-      `${BASE_URL}/_next/data/${buildId}/cs/vypis/` +
-      `${offerSlug}/${estateSlug}.json` +
-      `?slugs=${offerSlug}&slugs=${estateSlug}&page=${page}`;
-
-    try {
-      return await this.http.get<Record<string, unknown>>(url, {
-        Referer: `${BASE_URL}/vypis/${offerSlug}/${estateSlug}`,
-      });
-    } catch (err) {
-      if (err instanceof HttpError && err.status === 404) {
-        this.log(`404 on buildId=${buildId} -- will refresh`);
-        this.buildId = null;
-      } else {
-        this.log(`Error fetching ${offerSlug}/${estateSlug} page ${page}: ${err}`);
-      }
-      return null;
-    }
-  }
-
-  // ------------------------------------------------------------------
-  // Parsing
-  // ------------------------------------------------------------------
-
-  private processPageData(data: Record<string, unknown>): ScraperResult[] {
-    const pageProps = getPageProps(data);
-    const apolloCache = getApolloCache(pageProps);
-    if (!apolloCache) return [];
-
-    return this.parseApolloCache(apolloCache);
-  }
-
-  private parseApolloCache(apolloCache: Record<string, unknown>): ScraperResult[] {
-    const results: ScraperResult[] = [];
-    for (const [key, val] of Object.entries(apolloCache)) {
-      if (!key.startsWith("Advert:")) continue;
-      if (typeof val !== "object" || val === null) continue;
-      try {
-        const listing = this.parseAdvert(
-          key,
-          val as Record<string, unknown>,
-          apolloCache,
-        );
-        results.push(listing);
-      } catch (err) {
-        this.log(`Error parsing advert ${key}: ${err}`);
-      }
-    }
-    return results;
-  }
-
-  private parseAdvert(
-    cacheKey: string,
-    advert: Record<string, unknown>,
-    cache: Record<string, unknown>,
-  ): ScraperResult {
-    const advertId =
-      (advert.id as string | number | undefined) ??
-      cacheKey.replace("Advert:", "");
-    const externalId = `bezrealitky_${advertId}`;
-
-    // Types
-    const estateTypeRaw = (advert.estateType as string) ?? "BYT";
-    const offerTypeRaw = (advert.offerType as string) ?? "PRONAJEM";
-    const propertyType = ESTATE_TYPE_MAP[estateTypeRaw] ?? "other";
-    const transactionType = OFFER_TYPE_MAP[offerTypeRaw] ?? "sale";
-
-    // Layout / disposition
-    const dispositionRaw = (advert.disposition as string) ?? "";
-    const layout = DISPOSITION_MAP[dispositionRaw] ?? null;
-
-    // Size
-    const surface = advert.surface as number | null | undefined;
-    let sizeM2 = surface != null ? Number(surface) : null;
-    if (!sizeM2) {
-      const surfaceLand = advert.surfaceLand as number | null | undefined;
-      sizeM2 = surfaceLand != null ? Number(surfaceLand) : null;
-    }
-
-    // Price
-    let price: number | null = advert.price as number | null ?? null;
-    if (price != null) {
-      try {
-        price = Number(price);
-        if (isNaN(price)) price = null;
-      } catch {
-        price = null;
-      }
-    }
-    const charges = (advert.charges as number) || 0;
-    const currency = (advert.currency as string) || "CZK";
-
-    // Price note
-    const priceNote = charges ? `+ ${charges} Kč poplatky` : null;
-
-    // GPS
-    let gpsRaw = advert.gps as Record<string, unknown> | null;
-    if (gpsRaw && typeof gpsRaw === "object" && "__ref" in gpsRaw) {
-      gpsRaw = resolveRef(gpsRaw, cache);
-    }
-    const lat = gpsRaw && typeof gpsRaw === "object" ? (gpsRaw.lat as number | null ?? null) : null;
-    const lng = gpsRaw && typeof gpsRaw === "object" ? (gpsRaw.lng as number | null ?? null) : null;
-
-    // Address -- key may have locale suffix like address({"locale":"CS"})
-    let addressRaw = "";
-    for (const k of Object.keys(advert)) {
-      if (k.startsWith("address") && !k.startsWith("addressFormatted")) {
-        const val = advert[k];
-        if (val && typeof val === "string") {
-          addressRaw = val;
-          break;
-        }
-      }
-    }
-    const city = extractCityFromAddress(addressRaw);
-
-    // Images
-    const imageUrls: string[] = [];
-    let thumbnailUrl: string | null = null;
-
-    const mainImgRef = advert.mainImage as Record<string, unknown> | null;
-    if (mainImgRef && typeof mainImgRef === "object" && "__ref" in mainImgRef) {
-      const mainImg = resolveRef(mainImgRef, cache);
-      if (mainImg) {
-        thumbnailUrl = extractImageUrl(mainImg, "RECORD_THUMB");
-      }
-    }
-
-    // publicImages key may contain GraphQL params like ({"limit":3})
-    let pubImages: unknown = null;
-    for (const k of Object.keys(advert)) {
-      if (k.startsWith("publicImages")) {
-        pubImages = advert[k];
-        break;
-      }
-    }
-    if (!pubImages) {
-      pubImages = advert.images;
-    }
-    if (Array.isArray(pubImages)) {
-      for (const imgRef of pubImages) {
-        const img = resolveRef(imgRef as Record<string, unknown>, cache);
-        if (img && typeof img === "object") {
-          const fullUrl = extractImageUrl(img, "RECORD_MAIN");
-          if (fullUrl) imageUrls.push(fullUrl);
-        }
-      }
-    }
-
-    if (!thumbnailUrl && imageUrls.length > 0) {
-      thumbnailUrl = imageUrls[0];
-    }
-
-    // URI / source_url -- key may have locale suffix
-    let uri = "";
-    for (const k of Object.keys(advert)) {
-      if (k.startsWith("uri")) {
-        const val = advert[k];
-        if (val && typeof val === "string") {
-          uri = val;
-          break;
-        }
-      }
-    }
-    let sourceUrl: string;
-    if (uri && !uri.startsWith("http")) {
-      if (!uri.startsWith("/")) uri = "/" + uri;
-      sourceUrl = `${BASE_URL}${uri}`;
-    } else if (uri) {
-      sourceUrl = uri;
-    } else {
-      sourceUrl = `${BASE_URL}/nemovitosti-byty-domy/${advertId}`;
-    }
-
-    // Title
-    let title = (advert.seoName as string) || (advert.name as string) || "";
-    if (!title) {
-      for (const k of Object.keys(advert)) {
-        if (k.startsWith("imageAltText")) {
-          title = (advert[k] as string) || "";
-          break;
-        }
-      }
-    }
-    if (!title && layout && sizeM2) {
-      const transCz: Record<string, string> = {
-        rent: "Pronájem",
-        sale: "Prodej",
-        auction: "Aukce",
-      };
-      const typeCz: Record<string, string> = {
-        flat: "bytu",
-        house: "domu",
-        land: "pozemku",
-        garage: "garáže",
-        commercial: "prostoru",
-      };
-      title =
-        `${transCz[transactionType] ?? "Nabídka"} ${typeCz[propertyType] ?? ""} ${layout} ${Math.floor(sizeM2)} m²`.trim();
-    }
-
-    // Tags as amenities
-    let tagsRaw: unknown = null;
-    for (const k of Object.keys(advert)) {
-      if (k.startsWith("tags")) {
-        tagsRaw = advert[k];
-        break;
-      }
-    }
-    if (tagsRaw == null) tagsRaw = [];
-    let amenitiesRaw: string | null = null;
-    if (Array.isArray(tagsRaw)) {
-      amenitiesRaw = tagsRaw.filter(Boolean).map(String).join(",") || null;
-    } else if (tagsRaw) {
-      amenitiesRaw = String(tagsRaw);
-    }
-    const amenities = normalizeAmenities(amenitiesRaw);
 
     // Additional params
     const extraParams: Record<string, unknown> = {};
     if (charges) extraParams.charges = charges;
-    if (surface) extraParams.surface = surface;
-    const surfaceLand = advert.surfaceLand;
-    if (surfaceLand) extraParams.surfaceLand = surfaceLand;
-    if (dispositionRaw) extraParams.disposition_raw = dispositionRaw;
-    for (const extraKey of [
-      "balcony", "cellar", "garage", "loggia", "terrace",
-      "parking", "elevator", "garden",
-    ]) {
-      const val = advert[extraKey];
-      if (val != null) extraParams[extraKey] = val;
+    if (advert.surface) extraParams.surface = advert.surface;
+    if (advert.surfaceLand) extraParams.surfaceLand = advert.surfaceLand;
+    if (advert.disposition) extraParams.disposition_raw = advert.disposition;
+    for (const [key, val] of Object.entries({
+      balcony: advert.balcony, cellar: advert.cellar, garage: advert.garage,
+      loggia: advert.loggia, terrace: advert.terrace, parking: advert.parking,
+    })) {
+      if (val != null) extraParams[key] = val;
     }
-    const additionalParams =
-      Object.keys(extraParams).length > 0 ? JSON.stringify(extraParams) : null;
+    const additionalParams = Object.keys(extraParams).length > 0 ? JSON.stringify(extraParams) : null;
 
     const now = new Date().toISOString();
 
@@ -632,7 +414,7 @@ export class BezrealitkyScraper extends BaseScraper {
       property_type: propertyType,
       transaction_type: transactionType,
       title: title || null,
-      description: (advert.description as string) ?? null,
+      description,
       price,
       currency: currency || "CZK",
       price_note: priceNote,
@@ -644,21 +426,18 @@ export class BezrealitkyScraper extends BaseScraper {
       longitude: lng,
       size_m2: sizeM2,
       layout,
-      floor: (advert.etage as number) ?? (advert.floor as number) ?? null,
-      total_floors: (advert.totalFloors as number) ?? null,
-      condition: (advert.condition as string) ?? (advert.buildingCondition as string) ?? null,
-      construction: (advert.construction as string) ?? (advert.buildingType as string) ?? null,
-      ownership: (advert.ownership as string) ?? null,
-      furnishing: (advert.equipped as string) ?? (advert.furnished as string) ?? null,
-      energy_rating: (advert.penb as string) ?? (advert.energyEfficiencyRating as string) ?? null,
+      floor: advert.etage ?? null,
+      total_floors: advert.totalFloors ?? null,
+      condition,
+      construction,
+      ownership,
+      furnishing,
+      energy_rating: energyRating,
       amenities,
       image_urls: JSON.stringify(imageUrls),
       thumbnail_url: thumbnailUrl,
       source_url: sourceUrl,
-      listed_at:
-        (advert.createdAt as string) ??
-        (advert.firstPublishedAt as string) ??
-        now,
+      listed_at: now,
       scraped_at: now,
       is_active: true,
       deactivated_at: null,
@@ -669,106 +448,10 @@ export class BezrealitkyScraper extends BaseScraper {
       additional_params: additionalParams,
     };
   }
-
-  private getTotalCount(pageProps: Record<string, unknown>): number {
-    const apollo =
-      (pageProps.apolloCache as Record<string, unknown>) ??
-      (pageProps.apolloState as Record<string, unknown>) ??
-      {};
-    for (const [key, val] of Object.entries(apollo)) {
-      if (key === "ROOT_QUERY" && typeof val === "object" && val !== null) {
-        for (const [qkey, qval] of Object.entries(val as Record<string, unknown>)) {
-          if (
-            qkey.includes("listAdverts") &&
-            typeof qval === "object" &&
-            qval !== null
-          ) {
-            return (qval as Record<string, unknown>).totalCount as number ?? 0;
-          }
-        }
-      }
-    }
-    return 0;
-  }
 }
 
 // ---------------------------------------------------------------------------
-// Helper functions
-// ---------------------------------------------------------------------------
-
-function getPageProps(data: Record<string, unknown>): Record<string, unknown> {
-  const pp = data.pageProps as Record<string, unknown> | undefined;
-  if (pp) return pp;
-  const props = data.props as Record<string, unknown> | undefined;
-  if (props) return (props.pageProps as Record<string, unknown>) ?? {};
-  return {};
-}
-
-function getApolloCache(
-  pageProps: Record<string, unknown>,
-): Record<string, unknown> | null {
-  const cache =
-    (pageProps.apolloCache as Record<string, unknown>) ??
-    (pageProps.apolloState as Record<string, unknown>) ??
-    null;
-  return cache;
-}
-
-function resolveRef(
-  refObj: Record<string, unknown> | string,
-  cache: Record<string, unknown>,
-): Record<string, unknown> {
-  if (typeof refObj === "object" && refObj !== null && "__ref" in refObj) {
-    const ref = refObj.__ref as string;
-    return (cache[ref] as Record<string, unknown>) ?? {};
-  }
-  return typeof refObj === "object" && refObj !== null
-    ? refObj
-    : {};
-}
-
-function extractImageUrl(
-  imgObj: Record<string, unknown>,
-  prefer: string,
-): string | null {
-  if (!imgObj) return null;
-
-  // Try preferred filter first
-  for (const key of Object.keys(imgObj)) {
-    if (key.startsWith("url") && key.includes(prefer)) {
-      const url = imgObj[key];
-      if (url && typeof url === "string") {
-        return normalizeUrl(url);
-      }
-    }
-  }
-
-  // Fall back to any url key
-  for (const key of Object.keys(imgObj)) {
-    if (key.startsWith("url") && typeof imgObj[key] === "string" && imgObj[key]) {
-      return normalizeUrl(imgObj[key] as string);
-    }
-  }
-
-  // Direct url field
-  const url = imgObj.url;
-  if (url && typeof url === "string") {
-    return normalizeUrl(url);
-  }
-
-  return null;
-}
-
-function normalizeUrl(url: string): string | null {
-  if (!url) return null;
-  if (url.startsWith("http")) return url;
-  if (url.startsWith("//")) return "https:" + url;
-  if (url.startsWith("/")) return "https://api.bezrealitky.cz" + url;
-  return url;
-}
-
-// ---------------------------------------------------------------------------
-// Bezrealitky enum normalization
+// Enum normalization
 // ---------------------------------------------------------------------------
 
 const CONSTRUCTION_NORMALIZE: Record<string, string> = {
@@ -789,24 +472,21 @@ const OWNERSHIP_NORMALIZE: Record<string, string> = {
 
 const FURNISHING_NORMALIZE: Record<string, string> = {
   FURNISHED: "furnished", PARTIALLY: "partially", UNFURNISHED: "unfurnished",
-  CASTECNE: "partially", VYBAVENO: "furnished", NEVYBAVENO: "unfurnished",
+  VYBAVENY: "furnished", CASTECNE: "partially", NEVYBAVENY: "unfurnished",
   ANO: "furnished", NE: "unfurnished",
 };
 
-function normalizeBezrealitkyEnum(val: string, map: Record<string, string>): string {
+function normEnum(val: string, map: Record<string, string>): string {
   return map[val] ?? val.toLowerCase();
 }
 
 function extractCityFromAddress(address: string): string | null {
   if (!address) return null;
   const parts = address.split(",").map((p) => p.trim());
-
   for (let i = parts.length - 1; i >= 0; i--) {
     const part = parts[i].trim();
     if (part) {
-      // Remove district number (Praha 2 -> Praha)
-      const city = part.replace(/\s+\d+\s*$/, "").trim();
-      return city || part;
+      return part.replace(/\s+\d+\s*$/, "").trim() || part;
     }
   }
   return null;

@@ -54,6 +54,7 @@ export const listings = pgTable(
     additional_params: jsonb("additional_params").$type<Record<string, unknown>>(),
   },
   (table) => [
+    // ── Single-column indexes for simple equality filters ──
     index("idx_listings_city").on(table.city),
     index("idx_listings_price").on(table.price),
     index("idx_listings_source").on(table.source),
@@ -61,8 +62,33 @@ export const listings = pgTable(
     index("idx_listings_transaction_type").on(table.transaction_type),
     index("idx_listings_is_active").on(table.is_active),
     index("idx_listings_external_id").on(table.external_id),
+    index("idx_listings_district").on(table.district),
+    index("idx_listings_region").on(table.region),
+
+    // ── Composite indexes for common query patterns ──
+    // Geo: used by Supercluster loader and map bounding-box queries
     index("idx_listings_geo").on(table.is_active, table.latitude, table.longitude),
+    // Default sort (newest): covers WHERE is_active = true ORDER BY listed_at DESC
     index("idx_listings_active_listed").on(table.is_active, table.listed_at),
+    // Price sort: covers WHERE is_active = true ORDER BY price
+    index("idx_listings_active_price").on(table.is_active, table.price),
+    // Filtered map: covers common map queries with property_type + transaction_type
+    index("idx_listings_filtered_geo").on(
+      table.is_active,
+      table.property_type,
+      table.transaction_type,
+      table.latitude,
+      table.longitude,
+    ),
+    // Stats aggregation: covers GROUP BY source, property_type, transaction_type, city
+    // where is_active = true — enables index-only scan for the stats query
+    index("idx_listings_stats_agg").on(
+      table.is_active,
+      table.source,
+      table.property_type,
+      table.transaction_type,
+      table.city,
+    ),
   ],
 );
 

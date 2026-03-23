@@ -38,6 +38,7 @@ export interface SourceState {
   status: SourceStatus;
   category: string;
   pagesFetched: number;
+  totalPages: number;
   listingsFound: number;
   newCount: number;
   updatedCount: number;
@@ -70,6 +71,7 @@ export class Dashboard {
         status: "waiting",
         category: "",
         pagesFetched: 0,
+        totalPages: 0,
         listingsFound: 0,
         newCount: 0,
         updatedCount: 0,
@@ -101,11 +103,26 @@ export class Dashboard {
     if (s) s.category = category;
   }
 
-  addPageFetched(source: string, listingsOnPage: number): void {
+  private seenCategoryTotals: Map<string, Map<string, number>> = new Map();
+
+  addPageFetched(source: string, listingsOnPage: number, totalPages?: number): void {
     const s = this.states.get(source);
     if (!s) return;
     s.pagesFetched++;
     s.listingsFound += listingsOnPage;
+
+    // Track totalPages per category so we sum across all categories
+    if (totalPages != null && totalPages > 0 && s.category) {
+      if (!this.seenCategoryTotals.has(source)) {
+        this.seenCategoryTotals.set(source, new Map());
+      }
+      const catMap = this.seenCategoryTotals.get(source)!;
+      catMap.set(s.category, totalPages);
+      // Sum all known category totals for this source
+      let sum = 0;
+      for (const v of catMap.values()) sum += v;
+      s.totalPages = sum;
+    }
   }
 
   addUpsertResults(
@@ -205,7 +222,7 @@ export class Dashboard {
       ["Source", 15],
       ["Status", 11],
       ["Category", 22],
-      ["Pages", 7],
+      ["Pages", 10],
       ["Found", 7],
       ["New", 7],
       ["Updated", 9],
@@ -228,6 +245,7 @@ export class Dashboard {
     // Rows -- one per source
     const totals = {
       pagesFetched: 0,
+      totalPages: 0,
       listingsFound: 0,
       newCount: 0,
       updatedCount: 0,
@@ -237,6 +255,7 @@ export class Dashboard {
     for (const source of this.sources) {
       const s = this.states.get(source)!;
       totals.pagesFetched += s.pagesFetched;
+      totals.totalPages += s.totalPages;
       totals.listingsFound += s.listingsFound;
       totals.newCount += s.newCount;
       totals.updatedCount += s.updatedCount;
@@ -258,7 +277,10 @@ export class Dashboard {
       // Status column: colored text + padding to fill the column width
       row += statusColored + " ".repeat(Math.max(0, cols[1][1] - this.plainLen(s.status)));
       row += catDisplay.padEnd(cols[2][1]);
-      row += String(s.pagesFetched).padStart(cols[3][1] - 2).padEnd(cols[3][1]);
+      const pagesStr = s.totalPages > 0
+        ? `${s.pagesFetched}/${s.totalPages}`
+        : String(s.pagesFetched);
+      row += pagesStr.padStart(cols[3][1] - 2).padEnd(cols[3][1]);
       row += String(s.listingsFound).padStart(cols[4][1] - 2).padEnd(cols[4][1]);
       row += String(s.newCount).padStart(cols[5][1] - 2).padEnd(cols[5][1]);
       row += String(s.updatedCount).padStart(cols[6][1] - 2).padEnd(cols[6][1]);
@@ -278,7 +300,10 @@ export class Dashboard {
     footer += `${BOLD}${"TOTAL".padEnd(cols[0][1])}${RESET}`;
     footer += " ".repeat(cols[1][1]); // empty status
     footer += " ".repeat(cols[2][1]); // empty category
-    footer += `${BOLD}${String(totals.pagesFetched).padStart(cols[3][1] - 2).padEnd(cols[3][1])}${RESET}`;
+    const totalPagesStr = totals.totalPages > 0
+      ? `${totals.pagesFetched}/${totals.totalPages}`
+      : String(totals.pagesFetched);
+    footer += `${BOLD}${totalPagesStr.padStart(cols[3][1] - 2).padEnd(cols[3][1])}${RESET}`;
     footer += `${BOLD}${String(totals.listingsFound).padStart(cols[4][1] - 2).padEnd(cols[4][1])}${RESET}`;
     footer += `${BOLD}${GREEN}${String(totals.newCount).padStart(cols[5][1] - 2).padEnd(cols[5][1])}${RESET}`;
     footer += `${BOLD}${String(totals.updatedCount).padStart(cols[6][1] - 2).padEnd(cols[6][1])}${RESET}`;

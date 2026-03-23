@@ -7,7 +7,8 @@ import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scrap
 // ---------------------------------------------------------------------------
 
 const BASE_URL = "https://www.sreality.cz/api/cs/v2";
-const PER_PAGE = 60;
+const PER_PAGE_FULL = 200;
+const PER_PAGE_WATCH = 20;
 
 /**
  * (category_main_cb, category_type_cb) combinations to fetch.
@@ -85,6 +86,7 @@ export class SrealityScraper extends BaseScraper {
 
   private readonly batchMultiplier: number;
   private readonly detailBatchSize: number;
+  private readonly perPage: number;
 
   constructor(
     opts: ScraperOptions & { batchMultiplier?: number; detailBatchSize?: number },
@@ -92,6 +94,7 @@ export class SrealityScraper extends BaseScraper {
     super(opts);
     this.batchMultiplier = opts.batchMultiplier ?? 2;
     this.detailBatchSize = opts.detailBatchSize ?? 20;
+    this.perPage = opts.watchMode ? PER_PAGE_WATCH : PER_PAGE_FULL;
   }
 
   // ------------------------------------------------------------------
@@ -121,7 +124,7 @@ export class SrealityScraper extends BaseScraper {
       }
 
       const resultSize = firstPage.result_size ?? 0;
-      const totalPages = Math.max(1, Math.ceil(resultSize / PER_PAGE));
+      const totalPages = Math.max(1, Math.ceil(resultSize / this.perPage));
       this.log(`  ${catName}: ${resultSize} listings, ${totalPages} pages`);
 
       // Yield page 1 immediately
@@ -208,7 +211,7 @@ export class SrealityScraper extends BaseScraper {
       `${BASE_URL}/estates` +
       `?category_main_cb=${catMain}` +
       `&category_type_cb=${catType}` +
-      `&per_page=${PER_PAGE}` +
+      `&per_page=${this.perPage}` +
       `&page=${page}`;
 
     return this.http.get<SrealityListResponse>(url, {

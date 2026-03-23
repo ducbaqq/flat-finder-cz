@@ -8,6 +8,7 @@ export interface ScraperOptions {
   maxRetries: number;
   retryBaseMs: number;
   timeoutMs: number;
+  watchMode?: boolean;
 }
 
 export interface PageResult {

@@ -84,7 +84,7 @@ const ALL_SOURCES: SourceName[] = [
 ];
 
 interface CliArgs {
-  source: SourceName | "all";
+  sources: SourceName[] | "all";
   dryRun: boolean;
   watch: boolean;
   full: boolean;
@@ -121,7 +121,7 @@ function parseArgs(): CliArgs {
   const args = process.argv.slice(2);
   const env = getEnv();
   const opts: CliArgs = {
-    source: "all",
+    sources: "all",
     dryRun: false,
     watch: false,
     full: false,
@@ -134,13 +134,20 @@ function parseArgs(): CliArgs {
     const arg = args[i];
     if (arg === "--source" && i + 1 < args.length) {
       const val = args[++i];
-      if (![...ALL_SOURCES, "all"].includes(val)) {
-        console.error(
-          `Invalid --source value: "${val}". Must be one of: ${ALL_SOURCES.join(", ")}, all`,
-        );
-        process.exit(2);
+      if (val === "all") {
+        opts.sources = "all";
+      } else {
+        const names = val.split(",").map((s) => s.trim());
+        for (const name of names) {
+          if (!ALL_SOURCES.includes(name as SourceName)) {
+            console.error(
+              `Invalid --source value: "${name}". Must be one of: ${ALL_SOURCES.join(", ")}, all`,
+            );
+            process.exit(2);
+          }
+        }
+        opts.sources = names as SourceName[];
       }
-      opts.source = val as CliArgs["source"];
     } else if (arg === "--dry-run") {
       opts.dryRun = true;
     } else if (arg === "--watch") {
@@ -165,7 +172,7 @@ Usage:
   tsx src/index.ts [options]
 
 Options:
-  --source <name>     Which source to scrape: ${ALL_SOURCES.join(" | ")} | all (default: all)
+  --source <names>    Comma-separated sources: ${ALL_SOURCES.join(",")} | all (default: all)
   --dry-run           Collect listings but do not save to database
   --watch             Run in watcher mode: loop continuously checking newest pages
   --full              Full scan: fetch all pages + deactivate stale listings
@@ -915,11 +922,11 @@ function suppressConsole(dashboard: Dashboard): { restore: () => void } {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  const { source, dryRun, watch, full, cleanup, interval, noDashboard } = parseArgs();
+  const { sources: sourcesArg, dryRun, watch, full, cleanup, interval, noDashboard } = parseArgs();
   const env = getEnv();
 
   const sources: SourceName[] =
-    source === "all" ? ALL_SOURCES : [source];
+    sourcesArg === "all" ? ALL_SOURCES : sourcesArg;
 
   const mode = cleanup ? "CLEANUP" : watch ? "WATCH" : full ? "FULL" : "INCREMENTAL";
 
