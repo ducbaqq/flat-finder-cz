@@ -27,6 +27,9 @@ data/
 .env.local
 .env.*.local
 
+# SSL certificates
+certs/
+
 # OS
 .DS_Store
 Thumbs.db

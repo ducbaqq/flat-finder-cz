@@ -4,7 +4,7 @@ Czech property listing aggregator — collects rentals and sales from **10 major
 
 ## Features
 
-- **350k+ real listings** from 10 Czech real estate portals
+- **400k+ real listings** from 10 Czech real estate portals
 - **Interactive map** with Supercluster-based clustering, geocoded location search, and drill-down zoom
 - **Sreality-style homepage** with property type tabs, transaction pills, and location search
 - **Full-page filter form** (`/filter`) with 14 filter sections — property type, disposition, location, price, area, condition, ownership, furnishing, building type, amenities, accessibility, energy class
@@ -53,6 +53,7 @@ flat-finder-cz/
 │   ├── config/               # Zod-validated env config
 │   ├── db/                   # Drizzle ORM schema, queries, migrations
 │   └── types/                # Shared TypeScript types
+├── certs/                    # SSL CA certificate for managed DB (gitignored)
 ├── .env                      # Environment variables (gitignored)
 └── package.json              # Workspace root
 ```
@@ -108,7 +109,12 @@ See [Scraper](#scraper) for details on run modes.
 npm run dev:api
 ```
 
-The API starts on `http://localhost:4000`. On startup it builds a Supercluster spatial index over all listing coordinates (~1-2 min for 350K+ points) and rebuilds every 15 minutes.
+The API starts on `http://localhost:4000`. On startup it:
+- Begins a background refresh of the **listing_stats** table (pre-computed aggregate statistics)
+- Builds a **Supercluster spatial index** over all listing coordinates (~1-2 min for 400K+ points), rebuilt every 15 minutes
+- Pre-warms the listings cache
+
+Stats and markers are served from materialized tables, so requests respond in <50ms even while background refreshes are running.
 
 ### 6. Start the frontend
 
@@ -127,7 +133,7 @@ The frontend starts on `http://localhost:3000`.
 | GET | `/api/markers` | Map markers with Supercluster clustering |
 | GET | `/api/markers/expansion-zoom/<id>` | Get zoom level to split a cluster |
 | GET | `/api/markers/preview/<id>` | Lightweight hover preview (title + thumbnail) |
-| GET | `/api/stats` | Aggregate statistics |
+| GET | `/api/stats` | Aggregate statistics (materialized, <50ms) |
 | GET | `/api/health` | Health check |
 | POST | `/api/watchdogs` | Create a watchdog |
 | GET | `/api/watchdogs?email=...` | List watchdogs by email |
@@ -138,12 +144,22 @@ The frontend starts on `http://localhost:3000`.
 
 `transaction_type`, `property_type`, `city`, `region`, `source`, `layout`, `condition`, `construction`, `ownership`, `furnishing`, `energy_rating`, `price_min`, `price_max`, `size_min`, `size_max`, `amenities`, `location`, `sort`, `page`, `per_page`
 
+## Performance Architecture
+
+The API is designed for a managed PostgreSQL database with limited connections (~25) and 400K+ listings:
+
+- **Materialized stats** — `listing_stats` table stores pre-computed aggregates (~31 rows), refreshed every 15 minutes in the background. Stats endpoint reads from this table in <50ms instead of running COUNT/GROUP BY on 400K rows.
+- **Materialized marker clusters** — `marker_clusters` table stores pre-clustered map data at 4 zoom precisions, refreshed every 15 minutes. Unfiltered map requests read from this table in <5ms.
+- **Filtered markers** — use index-friendly SQL (composite index on `is_active, property_type, transaction_type, lat, lng`) with in-memory post-filtering for price/size. Avoids expensive ILIKE and GROUP BY queries.
+- **Connection pool** — capped at 5 connections. Background refreshes use dedicated connections via `createDb()` to avoid starving request handlers.
+- **Graceful shutdown** — SIGTERM/SIGINT handlers abort in-flight pre-warm requests, stop background refreshes, close the DB pool, and force-exit after 2s.
+
 ## Scraper
 
 The scraper fetches listings from 10 source sites with parallel source execution (each source gets its own DB connection):
 
 - **Sreality**: REST API — flats, houses, land, commercial, garages (sale/rent/auction)
-- **Bezrealitky**: Next.js data routes — flats, houses, land (sale/rent)
+- **Bezrealitky**: GraphQL API — flats, houses, land (sale/rent)
 - **UlovDomov**: REST API — flats, houses (sale/rent)
 - **Idnes Reality**: AJAX pagination + detail enrichment (GPS, description, seller info)
 - **Bazos.cz**: HTML scraping — flats, houses, land
@@ -229,11 +245,11 @@ npm run scraper -- --watch --interval 60      # 60s between cycles
 
 The map uses **Supercluster** (KD-tree spatial index) for zoom-aware hierarchical clustering:
 
-- Builds an index over all ~355K listing coordinates on API startup
+- Builds an index over all ~400K listing coordinates on API startup
 - Sub-millisecond viewport queries at any zoom level
 - ~35 clusters at country zoom, scaling naturally as the user zooms in
 - Cluster click drills down to the exact expansion zoom level
-- Filtered queries build a temporary Supercluster from DB results
+- Filtered queries use index-friendly SQL + in-memory Supercluster for small result sets
 - Index rebuilds every 15 minutes to pick up new/deactivated listings
 
 ## Notifier
