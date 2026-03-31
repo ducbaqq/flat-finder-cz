@@ -24,8 +24,9 @@ const INDIVIDUAL_ZOOM_THRESHOLD = 17;
 /** Safety cap for individual marker queries */
 const MAX_INDIVIDUAL_MARKERS = 5_000;
 
-/** Max points to fetch for filtered requests */
-const MAX_FILTERED_POINTS = 5_000;
+/** Max points to fetch for filtered requests — must be high enough to cover
+ *  the full viewport. Supercluster.load() handles 50K points in ~100ms. */
+const MAX_FILTERED_POINTS = 50_000;
 
 // ── Cache for filtered marker requests ──
 const filteredCache = new Map<string, { data: MarkersResponse; ts: number }>();
