@@ -12,9 +12,21 @@ import { and, eq, isNotNull } from "drizzle-orm";
 
 // ── Types ──
 
-interface PointProps {
+export interface PointProps {
   id: number;
   price: number | null;
+  title: string | null;
+  address: string | null;
+  city: string | null;
+  currency: string;
+  size_m2: number | null;
+  layout: string | null;
+  floor: number | null;
+  property_type: string;
+  transaction_type: string;
+  source: string;
+  listed_at: string | null;
+  thumbnail_url: string | null;
 }
 
 type SC = Supercluster<PointProps, Supercluster.AnyProps>;
@@ -41,6 +53,18 @@ export async function buildClusterIndex(): Promise<void> {
         lat: listings.latitude,
         lng: listings.longitude,
         price: listings.price,
+        title: listings.title,
+        address: listings.address,
+        city: listings.city,
+        currency: listings.currency,
+        size_m2: listings.size_m2,
+        layout: listings.layout,
+        floor: listings.floor,
+        property_type: listings.property_type,
+        transaction_type: listings.transaction_type,
+        source: listings.source,
+        listed_at: listings.listed_at,
+        thumbnail_url: listings.thumbnail_url,
       })
       .from(listings)
       .where(
@@ -57,7 +81,22 @@ export async function buildClusterIndex(): Promise<void> {
       features.push({
         type: "Feature",
         geometry: { type: "Point", coordinates: [r.lng, r.lat] },
-        properties: { id: r.id, price: r.price },
+        properties: {
+          id: r.id,
+          price: r.price,
+          title: r.title,
+          address: r.address ?? r.city,
+          city: r.city,
+          currency: r.currency ?? "CZK",
+          size_m2: r.size_m2,
+          layout: r.layout,
+          floor: r.floor,
+          property_type: r.property_type,
+          transaction_type: r.transaction_type,
+          source: r.source,
+          listed_at: r.listed_at,
+          thumbnail_url: r.thumbnail_url,
+        },
       });
     }
 
@@ -92,6 +131,15 @@ export function getClusters(
 ): GeoJSON.Feature<GeoJSON.Point>[] {
   if (!index) return [];
   return index.getClusters(bbox, Math.floor(zoom));
+}
+
+/** Get all individual points in a bounding box (no clusters). */
+export function getPointsInBbox(
+  bbox: [number, number, number, number],
+): GeoJSON.Feature<GeoJSON.Point, PointProps>[] {
+  if (!index) return [];
+  // Query at maxZoom+1 to force all points to be returned individually
+  return index.getClusters(bbox, 17) as GeoJSON.Feature<GeoJSON.Point, PointProps>[];
 }
 
 /** Get the zoom level at which a cluster splits into children. */
