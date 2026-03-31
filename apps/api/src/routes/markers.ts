@@ -376,7 +376,7 @@ app.get("/", async (c) => {
     }
 
     const tempSc = new Supercluster<PointProps>({
-      radius: 160,
+      radius: 220,
       maxZoom: 16,
       minPoints: 2,
     });

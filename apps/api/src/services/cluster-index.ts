@@ -101,7 +101,7 @@ export async function buildClusterIndex(): Promise<void> {
     }
 
     const sc = new Supercluster<PointProps>({
-      radius: 160,     // cluster merge radius in px — very aggressive merging
+      radius: 220,     // cluster merge radius in px — must exceed 2× max rendered radius (55px) to prevent overlap
       maxZoom: 16,     // individual points beyond this
       minZoom: 0,
       minPoints: 2,
