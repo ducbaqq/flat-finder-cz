@@ -33,7 +33,8 @@ function formatClusterCount(count: number): string {
 
 function clusterRadius(count: number): number {
   if (count <= 1) return 6;
-  return Math.min(38, 12 + Math.log10(count) * 10);
+  // Scale from 16px (2 items) to 55px (100k+ items) using log scale
+  return Math.min(55, 16 + Math.log10(count) * 12);
 }
 
 function clusterColor(): { fill: string; stroke: string } {
