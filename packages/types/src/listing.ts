@@ -78,6 +78,32 @@ export interface ListingsResponse {
   total_pages: number;
 }
 
+/** Lightweight listing data embedded in Supercluster points — enough to render PropertyCard */
+export interface ListingCardData {
+  id: number;
+  title: string | null;
+  address: string | null;      // coalesced address || city at build time
+  city: string | null;
+  price: number | null;
+  currency: string;
+  size_m2: number | null;
+  layout: string | null;
+  floor: number | null;
+  property_type: string;
+  transaction_type: string;
+  source: string;
+  listed_at: string | null;
+  thumbnail_url: string | null;
+}
+
+export interface ListingCardResponse {
+  listings: ListingCardData[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
 export interface MarkerPoint {
   id: number;
   lat: number;
@@ -85,6 +111,17 @@ export interface MarkerPoint {
   price: number | null;
   title: string | null;
   thumbnail_url: string | null;
+  // Card fields (populated from Supercluster index)
+  address: string | null;
+  city: string | null;
+  currency: string;
+  size_m2: number | null;
+  layout: string | null;
+  floor: number | null;
+  property_type: string;
+  transaction_type: string;
+  source: string;
+  listed_at: string | null;
 }
 
 export interface ClusterPoint {
