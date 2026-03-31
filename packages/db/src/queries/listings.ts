@@ -76,22 +76,24 @@ export function buildWhereConditions(
   }
 
   if (filters.location) {
-    // Location search strategy:
-    //   1. Exact match on city/district/region — uses B-tree indexes, fast.
-    //   2. Prefix ILIKE on city/district — can still use B-tree with C locale.
-    //   DO NOT add leading-wildcard ILIKE on address — it forces a full
-    //   sequential scan on 400K rows and poisons the entire OR clause,
-    //   preventing PostgreSQL from using any index at all.
-    const loc = filters.location.trim();
-    conditions.push(
-      or(
-        eq(listings.city, loc),
-        eq(listings.district, loc),
-        eq(listings.region, loc),
-        ilike(listings.city, `${loc}%`),
-        ilike(listings.district, `${loc}%`),
-      )!,
-    );
+    // Skip text-based location filter when bbox is present — the geographic
+    // bounds already constrain results spatially, and the text filter can't
+    // match streets/addresses (only city/district/region exact match).
+    const hasBbox = filters.sw_lat != null && filters.sw_lng != null &&
+      filters.ne_lat != null && filters.ne_lng != null;
+
+    if (!hasBbox) {
+      const loc = filters.location.trim();
+      conditions.push(
+        or(
+          eq(listings.city, loc),
+          eq(listings.district, loc),
+          eq(listings.region, loc),
+          ilike(listings.city, `${loc}%`),
+          ilike(listings.district, `${loc}%`),
+        )!,
+      );
+    }
   }
 
   // Geographic bounds
