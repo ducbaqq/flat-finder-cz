@@ -12,6 +12,7 @@ import listingsRoutes from "./routes/listings.js";
 import markersRoutes, { startMarkerRefresh, stopMarkerRefresh } from "./routes/markers.js";
 import statsRoutes, { startStatsRefresh, stopStatsRefresh } from "./routes/stats.js";
 import watchdogsRoutes from "./routes/watchdogs.js";
+import suggestRoutes from "./routes/suggest.js";
 
 const app = new Hono();
 
@@ -100,6 +101,7 @@ app.route("/api/listings", listingsRoutes);
 app.route("/api/markers", markersRoutes);
 app.route("/api/stats", statsRoutes);
 app.route("/api/watchdogs", watchdogsRoutes);
+app.route("/api/suggest", suggestRoutes);
 
 // ── API-02: Lightweight health check with simple SELECT 1 ──
 app.get("/api/health", async (c) => {
