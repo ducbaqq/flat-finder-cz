@@ -11,7 +11,8 @@
  * background after the cached snapshot is loaded.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
 import { join, dirname } from "node:path";
 import Supercluster from "supercluster";
 import { getDb, listings } from "@flat-finder/db";
@@ -88,7 +89,17 @@ async function saveToDisk(
 ): Promise<void> {
   try {
     await mkdir(dirname(CACHE_FILE), { recursive: true });
-    await writeFile(CACHE_FILE, JSON.stringify(features));
+    // Stream JSON to disk to avoid OOM from JSON.stringify on 350K+ objects
+    await new Promise<void>((resolve, reject) => {
+      const ws = createWriteStream(CACHE_FILE);
+      ws.on("error", reject);
+      ws.write("[");
+      for (let i = 0; i < features.length; i++) {
+        if (i > 0) ws.write(",");
+        ws.write(JSON.stringify(features[i]));
+      }
+      ws.end("]", () => resolve());
+    });
     console.log(`[cluster-index] Saved ${features.length} points to disk cache`);
   } catch (err) {
     console.error("[cluster-index] Failed to save disk cache:", err);
