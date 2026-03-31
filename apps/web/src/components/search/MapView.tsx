@@ -179,6 +179,7 @@ function MapEventsHandler() {
   const setMapBounds = useUiStore((s) => s.setMapBounds);
   const setMapZoom = useUiStore((s) => s.setMapZoom);
   const map = useMap();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const updateBounds = useCallback(() => {
     const b = map.getBounds();
@@ -191,15 +192,24 @@ function MapEventsHandler() {
     setMapZoom(map.getZoom());
   }, [map, setMapBounds, setMapZoom]);
 
+  // Fire immediately on mount
   useEffect(() => {
     updateBounds();
   }, [updateBounds]);
 
   useMapEvents({
     moveend() {
-      updateBounds();
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(updateBounds, 200);
     },
   });
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   return null;
 }
