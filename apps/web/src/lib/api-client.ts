@@ -1,6 +1,7 @@
 export async function apiGet<T>(
   endpoint: string,
-  params?: Record<string, unknown>
+  params?: Record<string, unknown>,
+  opts?: { signal?: AbortSignal },
 ): Promise<T> {
   const qsParts: string[] = [];
   if (params) {
@@ -13,7 +14,7 @@ export async function apiGet<T>(
     });
   }
   const url = "/api" + endpoint + (qsParts.length ? "?" + qsParts.join("&") : "");
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: opts?.signal });
   if (!res.ok) {
     throw new Error(`API error: ${res.status}`);
   }
