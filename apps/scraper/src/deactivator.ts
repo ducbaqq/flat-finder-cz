@@ -1,8 +1,8 @@
 import type { Db } from "@flat-finder/db";
-import { deactivateStaleListings, deactivateByTtlListings } from "@flat-finder/db";
+import { deactivateStaleListings, deactivateByTtlListings, deduplicateListings } from "@flat-finder/db";
 
 /**
- * Deactivate listings from `source` that were NOT seen in the current run.
+ * Deactivate listings from `source` that were NOT seen in thne current run.
  *
  * Wraps the database helper from @flat-finder/db and logs the result.
  */
@@ -24,6 +24,25 @@ export async function deactivateStale(
     console.log(`${t()} [deactivator] Deactivated ${count} stale listings for source=${source}`);
   }
   return count;
+}
+
+/**
+ * Deactivate active listings that are duplicates on (price, layout, size_m2, description).
+ * Keeps the earliest (lowest id) listing per group; deactivates the rest.
+ */
+export async function deduplicateActive(
+  db: Db,
+): Promise<{ found: number; deactivated: number }> {
+  const t = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
+  const result = await deduplicateListings(db);
+  if (result.found > 0) {
+    console.log(
+      `${t()} [deactivator] Deduplication: ${result.found} duplicates found, ${result.deactivated} deactivated`,
+    );
+  } else {
+    console.log(`${t()} [deactivator] Deduplication: no duplicates found`);
+  }
+  return result;
 }
 
 /**

@@ -291,6 +291,51 @@ export async function deactivateByTtlListings(
   return result.length;
 }
 
+/**
+ * Find active listings that are duplicates on (price, layout, size_m2, description).
+ * Keeps the lowest id per group (earliest inserted); deactivates the rest.
+ * Only considers rows where all four columns are non-null/non-empty.
+ */
+export async function deduplicateListings(
+  db: Db,
+): Promise<{ found: number; deactivated: number }> {
+  const dupes = await db.execute<{ id: number }>(sql`
+    WITH ranked AS (
+      SELECT id,
+        ROW_NUMBER() OVER (
+          PARTITION BY price, layout, size_m2, description
+          ORDER BY id ASC
+        ) AS rn
+      FROM listings
+      WHERE is_active = true
+        AND price IS NOT NULL
+        AND layout IS NOT NULL
+        AND size_m2 IS NOT NULL
+        AND description IS NOT NULL
+        AND description <> ''
+    )
+    SELECT id FROM ranked WHERE rn > 1
+  `);
+
+  const ids = (dupes as { id: number }[]).map((r) => r.id);
+  if (ids.length === 0) return { found: 0, deactivated: 0 };
+
+  const now = new Date().toISOString();
+  const CHUNK = 500;
+  let deactivated = 0;
+
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    await db
+      .update(listings)
+      .set({ is_active: false, deactivated_at: now })
+      .where(inArray(listings.id, chunk));
+    deactivated += chunk.length;
+  }
+
+  return { found: ids.length, deactivated };
+}
+
 export async function deactivateStaleListings(
   db: Db,
   source: string,

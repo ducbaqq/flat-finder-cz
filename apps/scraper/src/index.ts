@@ -42,7 +42,7 @@ import { CeskeRealityScraper } from "./scrapers/ceskereality.js";
 import { RealitymixScraper } from "./scrapers/realitymix.js";
 import { IdnesScraper } from "./scrapers/idnes.js";
 import { ReaLingoScraper } from "./scrapers/realingo.js";
-import { deactivateStale, deactivateByTtl } from "./deactivator.js";
+import { deactivateStale, deactivateByTtl, deduplicateActive } from "./deactivator.js";
 import { normalizeListingFields } from "./normalizer.js";
 import { Dashboard } from "./dashboard.js";
 
@@ -89,6 +89,7 @@ interface CliArgs {
   watch: boolean;
   full: boolean;
   cleanup: boolean;
+  dedupe: boolean;
   interval: number;
   noDashboard: boolean;
 }
@@ -126,6 +127,7 @@ function parseArgs(): CliArgs {
     watch: false,
     full: false,
     cleanup: false,
+    dedupe: false,
     interval: env.WATCHER_INTERVAL_S,
     noDashboard: false,
   };
@@ -156,6 +158,8 @@ function parseArgs(): CliArgs {
       opts.full = true;
     } else if (arg === "--cleanup") {
       opts.cleanup = true;
+    } else if (arg === "--dedupe") {
+      opts.dedupe = true;
     } else if (arg === "--no-dashboard") {
       opts.noDashboard = true;
     } else if (arg === "--interval" && i + 1 < args.length) {
@@ -177,6 +181,7 @@ Options:
   --watch             Run in watcher mode: loop continuously checking newest pages
   --full              Full scan: fetch all pages + deactivate stale listings
   --cleanup           Run TTL-based deactivation only (listings not scraped in 14 days)
+  --dedupe            Deactivate duplicates (same price, layout, size_m2, description)
   --no-dashboard      Disable the live terminal dashboard (auto-disabled for non-TTY)
   --interval <secs>   Seconds between watcher cycles (default: ${env.WATCHER_INTERVAL_S})
   --help, -h          Show this help message
@@ -204,6 +209,11 @@ Scheduling (SCR-11):
 
   if (opts.cleanup && (opts.watch || opts.full)) {
     console.error("Cannot use --cleanup with --watch or --full.");
+    process.exit(2);
+  }
+
+  if (opts.dedupe && (opts.watch || opts.full || opts.cleanup)) {
+    console.error("Cannot use --dedupe with --watch, --full, or --cleanup.");
     process.exit(2);
   }
 
@@ -922,20 +932,20 @@ function suppressConsole(dashboard: Dashboard): { restore: () => void } {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  const { sources: sourcesArg, dryRun, watch, full, cleanup, interval, noDashboard } = parseArgs();
+  const { sources: sourcesArg, dryRun, watch, full, cleanup, dedupe, interval, noDashboard } = parseArgs();
   const env = getEnv();
 
   const sources: SourceName[] =
     sourcesArg === "all" ? ALL_SOURCES : sourcesArg;
 
-  const mode = cleanup ? "CLEANUP" : watch ? "WATCH" : full ? "FULL" : "INCREMENTAL";
+  const mode = cleanup ? "CLEANUP" : dedupe ? "DEDUPE" : watch ? "WATCH" : full ? "FULL" : "INCREMENTAL";
 
   // Decide whether to use the dashboard:
   // - Default ON when stdout is a TTY
   // - OFF when --no-dashboard is specified
   // - OFF when stdout is not a TTY (piped output)
   // - OFF for cleanup mode (short-lived, no parallel sources)
-  const useDashboard = !noDashboard && !cleanup && process.stdout.isTTY === true;
+  const useDashboard = !noDashboard && !cleanup && !dedupe && process.stdout.isTTY === true;
 
   let dashboard: Dashboard | null = null;
   let consoleRestore: (() => void) | null = null;
@@ -1002,6 +1012,25 @@ async function main(): Promise<void> {
       }
     } else {
       console.log(`${ts()} [runner] DRY RUN -- skipping TTL deactivation`);
+    }
+    process.exit(0);
+  }
+
+  // Standalone dedupe mode -- deactivate duplicates on (price, layout, size_m2, description)
+  if (dedupe) {
+    console.log(`${ts()} [runner] Running deduplication (price + layout + size_m2 + description)...`);
+    if (!dryRun) {
+      const conn = createDb();
+      try {
+        const { found, deactivated } = await deduplicateActive(conn.db);
+        console.log(
+          `${ts()} [runner] Deduplication complete: ${found} duplicates found, ${deactivated} deactivated`,
+        );
+      } finally {
+        await conn.sql.end();
+      }
+    } else {
+      console.log(`${ts()} [runner] DRY RUN -- skipping deduplication`);
     }
     process.exit(0);
   }
