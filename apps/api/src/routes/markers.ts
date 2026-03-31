@@ -62,13 +62,33 @@ function sortPoints(points: PointProps[], sort: SortOption): PointProps[] {
   const copy = [...points];
   switch (sort) {
     case "price_asc":
-      return copy.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+      return copy.sort((a, b) => {
+        if (a.price == null && b.price == null) return 0;
+        if (a.price == null) return 1;
+        if (b.price == null) return -1;
+        return a.price - b.price;
+      });
     case "price_desc":
-      return copy.sort((a, b) => (b.price ?? -Infinity) - (a.price ?? -Infinity));
+      return copy.sort((a, b) => {
+        if (a.price == null && b.price == null) return 0;
+        if (a.price == null) return 1;
+        if (b.price == null) return -1;
+        return b.price - a.price;
+      });
     case "size_asc":
-      return copy.sort((a, b) => (a.size_m2 ?? Infinity) - (b.size_m2 ?? Infinity));
+      return copy.sort((a, b) => {
+        if (a.size_m2 == null && b.size_m2 == null) return 0;
+        if (a.size_m2 == null) return 1;
+        if (b.size_m2 == null) return -1;
+        return a.size_m2 - b.size_m2;
+      });
     case "size_desc":
-      return copy.sort((a, b) => (b.size_m2 ?? -Infinity) - (a.size_m2 ?? -Infinity));
+      return copy.sort((a, b) => {
+        if (a.size_m2 == null && b.size_m2 == null) return 0;
+        if (a.size_m2 == null) return 1;
+        if (b.size_m2 == null) return -1;
+        return b.size_m2 - a.size_m2;
+      });
     case "newest":
     default:
       return copy.sort((a, b) => {
@@ -330,17 +350,32 @@ app.get("/", async (c) => {
     response = { markers, clusters: [], total: markers.length, clustered: false };
   } else {
     // Build a temporary Supercluster from filtered points
-    const features: GeoJSON.Feature<GeoJSON.Point, { id: number; price: number | null }>[] = [];
+    const features: GeoJSON.Feature<GeoJSON.Point, PointProps>[] = [];
     for (const r of rows) {
       if (r.lat == null || r.lng == null) continue;
       features.push({
         type: "Feature",
         geometry: { type: "Point", coordinates: [r.lng, r.lat] },
-        properties: { id: r.id, price: r.price },
+        properties: {
+          id: r.id,
+          price: r.price,
+          title: r.title ?? null,
+          address: r.address ?? r.city ?? null,
+          city: r.city ?? null,
+          currency: r.currency ?? "CZK",
+          size_m2: r.size_m2 ?? null,
+          layout: r.layout ?? null,
+          floor: r.floor ?? null,
+          property_type: r.property_type ?? "other",
+          transaction_type: r.transaction_type ?? "sale",
+          source: r.source ?? "sreality",
+          listed_at: r.listed_at ?? null,
+          thumbnail_url: r.thumbnail_url ?? null,
+        },
       });
     }
 
-    const tempSc = new Supercluster<{ id: number; price: number | null }>({
+    const tempSc = new Supercluster<PointProps>({
       radius: 160,
       maxZoom: 16,
       minPoints: 2,
