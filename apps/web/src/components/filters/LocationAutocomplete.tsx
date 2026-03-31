@@ -128,6 +128,7 @@ export function LocationAutocomplete({
                   key={`${item.name}-${item.type}`}
                   value={item.label}
                   onSelect={() => handleSelect(item)}
+                  className="data-[selected=true]:bg-muted data-[selected=true]:text-foreground hover:bg-muted"
                 >
                   <MapPin className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
                   <div className="flex flex-col">
