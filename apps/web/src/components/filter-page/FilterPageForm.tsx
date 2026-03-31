@@ -10,11 +10,11 @@ import {
   TreePine,
   Landmark,
   Package,
-  MapPin,
 } from "lucide-react";
 import { PillToggle } from "./PillToggle";
 import { PillRangeInput } from "./PillRangeInput";
 import { FilterSection } from "./FilterSection";
+import { LocationAutocomplete } from "@/components/filters/LocationAutocomplete";
 
 /* ------------------------------------------------------------------ */
 /*  Types & constants                                                  */
@@ -285,16 +285,10 @@ export function FilterPageForm({
       {/* 4. Location */}
       <motion.div custom={3} variants={sectionVariants} initial="hidden" animate="visible">
         <FilterSection title="Lokalita">
-          <div className="relative">
-            <MapPin className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Zadejte adresu nebo lokalitu..."
-              className="w-full rounded-full border border-divider bg-card py-2.5 pl-10 pr-4 text-sm text-foreground outline-none transition-all duration-200 placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
+          <LocationAutocomplete
+            value={location}
+            onChange={setLocation}
+          />
         </FilterSection>
       </motion.div>
 
