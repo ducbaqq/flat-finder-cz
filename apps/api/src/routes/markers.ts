@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, listings } from "@flat-finder/db";
-import type { ListingFilters, ClusterPoint, MarkerPoint, MarkersResponse } from "@flat-finder/types";
+import type { ListingFilters, ClusterPoint, MarkerPoint, MarkersResponse, ListingCardData, ListingCardResponse } from "@flat-finder/types";
 import Supercluster from "supercluster";
 import { parseNumericParam } from "../helpers.js";
 import {
@@ -10,7 +10,9 @@ import {
   startClusterRefresh,
   stopClusterRefresh,
   isReady,
+  getPointsInBbox,
 } from "../services/cluster-index.js";
+import type { PointProps } from "../services/cluster-index.js";
 
 const app = new Hono();
 
@@ -52,6 +54,31 @@ function hasContentFilters(filters: ListingFilters): boolean {
   );
 }
 
+// ── Sort helper for /listings endpoint ──
+
+type SortOption = "newest" | "price_asc" | "price_desc" | "size_asc" | "size_desc";
+
+function sortPoints(points: PointProps[], sort: SortOption): PointProps[] {
+  const copy = [...points];
+  switch (sort) {
+    case "price_asc":
+      return copy.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+    case "price_desc":
+      return copy.sort((a, b) => (b.price ?? -Infinity) - (a.price ?? -Infinity));
+    case "size_asc":
+      return copy.sort((a, b) => (a.size_m2 ?? Infinity) - (b.size_m2 ?? Infinity));
+    case "size_desc":
+      return copy.sort((a, b) => (b.size_m2 ?? -Infinity) - (a.size_m2 ?? -Infinity));
+    case "newest":
+    default:
+      return copy.sort((a, b) => {
+        const da = a.listed_at ?? "";
+        const db_ = b.listed_at ?? "";
+        return db_.localeCompare(da); // desc
+      });
+  }
+}
+
 /** Convert Supercluster GeoJSON features to our response types. */
 function formatSuperclusterResults(
   features: GeoJSON.Feature<GeoJSON.Point>[],
@@ -78,8 +105,18 @@ function formatSuperclusterResults(
         lat,
         lng,
         price: (props.price as number) ?? null,
-        title: null,
-        thumbnail_url: null,
+        title: (props.title as string) ?? null,
+        thumbnail_url: (props.thumbnail_url as string) ?? null,
+        address: (props.address as string) ?? null,
+        city: (props.city as string) ?? null,
+        currency: (props.currency as string) ?? "CZK",
+        size_m2: (props.size_m2 as number) ?? null,
+        layout: (props.layout as string) ?? null,
+        floor: (props.floor as number) ?? null,
+        property_type: (props.property_type as string) ?? "other",
+        transaction_type: (props.transaction_type as string) ?? "sale",
+        source: (props.source as string) ?? "sreality",
+        listed_at: (props.listed_at as string) ?? null,
       });
     }
   }
@@ -152,6 +189,16 @@ app.get("/", async (c) => {
           price: listings.price,
           title: listings.title,
           thumbnail_url: listings.thumbnail_url,
+          address: listings.address,
+          city: listings.city,
+          currency: listings.currency,
+          size_m2: listings.size_m2,
+          layout: listings.layout,
+          floor: listings.floor,
+          property_type: listings.property_type,
+          transaction_type: listings.transaction_type,
+          source: listings.source,
+          listed_at: listings.listed_at,
         })
         .from(listings)
         .where(
@@ -174,6 +221,16 @@ app.get("/", async (c) => {
         price: r.price,
         title: r.title,
         thumbnail_url: r.thumbnail_url,
+        address: r.address ?? null,
+        city: r.city ?? null,
+        currency: r.currency ?? "CZK",
+        size_m2: r.size_m2 ?? null,
+        layout: r.layout ?? null,
+        floor: r.floor ?? null,
+        property_type: r.property_type ?? "other",
+        transaction_type: r.transaction_type ?? "sale",
+        source: r.source ?? "sreality",
+        listed_at: r.listed_at ?? null,
       }));
       return c.json({ markers, clusters: [], total: markers.length, clustered: false });
     }
@@ -225,6 +282,15 @@ app.get("/", async (c) => {
       size_m2: listings.size_m2,
       title: listings.title,
       thumbnail_url: listings.thumbnail_url,
+      address: listings.address,
+      city: listings.city,
+      currency: listings.currency,
+      layout: listings.layout,
+      floor: listings.floor,
+      property_type: listings.property_type,
+      transaction_type: listings.transaction_type,
+      source: listings.source,
+      listed_at: listings.listed_at,
     })
     .from(listings)
     .where(and(...indexConditions))
@@ -250,6 +316,16 @@ app.get("/", async (c) => {
       price: r.price,
       title: r.title,
       thumbnail_url: r.thumbnail_url,
+      address: r.address ?? null,
+      city: r.city ?? null,
+      currency: r.currency ?? "CZK",
+      size_m2: r.size_m2 ?? null,
+      layout: r.layout ?? null,
+      floor: r.floor ?? null,
+      property_type: r.property_type ?? "other",
+      transaction_type: r.transaction_type ?? "sale",
+      source: r.source ?? "sreality",
+      listed_at: r.listed_at ?? null,
     }));
     response = { markers, clusters: [], total: markers.length, clustered: false };
   } else {
@@ -284,6 +360,73 @@ app.get("/", async (c) => {
   }
   filteredCache.set(cacheKey, { data: response, ts: Date.now() });
   c.header("X-Cache", "MISS");
+
+  return c.json(response);
+});
+
+/**
+ * GET /api/markers/listings — Instant listing cards from Supercluster index.
+ * Zero DB I/O. Used for unfiltered map-bounded views.
+ */
+app.get("/listings", (c) => {
+  const q = c.req.query();
+
+  const sw_lat = parseNumericParam(q.sw_lat);
+  const sw_lng = parseNumericParam(q.sw_lng);
+  const ne_lat = parseNumericParam(q.ne_lat);
+  const ne_lng = parseNumericParam(q.ne_lng);
+  const page = parseInt(q.page ?? "1", 10) || 1;
+  const perPage = Math.min(parseInt(q.per_page ?? "20", 10) || 20, 100);
+  const sort = (q.sort as SortOption) || "newest";
+
+  if (sw_lat == null || sw_lng == null || ne_lat == null || ne_lng == null) {
+    return c.json({ listings: [], total: 0, page: 1, per_page: perPage, total_pages: 1 });
+  }
+
+  if (!isReady()) {
+    return c.json({ listings: [], total: 0, page: 1, per_page: perPage, total_pages: 1 });
+  }
+
+  const bbox: [number, number, number, number] = [sw_lng, sw_lat, ne_lng, ne_lat];
+  const features = getPointsInBbox(bbox);
+
+  // Extract properties (skip any clusters that leak through)
+  const points: PointProps[] = [];
+  for (const f of features) {
+    const props = f.properties as unknown as Record<string, unknown>;
+    if (props.cluster) continue;
+    points.push(f.properties as PointProps);
+  }
+
+  const sorted = sortPoints(points, sort);
+  const total = sorted.length;
+  const offset = (page - 1) * perPage;
+  const pageItems = sorted.slice(offset, offset + perPage);
+
+  const listings: ListingCardData[] = pageItems.map((p) => ({
+    id: p.id,
+    title: p.title,
+    address: p.address,
+    city: p.city,
+    price: p.price,
+    currency: p.currency,
+    size_m2: p.size_m2,
+    layout: p.layout,
+    floor: p.floor,
+    property_type: p.property_type,
+    transaction_type: p.transaction_type,
+    source: p.source,
+    listed_at: p.listed_at,
+    thumbnail_url: p.thumbnail_url,
+  }));
+
+  const response: ListingCardResponse = {
+    listings,
+    total,
+    page,
+    per_page: perPage,
+    total_pages: total > 0 ? Math.ceil(total / perPage) : 1,
+  };
 
   return c.json(response);
 });
