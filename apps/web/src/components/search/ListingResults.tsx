@@ -2,14 +2,14 @@
 
 import { SearchX, AlertTriangle } from "lucide-react";
 import { motion } from "framer-motion";
-import type { ListingsResponse } from "@flat-finder/types";
+import type { ListingsResponse, ListingCardResponse } from "@flat-finder/types";
 import { PropertyCard } from "@/components/shared/PropertyCard";
 import { PropertyCardSkeleton } from "@/components/shared/PropertyCardSkeleton";
 import { Button } from "@/components/ui/button";
 import { staggerContainer } from "@/lib/animations";
 
 interface ListingResultsProps {
-  data: ListingsResponse | undefined;
+  data: ListingsResponse | ListingCardResponse | undefined;
   isLoading: boolean;
   isError?: boolean;
   refetch?: () => void;

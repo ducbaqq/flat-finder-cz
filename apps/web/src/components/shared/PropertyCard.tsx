@@ -2,7 +2,7 @@
 
 import { MapPin, Ruler, LayoutGrid, Building } from "lucide-react";
 import { motion } from "framer-motion";
-import type { Listing } from "@flat-finder/types";
+import type { Listing, ListingCardData } from "@flat-finder/types";
 import { Badge } from "@/components/ui/badge";
 import {
   formatPrice,
@@ -14,7 +14,7 @@ import { useUiStore } from "@/store/ui-store";
 import { cn } from "@/lib/cn";
 
 interface PropertyCardProps {
-  listing: Listing;
+  listing: Listing | ListingCardData;
   index?: number;
 }
 
@@ -114,7 +114,7 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
           )}
         </div>
 
-        {listing.amenities && listing.amenities.length > 0 && (
+        {"amenities" in listing && listing.amenities && listing.amenities.length > 0 && (
           <div className="mt-2.5 flex flex-wrap gap-1" data-testid="listing-card-amenities">
             {listing.amenities.slice(0, 3).map((a) => (
               <span
