@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LocationAutocomplete } from "@/components/filters/LocationAutocomplete";
 import { cn } from "@/lib/cn";
 
 export function SearchTabs() {
@@ -59,14 +60,10 @@ export function SearchTabs() {
           <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground sm:mb-0">
             Lokalita
           </label>
-          <input
-            type="text"
-            placeholder="Město nebo lokalita..."
+          <LocationAutocomplete
             value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="w-full bg-transparent text-sm font-medium outline-none placeholder:text-muted-foreground/60"
-            data-testid="search-location-input"
+            onChange={setLocation}
+            className="w-full border-0 bg-transparent text-sm font-medium shadow-none outline-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
           />
         </div>
 

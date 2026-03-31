@@ -1,25 +1,14 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { LocationAutocomplete } from "@/components/filters/LocationAutocomplete";
 
 export function QuickActions() {
   const router = useRouter();
   const [locationQuery, setLocationQuery] = useState("");
-
-  const handleLocationSearch = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      const trimmed = locationQuery.trim();
-      if (trimmed) {
-        router.push(`/search?location=${encodeURIComponent(trimmed)}`);
-      }
-    },
-    [locationQuery, router]
-  );
 
   return (
     <div
@@ -55,32 +44,17 @@ export function QuickActions() {
       </div>
 
       {/* Location search input */}
-      <form
-        onSubmit={handleLocationSearch}
-        className="flex-1 w-full sm:w-auto"
-        data-testid="location-search-form"
-      >
-        <div className="relative">
-          <Search
-            className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
-            aria-hidden="true"
-          />
-          <input
-            type="text"
-            value={locationQuery}
-            onChange={(e) => setLocationQuery(e.target.value)}
-            placeholder="Zadejte adresu nebo lokalitu..."
-            className={cn(
-              "w-full rounded-full border border-border bg-card py-2.5 pl-10 pr-4 text-sm text-foreground",
-              "placeholder:text-muted-foreground",
-              "focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20",
-              "transition-all duration-200"
-            )}
-            aria-label="Hledat lokalitu"
-            data-testid="location-search-input"
-          />
-        </div>
-      </form>
+      <div className="flex-1 w-full sm:w-auto" data-testid="location-search-form">
+        <LocationAutocomplete
+          value={locationQuery}
+          onChange={(val) => {
+            setLocationQuery(val);
+            if (val.trim()) {
+              router.push(`/search?location=${encodeURIComponent(val.trim())}`);
+            }
+          }}
+        />
+      </div>
     </div>
   );
 }
