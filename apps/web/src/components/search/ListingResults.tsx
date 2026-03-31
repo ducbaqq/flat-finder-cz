@@ -11,6 +11,7 @@ import { staggerContainer } from "@/lib/animations";
 interface ListingResultsProps {
   data: ListingsResponse | ListingCardResponse | undefined;
   isLoading: boolean;
+  isFetching?: boolean;
   isError?: boolean;
   refetch?: () => void;
   page: number;
@@ -21,6 +22,7 @@ interface ListingResultsProps {
 export function ListingResults({
   data,
   isLoading,
+  isFetching,
   isError,
   refetch,
   page,
@@ -52,7 +54,7 @@ export function ListingResults({
     );
   }
 
-  if (isLoading) {
+  if (isLoading || (isFetching && (!data || data.listings.length === 0))) {
     return (
       <div
         className={`grid gap-4 ${

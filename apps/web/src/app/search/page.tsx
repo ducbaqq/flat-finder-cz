@@ -46,7 +46,7 @@ function SearchPageContent() {
     prevBoundsRef.current = mapBounds;
   }, [mapBounds, showMap, setPage]);
 
-  const { data, isLoading, isError, refetch } = useListings({
+  const { data, isLoading, isFetching, isError, refetch } = useListings({
     filters,
     page,
     boundToMap: showMap,
@@ -93,6 +93,7 @@ function SearchPageContent() {
               <ListingResults
                 data={data}
                 isLoading={isLoading}
+                isFetching={isFetching}
                 isError={isError}
                 refetch={refetch}
                 page={page}
