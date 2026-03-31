@@ -129,7 +129,9 @@ const server = serve({ fetch: app.fetch, port }, () => {
 
   // Start the background marker cluster refresh (computes once immediately, then every 15min).
   // This replaces the old 107s+ Supercluster in-memory index build.
-  startMarkerRefresh();
+  startMarkerRefresh().catch((err) =>
+    console.error("[marker-refresh] startup failed:", err),
+  );
 
   // Pre-warm other caches sequentially so we don't saturate the small DB pool.
   const signal = prewarmAbort.signal;

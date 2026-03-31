@@ -11,9 +11,10 @@
  * background after the cached snapshot is loaded.
  */
 
-import { readFile, mkdir } from "node:fs/promises";
-import { createWriteStream } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
 import { join, dirname } from "node:path";
+import { createInterface } from "node:readline";
 import Supercluster from "supercluster";
 import { getDb, listings } from "@flat-finder/db";
 import { and, eq, isNotNull } from "drizzle-orm";
@@ -50,7 +51,7 @@ let isBuilding = false;
 const CACHE_DIR = join(
   process.env.CLUSTER_CACHE_DIR || join(process.cwd(), ".cache"),
 );
-const CACHE_FILE = join(CACHE_DIR, "cluster-features.json");
+const CACHE_FILE = join(CACHE_DIR, "cluster-features.ndjson");
 
 // ── Supercluster config (shared) ──
 
@@ -66,10 +67,18 @@ const SC_OPTIONS: Supercluster.Options<PointProps, Supercluster.AnyProps> = {
 async function loadFromDisk(): Promise<boolean> {
   try {
     const t0 = Date.now();
-    const raw = await readFile(CACHE_FILE, "utf-8");
-    const features: GeoJSON.Feature<GeoJSON.Point, PointProps>[] = JSON.parse(raw);
+    const features: GeoJSON.Feature<GeoJSON.Point, PointProps>[] = [];
 
-    if (!Array.isArray(features) || features.length === 0) return false;
+    const rl = createInterface({
+      input: createReadStream(CACHE_FILE, "utf-8"),
+      crlfDelay: Infinity,
+    });
+
+    for await (const line of rl) {
+      if (line) features.push(JSON.parse(line));
+    }
+
+    if (features.length === 0) return false;
 
     const sc = new Supercluster<PointProps>(SC_OPTIONS);
     sc.load(features);
@@ -89,16 +98,14 @@ async function saveToDisk(
 ): Promise<void> {
   try {
     await mkdir(dirname(CACHE_FILE), { recursive: true });
-    // Stream JSON to disk to avoid OOM from JSON.stringify on 350K+ objects
+    // Stream NDJSON to disk — one feature per line to avoid OOM
     await new Promise<void>((resolve, reject) => {
       const ws = createWriteStream(CACHE_FILE);
       ws.on("error", reject);
-      ws.write("[");
-      for (let i = 0; i < features.length; i++) {
-        if (i > 0) ws.write(",");
-        ws.write(JSON.stringify(features[i]));
+      for (const f of features) {
+        ws.write(JSON.stringify(f) + "\n");
       }
-      ws.end("]", () => resolve());
+      ws.end(() => resolve());
     });
     console.log(`[cluster-index] Saved ${features.length} points to disk cache`);
   } catch (err) {
