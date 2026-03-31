@@ -116,7 +116,7 @@ export function LocationAutocomplete({
         />
       </PopoverAnchor>
       <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] p-0"
+        className="w-[var(--radix-popover-trigger-width)] bg-white p-0 dark:bg-zinc-900"
         onOpenAutoFocus={(e) => e.preventDefault()}
         align="start"
       >
