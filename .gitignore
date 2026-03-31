@@ -15,6 +15,7 @@ dist/
 
 # Build
 build/
+.cache/
 *.tsbuildinfo
 
 # Database
