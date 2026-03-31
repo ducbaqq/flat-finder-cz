@@ -71,13 +71,15 @@ export class UlovDomovScraper extends BaseScraper {
 
   private readonly batchMultiplier: number;
   private readonly detailBatchSize: number;
+  readonly skipEnrichmentHours: number;
 
   constructor(
-    opts: ScraperOptions & { batchMultiplier?: number; detailBatchSize?: number },
+    opts: ScraperOptions & { batchMultiplier?: number; detailBatchSize?: number; skipEnrichmentHours?: number },
   ) {
     super(opts);
     this.batchMultiplier = opts.batchMultiplier ?? 2;
     this.detailBatchSize = opts.detailBatchSize ?? 20;
+    this.skipEnrichmentHours = opts.skipEnrichmentHours ?? 24;
   }
 
   // ------------------------------------------------------------------

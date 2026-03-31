@@ -38,10 +38,13 @@ export class EurobydleniScraper extends BaseScraper {
   readonly name = "eurobydleni";
   readonly baseUrl = "https://www.eurobydleni.cz";
 
+  readonly skipEnrichmentHours: number;
+
   override get hasDetailPhase() { return true; }
 
-  constructor(opts: ScraperOptions) {
+  constructor(opts: ScraperOptions & { skipEnrichmentHours?: number }) {
     super(opts);
+    this.skipEnrichmentHours = opts.skipEnrichmentHours ?? 24;
   }
 
   // ─── Phase 1: List Scan ───────────────────────────────────────────

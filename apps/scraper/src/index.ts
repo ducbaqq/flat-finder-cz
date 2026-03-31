@@ -232,6 +232,7 @@ function createScraper(source: SourceName, watchMode = false): BaseScraper {
         concurrency: env.SREALITY_CONCURRENCY,
         batchMultiplier: env.PAGE_BATCH_MULTIPLIER,
         detailBatchSize: env.DETAIL_BATCH_SIZE,
+        skipEnrichmentHours: env.SREALITY_SKIP_ENRICHMENT_HOURS,
       });
     case "bezrealitky":
       return new BezrealitkyScraper({
@@ -247,24 +248,28 @@ function createScraper(source: SourceName, watchMode = false): BaseScraper {
         concurrency: env.ULOVDOMOV_CONCURRENCY,
         batchMultiplier: env.PAGE_BATCH_MULTIPLIER,
         detailBatchSize: env.DETAIL_BATCH_SIZE,
+        skipEnrichmentHours: env.ULOVDOMOV_SKIP_ENRICHMENT_HOURS,
       });
     case "bazos":
       return new BazosScraper({
         ...common,
         rps: env.BAZOS_RPS,
         concurrency: env.BAZOS_CONCURRENCY,
+        skipEnrichmentHours: env.BAZOS_SKIP_ENRICHMENT_HOURS,
       });
     case "ereality":
       return new ERealityScraper({
         ...common,
         rps: env.EREALITY_RPS,
         concurrency: env.EREALITY_CONCURRENCY,
+        skipEnrichmentHours: env.EREALITY_SKIP_ENRICHMENT_HOURS,
       });
     case "eurobydleni":
       return new EurobydleniScraper({
         ...common,
         rps: env.EUROBYDLENI_RPS,
         concurrency: env.EUROBYDLENI_CONCURRENCY,
+        skipEnrichmentHours: env.EUROBYDLENI_SKIP_ENRICHMENT_HOURS,
       });
     case "ceskereality":
       return new CeskeRealityScraper({
@@ -279,6 +284,7 @@ function createScraper(source: SourceName, watchMode = false): BaseScraper {
         ...common,
         rps: env.REALITYMIX_RPS,
         concurrency: env.REALITYMIX_CONCURRENCY,
+        skipEnrichmentHours: env.REALITYMIX_SKIP_ENRICHMENT_HOURS,
       });
     case "idnes":
       return new IdnesScraper({
@@ -293,6 +299,7 @@ function createScraper(source: SourceName, watchMode = false): BaseScraper {
         ...common,
         rps: env.REALINGO_RPS,
         concurrency: env.REALINGO_CONCURRENCY,
+        skipEnrichmentHours: env.REALINGO_SKIP_ENRICHMENT_HOURS,
       });
   }
 }

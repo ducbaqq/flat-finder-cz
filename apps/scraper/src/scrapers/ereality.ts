@@ -41,12 +41,15 @@ export class ERealityScraper extends BaseScraper {
   readonly name = "ereality";
   readonly baseUrl = "https://www.ereality.cz";
 
+  readonly skipEnrichmentHours: number;
+
   override get hasDetailPhase() {
     return true;
   }
 
-  constructor(opts: ScraperOptions) {
+  constructor(opts: ScraperOptions & { skipEnrichmentHours?: number }) {
     super(opts);
+    this.skipEnrichmentHours = opts.skipEnrichmentHours ?? 24;
   }
 
   // ─── Phase 1: List Scan ───────────────────────────────────────────

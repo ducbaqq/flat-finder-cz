@@ -24,28 +24,35 @@ const envSchema = z.object({
   // Scraper config — RPS/concurrency tuned via benchmark (2026-03-16)
   SREALITY_RPS: z.coerce.number().default(25),
   SREALITY_CONCURRENCY: z.coerce.number().default(50),
+  SREALITY_SKIP_ENRICHMENT_HOURS: z.coerce.number().default(24),
   BEZREALITKY_RPS: z.coerce.number().default(3),
   BEZREALITKY_CONCURRENCY: z.coerce.number().default(5),
   ULOVDOMOV_RPS: z.coerce.number().default(8),         // was 5, 0 errors at 5.13 eff RPS
   ULOVDOMOV_CONCURRENCY: z.coerce.number().default(10),
+  ULOVDOMOV_SKIP_ENRICHMENT_HOURS: z.coerce.number().default(24),
   BAZOS_RPS: z.coerce.number().default(20),
   BAZOS_CONCURRENCY: z.coerce.number().default(10),    // was 3, 32ms avg latency allows higher
+  BAZOS_SKIP_ENRICHMENT_HOURS: z.coerce.number().default(24),
   EREALITY_RPS: z.coerce.number().default(10),
   EREALITY_CONCURRENCY: z.coerce.number().default(8),  // was 3, 32% utilization at 10 RPS
+  EREALITY_SKIP_ENRICHMENT_HOURS: z.coerce.number().default(24),
   EUROBYDLENI_RPS: z.coerce.number().default(10),
   EUROBYDLENI_CONCURRENCY: z.coerce.number().default(8), // was 3, 30% utilization at 10 RPS
+  EUROBYDLENI_SKIP_ENRICHMENT_HOURS: z.coerce.number().default(24),
   CESKEREALITY_RPS: z.coerce.number().default(3),             // hard 429 limit at ~3 RPS
   CESKEREALITY_CONCURRENCY: z.coerce.number().default(3),    // keep conservative due to 429s
   CESKEREALITY_CATEGORY_PARALLELISM: z.coerce.number().default(2), // run 2 categories concurrently
   CESKEREALITY_SKIP_ENRICHMENT_HOURS: z.coerce.number().default(24),
   REALITYMIX_RPS: z.coerce.number().default(5),
   REALITYMIX_CONCURRENCY: z.coerce.number().default(5),  // was 3, 57% utilization
+  REALITYMIX_SKIP_ENRICHMENT_HOURS: z.coerce.number().default(24),
   IDNES_RPS: z.coerce.number().default(20),               // benchmarked: 0 errors at 25 conc, ~0.5s avg
   IDNES_CONCURRENCY: z.coerce.number().default(15),      // sweet spot: 20 eff RPS at conc=20
   IDNES_CATEGORY_PARALLELISM: z.coerce.number().default(3), // run 3 categories concurrently
   IDNES_SKIP_ENRICHMENT_HOURS: z.coerce.number().default(24), // skip detail re-fetch if scraped within N hours
   REALINGO_RPS: z.coerce.number().default(5),
   REALINGO_CONCURRENCY: z.coerce.number().default(5),    // was 3, 56% utilization
+  REALINGO_SKIP_ENRICHMENT_HOURS: z.coerce.number().default(24),
   MAX_RETRIES: z.coerce.number().default(3),
   RETRY_BASE_MS: z.coerce.number().default(1000),
   PAGE_BATCH_MULTIPLIER: z.coerce.number().default(2),
