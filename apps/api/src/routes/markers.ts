@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { getDb, listings } from "@flat-finder/db";
 import type { ListingFilters, ClusterPoint, MarkerPoint, MarkersResponse, ListingCardData, ListingCardResponse } from "@flat-finder/types";
 import Supercluster from "supercluster";
@@ -282,10 +282,12 @@ app.get("/", async (c) => {
     indexConditions.push(eq(listings.is_active, true));
   }
   if (filters.property_type) {
-    indexConditions.push(eq(listings.property_type, filters.property_type));
+    const vals = filters.property_type.split(",").filter(Boolean);
+    indexConditions.push(vals.length > 1 ? inArray(listings.property_type, vals) : eq(listings.property_type, vals[0]));
   }
   if (filters.transaction_type) {
-    indexConditions.push(eq(listings.transaction_type, filters.transaction_type));
+    const vals = filters.transaction_type.split(",").filter(Boolean);
+    indexConditions.push(vals.length > 1 ? inArray(listings.transaction_type, vals) : eq(listings.transaction_type, vals[0]));
   }
   indexConditions.push(isNotNull(listings.latitude));
   indexConditions.push(isNotNull(listings.longitude));
