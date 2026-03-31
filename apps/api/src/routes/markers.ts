@@ -25,7 +25,7 @@ const INDIVIDUAL_ZOOM_THRESHOLD = 17;
 const MAX_INDIVIDUAL_MARKERS = 5_000;
 
 /** Max points to fetch for filtered requests */
-const MAX_FILTERED_POINTS = 1_000;
+const MAX_FILTERED_POINTS = 5_000;
 
 // ── Cache for filtered marker requests ──
 const filteredCache = new Map<string, { data: MarkersResponse; ts: number }>();
