@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/command";
 import { useDebounce } from "@/hooks/useDebounce";
 import { apiGet } from "@/lib/api-client";
+import { useUiStore } from "@/store/ui-store";
 import type { SuggestItem, SuggestResponse } from "@flat-finder/types";
 
 interface LocationAutocompleteProps {
@@ -29,9 +30,11 @@ export function LocationAutocomplete({
   onChange,
   className,
 }: LocationAutocompleteProps) {
+  const setPendingBbox = useUiStore((s) => s.setPendingBbox);
   const [draft, setDraft] = useState(value);
   const [focused, setFocused] = useState(false);
   const [items, setItems] = useState<SuggestItem[]>([]);
+  const justSelectedRef = useRef(false);
 
   const debouncedQuery = useDebounce(draft, 300);
 
@@ -70,11 +73,14 @@ export function LocationAutocomplete({
 
   const handleSelect = useCallback(
     (item: SuggestItem) => {
-      setDraft(item.label);
-      onChange(item.name);
+      const display = item.location ? `${item.name}, ${item.location}` : item.name;
+      justSelectedRef.current = true;
+      setDraft(display);
+      onChange(display);
+      setPendingBbox(item.bbox ?? null);
       setItems([]);
     },
-    [onChange]
+    [onChange, setPendingBbox]
   );
 
   const handleKeyDown = useCallback(
@@ -92,8 +98,11 @@ export function LocationAutocomplete({
 
   const handleBlur = useCallback(() => {
     setFocused(false);
-    // Delay clearing so click events on suggestions can fire first
     setTimeout(() => {
+      if (justSelectedRef.current) {
+        justSelectedRef.current = false;
+        return;
+      }
       if (draft.trim() !== value) {
         onChange(draft.trim());
       }
@@ -125,8 +134,8 @@ export function LocationAutocomplete({
             <CommandGroup>
               {items.map((item) => (
                 <CommandItem
-                  key={`${item.name}-${item.type}`}
-                  value={item.label}
+                  key={`${item.name}-${item.location ?? ""}-${item.type}`}
+                  value={`${item.label}-${item.location ?? ""}`}
                   onSelect={() => handleSelect(item)}
                   className="data-[selected=true]:bg-muted data-[selected=true]:text-foreground hover:bg-muted"
                 >

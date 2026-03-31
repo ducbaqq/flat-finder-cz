@@ -15,12 +15,14 @@ interface UiState {
   watchdogModalOpen: boolean;
   mapBounds: MapBounds | null;
   mapZoom: number | null;
+  pendingBbox: [number, number, number, number] | null;
 
   toggleSidebar: () => void;
   closeSidebar: () => void;
   toggleMapCollapsed: () => void;
   setMapBounds: (bounds: MapBounds | null) => void;
   setMapZoom: (zoom: number) => void;
+  setPendingBbox: (bbox: [number, number, number, number] | null) => void;
   openDetail: (id: number) => void;
   closeDetail: () => void;
   toggleWatchdogModal: () => void;
@@ -35,12 +37,14 @@ export const useUiStore = create<UiState>((set) => ({
   watchdogModalOpen: false,
   mapBounds: null,
   mapZoom: null,
+  pendingBbox: null,
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   closeSidebar: () => set({ sidebarOpen: false }),
   toggleMapCollapsed: () => set((s) => ({ mapCollapsed: !s.mapCollapsed })),
   setMapBounds: (bounds) => set({ mapBounds: bounds }),
   setMapZoom: (zoom) => set({ mapZoom: zoom }),
+  setPendingBbox: (bbox) => set({ pendingBbox: bbox }),
   openDetail: (id) => set({ selectedListingId: id, detailModalOpen: true }),
   closeDetail: () => set({ selectedListingId: null, detailModalOpen: false }),
   toggleWatchdogModal: () =>

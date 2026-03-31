@@ -156,7 +156,35 @@ function geocodeLocation(query: string): Promise<L.LatLngBounds | null> {
 function LocationFlyTo({ location }: { location?: string }) {
   const map = useMap();
   const appliedRef = useRef("");
+  const pendingBbox = useUiStore((s) => s.pendingBbox);
+  const setPendingBbox = useUiStore((s) => s.setPendingBbox);
 
+  // Bbox from suggest API — fires immediately when autocomplete sets it
+  useEffect(() => {
+    if (!pendingBbox) return;
+    const [minLon, minLat, maxLon, maxLat] = pendingBbox;
+    const bounds = L.latLngBounds(
+      [minLat, minLon],
+      [maxLat, maxLon],
+    );
+    appliedRef.current = "__bbox__";
+    setPendingBbox(null);
+    // Use setView as a more reliable alternative to fitBounds
+    setTimeout(() => {
+      map.invalidateSize();
+      map.flyToBounds(bounds, { duration: 0.5 });
+    }, 100);
+  }, [pendingBbox, map, setPendingBbox]);
+
+  // Sync appliedRef once location prop catches up after bbox fly
+  useEffect(() => {
+    const query = location?.trim() ?? "";
+    if (query && appliedRef.current === "__bbox__") {
+      appliedRef.current = query;
+    }
+  }, [location]);
+
+  // Fallback: Nominatim geocoding for manual text entry (no bbox)
   useEffect(() => {
     const query = location?.trim() ?? "";
     if (!query || query === appliedRef.current) return;
@@ -165,7 +193,10 @@ function LocationFlyTo({ location }: { location?: string }) {
     geocodeLocation(query).then((bounds) => {
       if (!active || !bounds) return;
       appliedRef.current = query;
-      map.fitBounds(bounds, { maxZoom: 14 });
+      requestAnimationFrame(() => {
+        map.invalidateSize();
+        map.fitBounds(bounds, { maxZoom: 14 });
+      });
     });
 
     return () => { active = false; };

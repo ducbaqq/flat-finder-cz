@@ -12,6 +12,7 @@ export interface SuggestItem {
   name: string;
   label: string;
   position: { lon: number; lat: number };
+  bbox?: [number, number, number, number];
   type: string;
   location?: string;
   zip?: string;
