@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { getDb, listings } from "@flat-finder/db";
+import { getDb, listings, buildWhereConditions } from "@flat-finder/db";
 import type { ListingFilters, ClusterPoint, MarkerPoint, MarkersResponse, ListingCardData, ListingCardResponse } from "@flat-finder/types";
 import Supercluster from "supercluster";
 import { parseNumericParam } from "../helpers.js";
@@ -276,27 +276,15 @@ app.get("/", async (c) => {
   const db = getDb();
   const pointLimit = zoom >= INDIVIDUAL_ZOOM_THRESHOLD ? MAX_INDIVIDUAL_MARKERS : MAX_FILTERED_POINTS;
 
-  // Index-friendly WHERE clause
-  const indexConditions = [];
-  if (!filters.include_inactive) {
-    indexConditions.push(eq(listings.is_active, true));
-  }
-  if (filters.property_type) {
-    const vals = filters.property_type.split(",").filter(Boolean);
-    indexConditions.push(vals.length > 1 ? inArray(listings.property_type, vals) : eq(listings.property_type, vals[0]));
-  }
-  if (filters.transaction_type) {
-    const vals = filters.transaction_type.split(",").filter(Boolean);
-    indexConditions.push(vals.length > 1 ? inArray(listings.transaction_type, vals) : eq(listings.transaction_type, vals[0]));
-  }
-  indexConditions.push(isNotNull(listings.latitude));
-  indexConditions.push(isNotNull(listings.longitude));
-  indexConditions.push(sql`${listings.latitude} >= ${sw_lat}`);
-  indexConditions.push(sql`${listings.latitude} <= ${ne_lat}`);
-  indexConditions.push(sql`${listings.longitude} >= ${sw_lng}`);
-  indexConditions.push(sql`${listings.longitude} <= ${ne_lng}`);
+  // Reuse the same WHERE-clause builder as /api/listings so ALL filters
+  // (furnishing, condition, construction, ownership, layout, energy_rating,
+  //  amenities, price, size, location, bbox) are pushed into the DB query.
+  const conditions = buildWhereConditions(filters, {
+    includeInactive: filters.include_inactive,
+  });
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const rawRows = await db
+  const rows = await db
     .select({
       id: listings.id,
       lat: listings.latitude,
@@ -316,17 +304,8 @@ app.get("/", async (c) => {
       listed_at: listings.listed_at,
     })
     .from(listings)
-    .where(and(...indexConditions))
+    .where(where)
     .limit(pointLimit);
-
-  // Apply remaining filters in-memory
-  const rows = rawRows.filter((r) => {
-    if (filters.price_min != null && (r.price == null || r.price < filters.price_min)) return false;
-    if (filters.price_max != null && (r.price == null || r.price > filters.price_max)) return false;
-    if (filters.size_min != null && (r.size_m2 == null || r.size_m2 < filters.size_min)) return false;
-    if (filters.size_max != null && (r.size_m2 == null || r.size_m2 > filters.size_max)) return false;
-    return true;
-  });
 
   let response: MarkersResponse;
 

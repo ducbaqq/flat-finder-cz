@@ -240,14 +240,12 @@ export async function startClusterRefresh(intervalMs = 15 * 60_000): Promise<voi
   // Try disk cache first for instant startup
   const loaded = await loadFromDisk();
 
-  // Always rebuild from DB (immediately if no cache, or in background if cached)
-  if (loaded) {
-    // Cache loaded — schedule DB rebuild after a short delay to not compete with other startup tasks
-    setTimeout(() => buildClusterIndex(), 5_000);
-  } else {
+  if (!loaded) {
     // No cache — build from DB immediately
-    buildClusterIndex();
+    await buildClusterIndex();
   }
+  // If cache was loaded, skip immediate DB rebuild — the periodic refresh
+  // will pick up changes. This avoids doubling memory during startup.
 
   buildTimer = setInterval(() => buildClusterIndex(), intervalMs);
   buildTimer.unref();

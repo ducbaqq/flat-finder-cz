@@ -91,20 +91,14 @@ const BUILDING_TYPES = [
   { value: "other", label: "Ostatní" },
 ] as const;
 
-const OUTDOOR_AMENITIES = [
-  { value: "garden", label: "Zahrada" },
+const AMENITIES = [
   { value: "balcony", label: "Balkón" },
   { value: "loggia", label: "Lodžie" },
   { value: "terrace", label: "Terasa" },
-] as const;
-
-const INDOOR_AMENITIES = [
+  { value: "garden", label: "Zahrada" },
   { value: "cellar", label: "Sklep" },
   { value: "parking", label: "Parkování" },
   { value: "garage", label: "Garáž" },
-] as const;
-
-const ACCESSIBILITY_OPTIONS = [
   { value: "elevator", label: "Výtah" },
   { value: "wheelchair", label: "Bezbariérový" },
 ] as const;
@@ -173,9 +167,7 @@ export function FilterPageForm({
   const [ownership, setOwnership] = useState<string[]>([]);
   const [furnishing, setFurnishing] = useState<string[]>([]);
   const [buildingTypes, setBuildingTypes] = useState<string[]>([]);
-  const [outdoorAmenities, setOutdoorAmenities] = useState<string[]>([]);
-  const [indoorAmenities, setIndoorAmenities] = useState<string[]>([]);
-  const [accessibility, setAccessibility] = useState<string[]>([]);
+  const [amenities, setAmenities] = useState<string[]>([]);
   const [energyClasses, setEnergyClasses] = useState<string[]>([]);
 
   // --- handlers -------------------------------------------------------
@@ -185,7 +177,7 @@ export function FilterPageForm({
     if (propertyTypes.length)
       params.set("property_type", propertyTypes.join(","));
     if (transactionTypes.length)
-      params.set("transaction_type", transactionTypes[0]);
+      params.set("transaction_type", transactionTypes.join(","));
     if (layouts.length) params.set("layout", layouts.join(","));
     if (location.trim()) params.set("location", location.trim());
     if (priceMin) params.set("price_min", priceMin);
@@ -197,9 +189,8 @@ export function FilterPageForm({
     if (furnishing.length) params.set("furnishing", furnishing.join(","));
     if (buildingTypes.length)
       params.set("construction", buildingTypes.join(","));
-    const allAmenities = [...outdoorAmenities, ...indoorAmenities, ...accessibility];
-    if (allAmenities.length)
-      params.set("amenities", allAmenities.join(","));
+    if (amenities.length)
+      params.set("amenities", amenities.join(","));
     if (energyClasses.length)
       params.set("energy_rating", energyClasses.join(","));
 
@@ -214,12 +205,10 @@ export function FilterPageForm({
     areaMin,
     areaMax,
     conditions,
-    ownership,
-    furnishing,
     buildingTypes,
-    outdoorAmenities,
-    indoorAmenities,
-    accessibility,
+    ownership,
+    amenities,
+    furnishing,
     energyClasses,
     router,
   ]);
@@ -316,9 +305,9 @@ export function FilterPageForm({
         />
       </motion.div>
 
-      {/* 7. Building Condition */}
+      {/* 7. Stav */}
       <motion.div custom={6} variants={sectionVariants} initial="hidden" animate="visible">
-        <FilterSection title="Stav objektu">
+        <FilterSection title="Stav">
           <div className="flex flex-wrap gap-2">
             {BUILDING_CONDITIONS.map(({ value, label }) => (
               <PillToggle
@@ -332,8 +321,24 @@ export function FilterPageForm({
         </FilterSection>
       </motion.div>
 
-      {/* 8. Ownership */}
+      {/* 8. Konstrukce */}
       <motion.div custom={7} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Konstrukce">
+          <div className="flex flex-wrap gap-2">
+            {BUILDING_TYPES.map(({ value, label }) => (
+              <PillToggle
+                key={value}
+                label={label}
+                selected={buildingTypes.includes(value)}
+                onClick={() => setBuildingTypes((s) => toggle(s, value))}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
+
+      {/* 9. Vlastnictví */}
+      <motion.div custom={8} variants={sectionVariants} initial="hidden" animate="visible">
         <FilterSection title="Vlastnictví">
           <div className="flex flex-wrap gap-2">
             {OWNERSHIP_TYPES.map(({ value, label }) => (
@@ -348,8 +353,24 @@ export function FilterPageForm({
         </FilterSection>
       </motion.div>
 
-      {/* 9. Furnishing */}
-      <motion.div custom={8} variants={sectionVariants} initial="hidden" animate="visible">
+      {/* 10. Vybavenost (amenities) */}
+      <motion.div custom={9} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Vybavenost">
+          <div className="flex flex-wrap gap-2">
+            {AMENITIES.map(({ value, label }) => (
+              <PillToggle
+                key={value}
+                label={label}
+                selected={amenities.includes(value)}
+                onClick={() => setAmenities((s) => toggle(s, value))}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
+
+      {/* 11. Vybavení (furnishing) */}
+      <motion.div custom={10} variants={sectionVariants} initial="hidden" animate="visible">
         <FilterSection title="Vybavení">
           <div className="flex flex-wrap gap-2">
             {FURNISHING_OPTIONS.map(({ value, label }) => (
@@ -364,73 +385,9 @@ export function FilterPageForm({
         </FilterSection>
       </motion.div>
 
-      {/* 10. Building Type */}
-      <motion.div custom={9} variants={sectionVariants} initial="hidden" animate="visible">
-        <FilterSection title="Stavba">
-          <div className="flex flex-wrap gap-2">
-            {BUILDING_TYPES.map(({ value, label }) => (
-              <PillToggle
-                key={value}
-                label={label}
-                selected={buildingTypes.includes(value)}
-                onClick={() => setBuildingTypes((s) => toggle(s, value))}
-              />
-            ))}
-          </div>
-        </FilterSection>
-      </motion.div>
-
-      {/* 11. Outdoor Amenities */}
-      <motion.div custom={10} variants={sectionVariants} initial="hidden" animate="visible">
-        <FilterSection title="Doplňky - Venkovní">
-          <div className="flex flex-wrap gap-2">
-            {OUTDOOR_AMENITIES.map(({ value, label }) => (
-              <PillToggle
-                key={value}
-                label={label}
-                selected={outdoorAmenities.includes(value)}
-                onClick={() => setOutdoorAmenities((s) => toggle(s, value))}
-              />
-            ))}
-          </div>
-        </FilterSection>
-      </motion.div>
-
-      {/* 12. Indoor Amenities */}
+      {/* 12. PENB */}
       <motion.div custom={11} variants={sectionVariants} initial="hidden" animate="visible">
-        <FilterSection title="Doplňky - Vnitřní">
-          <div className="flex flex-wrap gap-2">
-            {INDOOR_AMENITIES.map(({ value, label }) => (
-              <PillToggle
-                key={value}
-                label={label}
-                selected={indoorAmenities.includes(value)}
-                onClick={() => setIndoorAmenities((s) => toggle(s, value))}
-              />
-            ))}
-          </div>
-        </FilterSection>
-      </motion.div>
-
-      {/* 13. Accessibility */}
-      <motion.div custom={12} variants={sectionVariants} initial="hidden" animate="visible">
-        <FilterSection title="Přístupnost">
-          <div className="flex flex-wrap gap-2">
-            {ACCESSIBILITY_OPTIONS.map(({ value, label }) => (
-              <PillToggle
-                key={value}
-                label={label}
-                selected={accessibility.includes(value)}
-                onClick={() => setAccessibility((s) => toggle(s, value))}
-              />
-            ))}
-          </div>
-        </FilterSection>
-      </motion.div>
-
-      {/* 14. Energy Class */}
-      <motion.div custom={13} variants={sectionVariants} initial="hidden" animate="visible">
-        <FilterSection title="Energetická třída">
+        <FilterSection title="PENB">
           <div className="flex flex-wrap gap-2">
             {ENERGY_CLASSES.map(({ value, label, color }) => (
               <button
@@ -461,7 +418,7 @@ export function FilterPageForm({
       {/* Submit */}
       <motion.div
         className="pt-4"
-        custom={14}
+        custom={12}
         variants={sectionVariants}
         initial="hidden"
         animate="visible"

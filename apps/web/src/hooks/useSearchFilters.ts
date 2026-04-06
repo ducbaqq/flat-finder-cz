@@ -78,7 +78,6 @@ export function useSearchFilters() {
     "view",
     parseAsString.withDefault("hybrid")
   );
-
   const filters = {
     transaction_type: transactionType,
     property_type: propertyType,
