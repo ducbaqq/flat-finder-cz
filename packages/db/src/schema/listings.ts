@@ -89,6 +89,13 @@ export const listings = pgTable(
       table.transaction_type,
       table.city,
     ),
+    // ── Filter column indexes for bitmap index scan combining ──
+    index("idx_listings_layout").on(table.layout),
+    index("idx_listings_condition").on(table.condition),
+    index("idx_listings_construction").on(table.construction),
+    index("idx_listings_ownership").on(table.ownership),
+    index("idx_listings_furnishing").on(table.furnishing),
+    index("idx_listings_energy_rating").on(table.energy_rating),
   ],
 );
 

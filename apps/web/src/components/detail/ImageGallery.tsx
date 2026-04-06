@@ -12,8 +12,12 @@ interface ImageGalleryProps {
   images: string[];
 }
 
+const MAX_IMAGES = 3;
+
 export default function ImageGallery({ images }: ImageGalleryProps) {
-  if (!images.length) {
+  const displayImages = images.slice(0, MAX_IMAGES);
+
+  if (!displayImages.length) {
     return (
       <div className="flex aspect-[16/9] items-center justify-center bg-muted" data-testid="image-gallery-empty">
         <span className="text-sm text-muted-foreground">Žádné fotky</span>
@@ -24,7 +28,7 @@ export default function ImageGallery({ images }: ImageGalleryProps) {
   return (
     <Carousel className="w-full" data-testid="image-gallery">
       <CarouselContent>
-        {images.map((url, i) => (
+        {displayImages.map((url, i) => (
           <CarouselItem key={i} data-testid="image-gallery-slide">
             <div className="aspect-[16/9] overflow-hidden">
               <img
@@ -41,7 +45,7 @@ export default function ImageGallery({ images }: ImageGalleryProps) {
           </CarouselItem>
         ))}
       </CarouselContent>
-      {images.length > 1 && (
+      {displayImages.length > 1 && (
         <>
           <CarouselPrevious className="left-2" data-testid="image-gallery-prev" />
           <CarouselNext className="right-2" data-testid="image-gallery-next" />
