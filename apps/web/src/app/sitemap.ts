@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const BASE_URL = "https://domov.cz";
+const BASE_URL = "https://bytomat.com";
 
 const popularCities = [
   "Praha",

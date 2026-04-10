@@ -16,9 +16,9 @@ const envSchema = z.object({
 
   BREVO_API_KEY: z.string().default(""),
   BREVO_TEMPLATE_ID: z.coerce.number().default(1),
-  BREVO_SENDER_EMAIL: z.string().default("hlidac@flatfinder.cz"),
-  BREVO_SENDER_NAME: z.string().default("Flat Finder CZ"),
-  APP_BASE_URL: z.string().default("https://flatfinder.cz"),
+  BREVO_SENDER_EMAIL: z.string().default("hlidac@bytomat.com"),
+  BREVO_SENDER_NAME: z.string().default("Bytomat.cz"),
+  APP_BASE_URL: z.string().default("https://bytomat.com"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 
   // Scraper config — RPS/concurrency tuned via benchmark (2026-03-16)

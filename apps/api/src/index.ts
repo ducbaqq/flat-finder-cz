@@ -29,8 +29,8 @@ app.use("*", compress());
 
 // ── API-06: CORS with specific origins ──
 const allowedOrigins = [
-  "https://domov.cz",
-  "https://www.domov.cz",
+  "https://bytomat.com",
+  "https://www.bytomat.com",
   "http://localhost:3000",
   "http://localhost:3001",
 ];
