@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { MapPin, Ruler, LayoutGrid } from "lucide-react";
 import { motion } from "framer-motion";
 import type { Listing, ListingCardData } from "@flat-finder/types";
@@ -17,6 +18,7 @@ interface PropertyCardProps {
 
 export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
   const openDetail = useUiStore((s) => s.openDetail);
+  const [imgFailed, setImgFailed] = useState(!listing.thumbnail_url);
 
   return (
     <motion.article
@@ -36,18 +38,19 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
         className="relative aspect-[4/3] overflow-hidden rounded-xl bg-muted"
         data-testid="listing-card-image"
       >
-        <img
-          className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]"
-          src={
-            listing.thumbnail_url ||
-            `https://picsum.photos/seed/ph${listing.id}/400/300`
-          }
-          alt={listing.title || ""}
-          loading="lazy"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = `https://picsum.photos/seed/fb${listing.id}/400/300`;
-          }}
-        />
+        {imgFailed ? (
+          <div className="flex h-full w-full items-center justify-center">
+            <span className="text-sm text-muted-foreground">Bez fotky</span>
+          </div>
+        ) : (
+          <img
+            className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]"
+            src={listing.thumbnail_url!}
+            alt={listing.title || ""}
+            loading="lazy"
+            onError={() => setImgFailed(true)}
+          />
+        )}
 
         {/* Source tag */}
         <span
@@ -117,16 +120,27 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
 
         <div className="mt-2.5 flex items-baseline justify-between" data-testid="listing-card-meta">
           <span data-testid="listing-card-price">
-            <span className="font-display text-base font-semibold text-foreground">
-              {formatPrice(listing.price, listing.currency)}
-            </span>
-            {listing.transaction_type === "rent" && (
-              <span className="text-[13px] text-muted-foreground">/měs.</span>
+            {listing.price ? (
+              <>
+                <span className="font-display text-base font-semibold text-foreground">
+                  {formatPrice(listing.price, listing.currency)}
+                </span>
+                {listing.transaction_type === "rent" && (
+                  <span className="text-[13px] text-muted-foreground">/měs.</span>
+                )}
+              </>
+            ) : (
+              <span className="text-[13px] text-muted-foreground">Na dotaz</span>
             )}
           </span>
-          <span className="text-[11px] text-muted-foreground" data-testid="listing-card-date">
-            {relativeTime(listing.listed_at)}
-          </span>
+          {(() => {
+            const time = relativeTime(listing.listed_at);
+            return time && time !== "právě teď" ? (
+              <span className="text-[11px] text-muted-foreground" data-testid="listing-card-date">
+                {time}
+              </span>
+            ) : null;
+          })()}
         </div>
       </div>
     </motion.article>

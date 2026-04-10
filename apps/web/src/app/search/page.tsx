@@ -75,7 +75,7 @@ function SearchPageContent() {
 
       <div className="flex flex-1">
         {/* Desktop sidebar */}
-        <aside className="hidden w-72 shrink-0 border-r border-divider md:block sticky top-[100px] h-[calc(100vh-100px)] overflow-y-auto" data-testid="filters-panel">
+        <aside className="hidden w-72 shrink-0 border-r border-divider md:block sticky top-[100px] h-[calc(100vh-100px)] overflow-hidden" data-testid="filters-panel">
           <FilterSidebar filters={filters} setFilter={setFilter} />
         </aside>
 
@@ -86,7 +86,7 @@ function SearchPageContent() {
             <div
               className={cn(
                 "flex-1 overflow-y-auto p-4",
-                showMap && "lg:w-[25%] lg:min-w-[280px] lg:max-w-[25%] lg:flex-none"
+                showMap && "lg:w-[40%] lg:min-w-[340px] lg:max-w-[40%] lg:flex-none"
               )}
               data-testid="listings-panel"
             >

@@ -33,7 +33,7 @@ interface FilterSidebarProps {
 export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
   return (
     <ScrollArea className="h-[calc(100vh-56px)]" data-testid="filter-sidebar">
-      <div className="space-y-5 p-4">
+      <div className="space-y-5 p-4 pb-32">
         <TransactionToggle
           value={filters.transaction_type}
           onChange={(v) => setFilter("transaction_type", v)}
@@ -187,7 +187,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
 
           <AccordionItem value="energy" data-testid="filter-energy-group">
             <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
-              PENB
+              Energetická třída (PENB)
             </AccordionTrigger>
             <AccordionContent>
               <EnergyRatingFilter

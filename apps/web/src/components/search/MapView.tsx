@@ -11,9 +11,15 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
+import { useTheme } from "next-themes";
 import { useUiStore } from "@/store/ui-store";
 import { useMarkers } from "@/hooks/useMarkers";
 import { apiGet } from "@/lib/api-client";
+
+const TILE_LIGHT =
+  "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+const TILE_DARK =
+  "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
 
 const dotIcon = L.divIcon({
   className: "",
@@ -323,6 +329,24 @@ function MarkerLayer({ filters }: { filters: Record<string, string> }) {
   );
 }
 
+// ── Theme-aware tile layer ──
+
+function ThemeAwareTileLayer() {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+
+  return (
+    <TileLayer
+      key={isDark ? "dark" : "light"}
+      className={isDark ? "dark-map-tiles" : "light-map-tiles"}
+      url={TILE_LIGHT}
+      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
+      subdomains="abcd"
+      maxZoom={20}
+    />
+  );
+}
+
 // ── Main MapView ──
 
 interface MapViewProps {
@@ -339,12 +363,7 @@ export function MapView({ filters }: MapViewProps) {
       style={{ width: "100%", height: "100%" }}
       data-testid="map-view"
     >
-      <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-        subdomains="abcd"
-        maxZoom={20}
-      />
+      <ThemeAwareTileLayer />
       <MapEventsHandler />
       <LocationFlyTo location={filters.location} />
       <MarkerLayer filters={filters} />

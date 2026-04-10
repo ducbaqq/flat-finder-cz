@@ -4,7 +4,6 @@ import { List, Map, LayoutGrid } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { SortSelect } from "@/components/filters/SortSelect";
 import { FilterSheet } from "./FilterSheet";
-import { cn } from "@/lib/cn";
 
 interface SearchHeaderProps {
   total: number;
@@ -16,12 +15,6 @@ interface SearchHeaderProps {
   setFilter: (key: string, value: string) => void;
 }
 
-const quickFilters = [
-  { label: "Vše", value: "" },
-  { label: "Byty", value: "flat" },
-  { label: "Domy", value: "house" },
-];
-
 export function SearchHeader({
   total,
   view,
@@ -31,8 +24,6 @@ export function SearchHeader({
   filters,
   setFilter,
 }: SearchHeaderProps) {
-  const activePropertyType = filters.property_type || "";
-
   return (
     <div
       className="sticky top-14 z-30 border-b border-divider bg-background/80 backdrop-blur-xl"
@@ -40,28 +31,6 @@ export function SearchHeader({
     >
       <div className="flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-3">
-          {/* Quick filter chips */}
-          <div
-            className="hidden items-center gap-1 sm:flex"
-            data-testid="quick-filters"
-          >
-            {quickFilters.map(({ label, value }) => (
-              <button
-                key={label}
-                onClick={() => setFilter("property_type", value)}
-                className={cn(
-                  "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                  activePropertyType === value
-                    ? "bg-foreground text-background"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                )}
-                data-testid={`quick-filter-${value || "all"}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
           <span
             className="text-sm text-muted-foreground"
             data-testid="search-results-count"
@@ -86,6 +55,7 @@ export function SearchHeader({
             <ToggleGroupItem
               value="list"
               size="sm"
+              title="Seznam"
               data-testid="view-toggle-list"
             >
               <List className="h-4 w-4" />
@@ -93,6 +63,7 @@ export function SearchHeader({
             <ToggleGroupItem
               value="hybrid"
               size="sm"
+              title="Seznam a mapa"
               data-testid="view-toggle-hybrid"
             >
               <LayoutGrid className="h-4 w-4" />
@@ -100,6 +71,7 @@ export function SearchHeader({
             <ToggleGroupItem
               value="map"
               size="sm"
+              title="Mapa"
               data-testid="view-toggle-map"
             >
               <Map className="h-4 w-4" />

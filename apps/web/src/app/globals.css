@@ -33,8 +33,8 @@
   --color-terracotta: var(--terracotta);
   --color-terracotta-dark: var(--terracotta-dark);
 
-  --font-sans: var(--font-figtree), system-ui, sans-serif;
-  --font-display: var(--font-bricolage), system-ui, sans-serif;
+  --font-sans: 'Figtree', system-ui, sans-serif;
+  --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
 
   --radius-lg: 14px;
   --radius-md: 10px;
@@ -211,6 +211,16 @@ body {
 .stagger-item:nth-child(6) { animation-delay: 300ms; }
 .stagger-item:nth-child(7) { animation-delay: 360ms; }
 .stagger-item:nth-child(8) { animation-delay: 420ms; }
+
+/* ═══════════════════════════════════════════
+   Dark mode map — desaturate and dim the light tiles
+   ═══════════════════════════════════════════ */
+.light-map-tiles {
+  filter: contrast(1) saturate(1.3);
+}
+.dark-map-tiles {
+  filter: invert(1) hue-rotate(180deg) brightness(2.0) contrast(0.6) saturate(0.35);
+}
 
 /* ═══════════════════════════════════════════
    Leaflet z-index & marker overrides

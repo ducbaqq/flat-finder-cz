@@ -22,7 +22,7 @@ export function Navbar() {
           <Button variant="ghost" size="sm" asChild data-testid="nav-home-link">
             <Link href="/">
               <Home className="mr-1.5 h-4 w-4" />
-              Home
+              Domov
             </Link>
           </Button>
           <Button variant="ghost" size="sm" asChild data-testid="nav-search-link">

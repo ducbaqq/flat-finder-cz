@@ -1,7 +1,7 @@
 import type { Listing } from "@flat-finder/types";
 
 export function formatPrice(price: number | null | undefined, currency?: string): string {
-  if (!price) return "\u2014";
+  if (!price) return "Na dotaz";
   const p = Math.round(price);
   return p.toLocaleString("cs-CZ") + " " + (currency || "K\u010d");
 }

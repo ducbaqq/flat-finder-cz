@@ -114,12 +114,15 @@ export function useSearchFilters() {
     if (hasFilters) return;
 
     const prefs = getSearchPreferences();
-    if (!prefs) return;
 
-    if (prefs.property_type) setPropertyType(prefs.property_type);
-    if (prefs.transaction_type) setTransactionType(prefs.transaction_type);
-    if (prefs.location) setLocation(prefs.location);
-    if (prefs.bbox) setPendingBbox(prefs.bbox);
+    // Apply saved preferences, or sensible defaults for cold visitors
+    const pType = prefs?.property_type || "flat";
+    const tType = prefs?.transaction_type || "rent";
+
+    setPropertyType(pType);
+    setTransactionType(tType);
+    if (prefs?.location) setLocation(prefs.location);
+    if (prefs?.bbox) setPendingBbox(prefs.bbox);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist the three preference fields to localStorage whenever they change
