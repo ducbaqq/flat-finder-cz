@@ -87,16 +87,14 @@ export class SrealityScraper extends BaseScraper {
   private readonly batchMultiplier: number;
   private readonly detailBatchSize: number;
   private readonly perPage: number;
-  readonly skipEnrichmentHours: number;
 
   constructor(
-    opts: ScraperOptions & { batchMultiplier?: number; detailBatchSize?: number; skipEnrichmentHours?: number },
+    opts: ScraperOptions & { batchMultiplier?: number; detailBatchSize?: number },
   ) {
     super(opts);
     this.batchMultiplier = opts.batchMultiplier ?? 2;
     this.detailBatchSize = opts.detailBatchSize ?? 20;
     this.perPage = opts.watchMode ? PER_PAGE_WATCH : PER_PAGE_FULL;
-    this.skipEnrichmentHours = opts.skipEnrichmentHours ?? 24;
   }
 
   // ------------------------------------------------------------------

@@ -263,21 +263,18 @@ function isAmenityLabel(label: string): boolean {
 
 export interface CeskeRealityScraperOptions extends ScraperOptions {
   categoryParallelism?: number;
-  skipEnrichmentHours?: number;
 }
 
 export class CeskeRealityScraper extends BaseScraper {
   readonly name = "ceskereality";
   readonly baseUrl = "https://www.ceskereality.cz";
   private readonly categoryParallelism: number;
-  readonly skipEnrichmentHours: number;
 
   override get hasDetailPhase() { return true; }
 
   constructor(opts: CeskeRealityScraperOptions) {
     super(opts);
     this.categoryParallelism = opts.categoryParallelism ?? 2;
-    this.skipEnrichmentHours = opts.skipEnrichmentHours ?? 24;
   }
 
   // ─── Phase 1: List Scan ───────────────────────────────────────────

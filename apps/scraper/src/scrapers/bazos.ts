@@ -53,13 +53,6 @@ export class BazosScraper extends BaseScraper {
   readonly name = "bazos";
   readonly baseUrl = "https://reality.bazos.cz";
 
-  readonly skipEnrichmentHours: number;
-
-  constructor(opts: ScraperOptions & { skipEnrichmentHours?: number }) {
-    super(opts);
-    this.skipEnrichmentHours = opts.skipEnrichmentHours ?? 24;
-  }
-
   override get hasDetailPhase() {
     return true;
   }

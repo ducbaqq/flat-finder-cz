@@ -330,14 +330,7 @@ export class ReaLingoScraper extends BaseScraper {
   readonly name = "realingo";
   readonly baseUrl = "https://www.realingo.cz";
 
-  readonly skipEnrichmentHours: number;
-
   override get hasDetailPhase() { return true; }
-
-  constructor(opts: ScraperOptions & { skipEnrichmentHours?: number }) {
-    super(opts);
-    this.skipEnrichmentHours = opts.skipEnrichmentHours ?? 24;
-  }
 
   // ─── Phase 1: List scan ────────────────────────────────────────────
 

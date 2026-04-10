@@ -9,6 +9,7 @@ export interface ScraperOptions {
   retryBaseMs: number;
   timeoutMs: number;
   watchMode?: boolean;
+  skipEnrichmentHours?: number;
 }
 
 export interface PageResult {
@@ -33,6 +34,7 @@ export abstract class BaseScraper {
   protected http!: HttpClient;
   protected readonly limiter: ReturnType<typeof pLimit>;
   protected readonly concurrency: number;
+  readonly skipEnrichmentHours: number;
 
   private readonly _opts: ScraperOptions;
   private _skippedCategories = new Set<string>();
@@ -41,6 +43,7 @@ export abstract class BaseScraper {
     this.concurrency = opts.concurrency;
     this._opts = opts;
     this.limiter = pLimit(opts.concurrency);
+    this.skipEnrichmentHours = opts.skipEnrichmentHours ?? 24;
   }
 
   skipCategory(category: string): void {

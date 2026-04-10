@@ -35,14 +35,7 @@ export class RealitymixScraper extends BaseScraper {
   readonly name = "realitymix";
   readonly baseUrl = "https://realitymix.cz";
 
-  readonly skipEnrichmentHours: number;
-
   override get hasDetailPhase() { return true; }
-
-  constructor(opts: ScraperOptions & { skipEnrichmentHours?: number }) {
-    super(opts);
-    this.skipEnrichmentHours = opts.skipEnrichmentHours ?? 24;
-  }
 
   // ─── Phase 1: List scan ────────────────────────────────────────────
 

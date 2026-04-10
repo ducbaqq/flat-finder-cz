@@ -35,14 +35,12 @@ interface AjaxResponse {
 
 export interface IdnesScraperOptions extends ScraperOptions {
   categoryParallelism?: number;
-  skipEnrichmentHours?: number;
 }
 
 export class IdnesScraper extends BaseScraper {
   readonly name = "idnes";
   readonly baseUrl = "https://reality.idnes.cz";
   private readonly categoryParallelism: number;
-  readonly skipEnrichmentHours: number;
 
   override get hasDetailPhase() {
     return true;
@@ -51,7 +49,6 @@ export class IdnesScraper extends BaseScraper {
   constructor(opts: IdnesScraperOptions) {
     super(opts);
     this.categoryParallelism = opts.categoryParallelism ?? 3;
-    this.skipEnrichmentHours = opts.skipEnrichmentHours ?? 24;
   }
 
   // ─── Phase 1: List scan ────────────────────────────────────────────

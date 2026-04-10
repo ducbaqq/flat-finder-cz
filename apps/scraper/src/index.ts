@@ -578,7 +578,7 @@ async function runSource(
         if (scraper.hasDetailPhase && page.listings.length > 0) {
           let toEnrich = page.listings;
 
-          const skipHours = (scraper as any).skipEnrichmentHours;
+          const skipHours = scraper.skipEnrichmentHours;
           if (skipHours && skipHours > 0) {
             const externalIds = page.listings.map((l) => l.external_id);
             const recentlyScraped = await findRecentlyScrapedIds(db, externalIds, skipHours);
