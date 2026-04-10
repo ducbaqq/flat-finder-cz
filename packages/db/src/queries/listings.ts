@@ -25,6 +25,7 @@ export function buildWhereConditions(
 
   if (!opts?.includeInactive) {
     conditions.push(eq(listings.is_active, true));
+    conditions.push(eq(listings.is_canonical, true));
   }
 
   const simpleFilters: Array<{
