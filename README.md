@@ -205,6 +205,7 @@ npm run scraper -- --watch --interval 60      # 60s between cycles
 | `--interval <secs>` | Seconds between watcher cycles (default: 300) |
 | `--no-dashboard` | Disable live terminal dashboard |
 | `--cleanup` | Run TTL-based deactivation only (14 day threshold) |
+| `--dedupe` | Cluster cross-source duplicates (phone + geo + layout matching) |
 
 ### Environment Variables
 
@@ -239,6 +240,9 @@ npm run scraper -- --watch --interval 60      # 60s between cycles
 
 # TTL cleanup daily at 5 AM (safety net)
 0 5 * * * cd /app && npm run scraper -- --cleanup 2>&1 | tee -a /var/log/scraper-cleanup.log
+
+# Cross-source dedup clustering daily at 6 AM
+0 6 * * * cd /app && npm run scraper -- --dedupe 2>&1 | tee -a /var/log/scraper-dedupe.log
 ```
 
 ## Map Clustering

@@ -1,5 +1,5 @@
 import type { Db } from "@flat-finder/db";
-import { deactivateStaleListings, deactivateByTtlListings } from "@flat-finder/db";
+import { deactivateStaleListings, deactivateByTtlListings, clusterListings } from "@flat-finder/db";
 
 /**
  * Deactivate listings from `source` that were NOT seen in the current run.
@@ -24,6 +24,25 @@ export async function deactivateStale(
     console.log(`${t()} [deactivator] Deactivated ${count} stale listings for source=${source}`);
   }
   return count;
+}
+
+/**
+ * Cluster duplicate listings across sources using phone + geo + layout matching.
+ * Assigns cluster_id + is_canonical — does NOT deactivate anything.
+ */
+export async function clusterDuplicates(
+  db: Db,
+): Promise<{ clustered: number; clusters: number }> {
+  const t = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
+  const result = await clusterListings(db);
+  if (result.clusters > 0) {
+    console.log(
+      `${t()} [dedup] Clustering complete: ${result.clusters} clusters, ${result.clustered} listings grouped`,
+    );
+  } else {
+    console.log(`${t()} [dedup] No duplicate clusters found`);
+  }
+  return result;
 }
 
 /**

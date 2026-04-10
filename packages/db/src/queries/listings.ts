@@ -25,6 +25,7 @@ export function buildWhereConditions(
 
   if (!opts?.includeInactive) {
     conditions.push(eq(listings.is_active, true));
+    conditions.push(eq(listings.is_canonical, true));
   }
 
   const simpleFilters: Array<{
@@ -289,6 +290,132 @@ export async function deactivateByTtlListings(
     .returning({ id: listings.id });
 
   return result.length;
+}
+
+/**
+ * Cluster duplicate listings across sources using phone + geo + layout matching.
+ * Assigns a shared `cluster_id` to rows that represent the same real-world property.
+ * Marks exactly one row per cluster as `is_canonical = true` (lowest id).
+ *
+ * Two-phase approach:
+ *   1. Phone-based: same seller_phone + layout within ~1 km  (high confidence)
+ *   2. Geo-based:   same layout within ~10 m                 (no phone available)
+ *
+ * All rows stay is_active — nothing is deactivated.
+ */
+export async function clusterListings(
+  db: Db,
+): Promise<{ clustered: number; clusters: number }> {
+  // Reset previous clustering so the pass is fully idempotent
+  await db.execute(sql`
+    UPDATE listings
+    SET cluster_id = NULL, is_canonical = true
+    WHERE cluster_id IS NOT NULL
+  `);
+
+  // Phase 1 — phone-based clustering
+  // Same seller_phone + same layout + same ~1 km geo block = same apartment
+  const phoneResult = await db.execute<{ id: number; cluster_id: string }>(sql`
+    WITH phone_groups AS (
+      SELECT id,
+        MIN(id) OVER w AS canonical_id,
+        md5(
+          seller_phone || '|' || layout || '|' ||
+          ROUND(latitude::numeric, 2)::text || '|' ||
+          ROUND(longitude::numeric, 2)::text
+        ) AS cluster_hash,
+        COUNT(*) OVER w AS group_size
+      FROM listings
+      WHERE is_active = true
+        AND seller_phone IS NOT NULL AND seller_phone <> ''
+        AND layout IS NOT NULL
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+      WINDOW w AS (
+        PARTITION BY seller_phone, layout,
+          ROUND(latitude::numeric, 2), ROUND(longitude::numeric, 2)
+      )
+    )
+    UPDATE listings l
+    SET
+      cluster_id  = pg.cluster_hash,
+      is_canonical = (l.id = pg.canonical_id)
+    FROM phone_groups pg
+    WHERE l.id = pg.id AND pg.group_size > 1
+    RETURNING l.id, l.cluster_id
+  `);
+
+  const phoneRows = phoneResult as { id: number; cluster_id: string }[];
+  const phoneClusters = new Set(phoneRows.map((r) => r.cluster_id));
+
+  // Phase 2 — geo-based clustering (unclustered listings only)
+  // Same layout within ~10 m (ROUND to 4 decimals ≈ 11 m)
+  const geoResult = await db.execute<{ id: number; cluster_id: string }>(sql`
+    WITH geo_groups AS (
+      SELECT id,
+        MIN(id) OVER w AS canonical_id,
+        md5(
+          'geo|' || layout || '|' ||
+          ROUND(latitude::numeric, 4)::text || '|' ||
+          ROUND(longitude::numeric, 4)::text
+        ) AS cluster_hash,
+        COUNT(*) OVER w AS group_size
+      FROM listings
+      WHERE is_active = true
+        AND cluster_id IS NULL
+        AND layout IS NOT NULL
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+      WINDOW w AS (
+        PARTITION BY layout,
+          ROUND(latitude::numeric, 4), ROUND(longitude::numeric, 4)
+      )
+    )
+    UPDATE listings l
+    SET
+      cluster_id  = gg.cluster_hash,
+      is_canonical = (l.id = gg.canonical_id)
+    FROM geo_groups gg
+    WHERE l.id = gg.id AND gg.group_size > 1
+    RETURNING l.id, l.cluster_id
+  `);
+
+  const geoRows = geoResult as { id: number; cluster_id: string }[];
+  const geoClusters = new Set(geoRows.map((r) => r.cluster_id));
+
+  return {
+    clustered: phoneRows.length + geoRows.length,
+    clusters: phoneClusters.size + geoClusters.size,
+  };
+}
+
+/**
+ * For a given listing, return all other listings in the same cluster.
+ * Useful for the detail page "Available on N portals" panel.
+ */
+export async function getClusterSiblings(db: Db, listingId: number) {
+  const [row] = await db
+    .select({ cluster_id: listings.cluster_id })
+    .from(listings)
+    .where(eq(listings.id, listingId))
+    .limit(1);
+
+  if (!row?.cluster_id) return [];
+
+  return db
+    .select({
+      id: listings.id,
+      source: listings.source,
+      source_url: listings.source_url,
+      price: listings.price,
+      is_canonical: listings.is_canonical,
+    })
+    .from(listings)
+    .where(
+      and(
+        eq(listings.cluster_id, row.cluster_id),
+        eq(listings.is_active, true),
+      ),
+    )
+    .orderBy(asc(listings.price));
 }
 
 export async function deactivateStaleListings(

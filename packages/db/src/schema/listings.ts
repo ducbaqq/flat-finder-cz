@@ -52,6 +52,8 @@ export const listings = pgTable(
     seller_email: text("seller_email"),
     seller_company: text("seller_company"),
     additional_params: jsonb("additional_params").$type<Record<string, unknown>>(),
+    cluster_id: text("cluster_id"),
+    is_canonical: boolean("is_canonical").default(true),
   },
   (table) => [
     // ── Single-column indexes for simple equality filters ──
@@ -96,6 +98,10 @@ export const listings = pgTable(
     index("idx_listings_ownership").on(table.ownership),
     index("idx_listings_furnishing").on(table.furnishing),
     index("idx_listings_energy_rating").on(table.energy_rating),
+    // ── Deduplication indexes ──
+    index("idx_listings_cluster_id").on(table.cluster_id),
+    index("idx_listings_canonical").on(table.is_active, table.is_canonical),
+    index("idx_listings_seller_phone").on(table.seller_phone),
   ],
 );
 
