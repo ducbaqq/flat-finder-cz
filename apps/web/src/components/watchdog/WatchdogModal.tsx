@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Dog } from "lucide-react";
 import { useUiStore } from "@/store/ui-store";
 import { useWatchdogs } from "@/hooks/useWatchdogs";
@@ -18,7 +18,15 @@ import WatchdogList from "./WatchdogList";
 
 export default function WatchdogModal() {
   const watchdogModalOpen = useUiStore((s) => s.watchdogModalOpen);
+  const toggleWatchdogModal = useUiStore((s) => s.toggleWatchdogModal);
   const closeWatchdogModal = useUiStore((s) => s.closeWatchdogModal);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("watchdog") && !watchdogModalOpen) {
+      toggleWatchdogModal();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const {
     email,

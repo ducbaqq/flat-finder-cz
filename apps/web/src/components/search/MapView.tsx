@@ -108,7 +108,12 @@ function MarkerWithPreview({ pt, openDetail }: { pt: { id: number; lat: number; 
         <Tooltip direction="top" offset={[0, -10]} className="marker-hover-tooltip">
           <div className="marker-tooltip-inner" data-testid="map-marker-tooltip">
             {preview.thumbnail_url && (
-              <img src={preview.thumbnail_url} alt="" className="marker-tooltip-img" />
+              <img
+                src={preview.thumbnail_url}
+                alt=""
+                className="marker-tooltip-img"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
             )}
             {preview.title && (
               <div className="marker-tooltip-title">{preview.title}</div>
@@ -169,10 +174,12 @@ function LocationFlyTo({ location }: { location?: string }) {
     );
     appliedRef.current = "__bbox__";
     setPendingBbox(null);
-    // Use setView as a more reliable alternative to fitBounds
     setTimeout(() => {
       map.invalidateSize();
-      map.flyToBounds(bounds, { duration: 0.5 });
+      // Enforce minimum zoom of 13 so small towns aren't too zoomed out
+      const naturalZoom = map.getBoundsZoom(bounds);
+      const targetZoom = Math.max(naturalZoom, 13);
+      map.flyTo(bounds.getCenter(), targetZoom, { duration: 0.5 });
     }, 100);
   }, [pendingBbox, map, setPendingBbox]);
 

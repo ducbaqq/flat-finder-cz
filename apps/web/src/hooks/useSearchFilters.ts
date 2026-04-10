@@ -1,14 +1,18 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import {
   useQueryState,
   parseAsString,
   parseAsInteger,
 } from "nuqs";
+import { getSearchPreferences, saveSearchPreferences } from "./useSearchPreferences";
+import { useUiStore } from "@/store/ui-store";
 
 export const defaultSort = "newest";
 
 export function useSearchFilters() {
+  const mapBounds = useUiStore((s) => s.mapBounds);
   const [transactionType, setTransactionType] = useQueryState(
     "transaction_type",
     parseAsString.withDefault("")
@@ -96,6 +100,41 @@ export function useSearchFilters() {
     source,
     sort,
   };
+
+  // Restore saved preferences on mount when URL has no filters
+  const restoredRef = useRef(false);
+  const setPendingBbox = useUiStore((s) => s.setPendingBbox);
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+
+    // Only restore if URL has no filter params
+    const params = new URLSearchParams(window.location.search);
+    const hasFilters = params.has("property_type") || params.has("transaction_type") || params.has("location");
+    if (hasFilters) return;
+
+    const prefs = getSearchPreferences();
+    if (!prefs) return;
+
+    if (prefs.property_type) setPropertyType(prefs.property_type);
+    if (prefs.transaction_type) setTransactionType(prefs.transaction_type);
+    if (prefs.location) setLocation(prefs.location);
+    if (prefs.bbox) setPendingBbox(prefs.bbox);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist the three preference fields to localStorage whenever they change
+  useEffect(() => {
+    if (transactionType || propertyType || location) {
+      saveSearchPreferences({
+        property_type: propertyType || undefined,
+        transaction_type: transactionType || undefined,
+        location: location || undefined,
+        bbox: mapBounds
+          ? [mapBounds.sw_lng, mapBounds.sw_lat, mapBounds.ne_lng, mapBounds.ne_lat]
+          : undefined,
+      });
+    }
+  }, [transactionType, propertyType, location, mapBounds]);
 
   const setFilter = (key: string, value: string) => {
     const setters: Record<string, (v: string) => void> = {

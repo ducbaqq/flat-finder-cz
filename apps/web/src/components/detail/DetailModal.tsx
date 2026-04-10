@@ -35,10 +35,20 @@ const sourceColors: Record<string, string> = {
 export default function DetailModal() {
   const detailModalOpen = useUiStore((s) => s.detailModalOpen);
   const selectedListingId = useUiStore((s) => s.selectedListingId);
+  const openDetail = useUiStore((s) => s.openDetail);
   const closeDetail = useUiStore((s) => s.closeDetail);
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+
+  // Open modal if ?listing=ID is in the URL on mount
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("listing");
+    if (id && !detailModalOpen) {
+      openDetail(Number(id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!selectedListingId) return;

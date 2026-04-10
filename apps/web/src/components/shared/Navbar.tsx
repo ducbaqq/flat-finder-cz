@@ -52,17 +52,6 @@ export function Navbar() {
             <span className="sr-only">Hlídací pes</span>
           </Button>
 
-          <Button
-            size="sm"
-            className="hidden sm:flex bg-[var(--terracotta)] text-white hover:bg-[var(--terracotta)]/90"
-            asChild
-            data-testid="nav-browse-button"
-          >
-            <Link href="/search">
-              <Search className="mr-1.5 h-4 w-4" />
-              Prohlížet nabídky
-            </Link>
-          </Button>
         </div>
       </nav>
     </header>

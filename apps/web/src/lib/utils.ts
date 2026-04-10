@@ -202,7 +202,7 @@ export function getFilterSummaryTags(
       value: furnishingLabels[f.furnishing] || f.furnishing,
     });
   if (f.energy_rating)
-    tags.push({ label: "PENB", value: f.energy_rating });
+    tags.push({ label: "Energetická třída (PENB)", value: f.energy_rating });
   if (f.amenities)
     tags.push({
       label: "Vybaven\u00ed",
@@ -213,7 +213,7 @@ export function getFilterSummaryTags(
     });
   if (f.source)
     tags.push({
-      label: "Zdroj",
+      label: "Zdroj inzerátu",
       value: f.source
         .split(",")
         .map((s) => s + ".cz")

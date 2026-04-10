@@ -23,9 +23,9 @@ const filterKeyMap: Record<string, string> = {
   "Konstrukce": "construction",
   "Vlastnictví": "ownership",
   "Vybavenost": "furnishing",
-  "PENB": "energy_rating",
+  "Energetická třída (PENB)": "energy_rating",
   "Vybavení": "amenities",
-  "Zdroj": "source",
+  "Zdroj inzerátu": "source",
 };
 
 export function ActiveFilterChips({

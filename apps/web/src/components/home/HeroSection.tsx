@@ -1,9 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Building2, Globe } from "lucide-react";
 import { useStats } from "@/hooks/useStats";
-import { fadeInUp } from "@/lib/animations";
 
 export function HeroSection({ children }: { children: React.ReactNode }) {
   const { data } = useStats();
@@ -12,80 +10,54 @@ export function HeroSection({ children }: { children: React.ReactNode }) {
 
   return (
     <section
-      className="relative flex flex-col items-center pt-16 pb-10 px-4 overflow-hidden"
+      className="relative flex flex-col items-center px-4 pb-8 pt-12 sm:pt-20 sm:pb-12"
       data-testid="hero-section"
     >
-      {/* Warm gradient background */}
-      <div
-        className="pointer-events-none absolute inset-0 -z-10"
-        aria-hidden="true"
+      {/* Headline */}
+      <motion.h1
+        className="font-display text-center font-semibold tracking-tight text-foreground"
+        style={{ fontSize: "var(--text-hero)", lineHeight: 1 }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       >
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,hsl(var(--primary)/0.08),transparent_70%)]" />
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle, hsl(var(--foreground)) 1px, transparent 1px)",
-            backgroundSize: "24px 24px",
-          }}
-        />
-      </div>
+        Najděte svůj
+        <br />
+        <span className="text-primary">nový domov</span>
+      </motion.h1>
 
-      {/* App Logo - big centered */}
-      <motion.div
-        className="flex items-center gap-3 mb-8"
-        variants={fadeInUp}
-        initial="hidden"
-        animate="visible"
+      <motion.p
+        className="mt-4 max-w-md text-center text-muted-foreground sm:mt-5"
+        style={{ fontSize: "var(--text-lg)" }}
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
       >
-        <div
-          className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-2xl font-bold text-primary-foreground shadow-lg shadow-primary/20"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          D
-        </div>
-        <span className="font-display text-3xl font-bold tracking-tight text-foreground">
-          Domov.cz
-        </span>
-      </motion.div>
+        {totalListings > 0 ? (
+          <>
+            <span className="font-medium text-foreground tabular-nums">
+              {totalListings.toLocaleString("cs-CZ")}
+            </span>{" "}
+            nabídek z{" "}
+            <span className="font-medium text-foreground tabular-nums">
+              {sourcesCount}
+            </span>{" "}
+            portálů na jednom místě
+          </>
+        ) : (
+          "Prohledáváme všechny české realitní portály na jednom místě"
+        )}
+      </motion.p>
 
       {/* Children: PropertyTypeTabs + QuickActions */}
       <motion.div
-        className="w-full max-w-4xl"
-        variants={fadeInUp}
-        initial="hidden"
-        animate="visible"
-        transition={{ delay: 0.15 }}
+        className="mt-8 w-full max-w-2xl sm:mt-10"
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
       >
         {children}
       </motion.div>
-
-      {/* Stats bar below filters */}
-      {totalListings > 0 && (
-        <motion.div
-          className="mt-8 flex items-center justify-center gap-8 sm:gap-12 text-muted-foreground"
-          data-testid="hero-stats"
-          variants={fadeInUp}
-          initial="hidden"
-          animate="visible"
-          transition={{ delay: 0.4 }}
-        >
-          <div className="flex items-center gap-2">
-            <Building2 className="h-4 w-4 text-primary" />
-            <span className="text-lg font-bold text-foreground tabular-nums">
-              {totalListings.toLocaleString("cs-CZ")}
-            </span>
-            <span className="text-sm">aktivních nabídek</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Globe className="h-4 w-4 text-primary" />
-            <span className="text-lg font-bold text-foreground tabular-nums">
-              {sourcesCount}
-            </span>
-            <span className="text-sm">zdrojů</span>
-          </div>
-        </motion.div>
-      )}
     </section>
   );
 }

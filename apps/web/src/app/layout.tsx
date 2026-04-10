@@ -1,31 +1,30 @@
 import type { Metadata } from "next";
-import { Inter, DM_Serif_Display } from "next/font/google";
+import { Bricolage_Grotesque, Figtree } from "next/font/google";
 import Script from "next/script";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import "./globals.css";
 
-const inter = Inter({
+const figtree = Figtree({
   subsets: ["latin", "latin-ext"],
-  variable: "--font-inter",
+  variable: "--font-figtree",
   display: "swap",
 });
 
-const dmSerif = DM_Serif_Display({
-  weight: "400",
+const bricolage = Bricolage_Grotesque({
   subsets: ["latin", "latin-ext"],
-  variable: "--font-dm-serif",
+  variable: "--font-bricolage",
   display: "swap",
 });
 
 export const metadata: Metadata = {
   title: {
-    default: "Domov.cz — Najděte svůj nový domov",
-    template: "%s | Domov.cz",
+    default: "Bytomat.cz — Najděte svůj nový domov",
+    template: "%s | Bytomat.cz",
   },
   description:
-    "Hledáte byt nebo dům v Česku? Domov.cz prohledává všechny největší realitní portály na jednom místě — sreality.cz, bezrealitky.cz, ulovdomov.cz a další.",
+    "Hledáte byt nebo dům v Česku? Bytomat.cz prohledává všechny největší realitní portály na jednom místě — sreality.cz, bezrealitky.cz, ulovdomov.cz a další.",
   keywords: [
     "byty",
     "domy",
@@ -38,20 +37,20 @@ export const metadata: Metadata = {
     "sreality",
     "bezrealitky",
   ],
-  authors: [{ name: "Domov.cz" }],
-  metadataBase: new URL("https://domov.cz"),
+  authors: [{ name: "Bytomat.cz" }],
+  metadataBase: new URL("https://bytomat.cz"),
   openGraph: {
     type: "website",
     locale: "cs_CZ",
-    url: "https://domov.cz",
-    siteName: "Domov.cz",
-    title: "Domov.cz — Najděte svůj nový domov",
+    url: "https://bytomat.cz",
+    siteName: "Bytomat.cz",
+    title: "Bytomat.cz — Najděte svůj nový domov",
     description:
       "Prohledávejte všechny největší české realitní portály na jednom místě. Byty, domy, pronájem i prodej.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Domov.cz — Najděte svůj nový domov",
+    title: "Bytomat.cz — Najděte svůj nový domov",
     description:
       "Prohledávejte všechny největší české realitní portály na jednom místě.",
   },
@@ -78,7 +77,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${inter.variable} ${dmSerif.variable} font-sans antialiased`}
+        className={`${figtree.variable} ${bricolage.variable} font-sans antialiased`}
         data-testid="app-body"
       >
         <NuqsAdapter>

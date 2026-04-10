@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Carousel,
   CarouselContent,
@@ -14,15 +15,24 @@ interface ImageGalleryProps {
 
 const MAX_IMAGES = 3;
 
+function EmptyGallery() {
+  return (
+    <div className="flex aspect-[16/9] items-center justify-center bg-muted" data-testid="image-gallery-empty">
+      <span className="text-sm text-muted-foreground">Žádné fotky</span>
+    </div>
+  );
+}
+
 export default function ImageGallery({ images }: ImageGalleryProps) {
   const displayImages = images.slice(0, MAX_IMAGES);
+  const [failedCount, setFailedCount] = useState(0);
 
   if (!displayImages.length) {
-    return (
-      <div className="flex aspect-[16/9] items-center justify-center bg-muted" data-testid="image-gallery-empty">
-        <span className="text-sm text-muted-foreground">Žádné fotky</span>
-      </div>
-    );
+    return <EmptyGallery />;
+  }
+
+  if (failedCount >= displayImages.length) {
+    return <EmptyGallery />;
   }
 
   return (
@@ -38,6 +48,7 @@ export default function ImageGallery({ images }: ImageGalleryProps) {
                 loading={i === 0 ? "eager" : "lazy"}
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = "none";
+                  setFailedCount((c) => c + 1);
                 }}
                 data-testid="image-gallery-image"
               />
@@ -45,7 +56,7 @@ export default function ImageGallery({ images }: ImageGalleryProps) {
           </CarouselItem>
         ))}
       </CarouselContent>
-      {displayImages.length > 1 && (
+      {displayImages.length - failedCount > 1 && (
         <>
           <CarouselPrevious className="left-2" data-testid="image-gallery-prev" />
           <CarouselNext className="right-2" data-testid="image-gallery-next" />

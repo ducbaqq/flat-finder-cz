@@ -41,7 +41,7 @@ export function FeaturesSection() {
             style={{ fontSize: "var(--text-3xl)" }}
             data-testid="features-title"
           >
-            Proč Domov.cz?
+            Proč Bytomat.cz?
           </h2>
           <p className="mt-2 text-muted-foreground" data-testid="features-subtitle">
             Všechno, co potřebujete k nalezení nového bydlení

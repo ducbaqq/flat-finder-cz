@@ -75,7 +75,7 @@ function SearchPageContent() {
 
       <div className="flex flex-1">
         {/* Desktop sidebar */}
-        <aside className="hidden w-72 shrink-0 border-r border-divider md:block sticky top-[128px] h-[calc(100vh-128px)] overflow-y-auto" data-testid="filters-panel">
+        <aside className="hidden w-72 shrink-0 border-r border-divider md:block sticky top-[100px] h-[calc(100vh-100px)] overflow-y-auto" data-testid="filters-panel">
           <FilterSidebar filters={filters} setFilter={setFilter} />
         </aside>
 
@@ -107,7 +107,7 @@ function SearchPageContent() {
           {showMap && (
             <div
               className={cn(
-                "sticky top-[128px] h-[calc(100vh-128px)]",
+                "sticky top-[100px] h-[calc(100vh-100px)]",
                 showList ? "hidden lg:block lg:flex-1" : "flex-1"
               )}
               data-testid="map-container"

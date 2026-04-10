@@ -80,13 +80,13 @@ export function Footer() {
               Kontakt
             </h3>
             <p className="text-sm text-muted-foreground">
-              Domov.cz je nekomerční projekt pro agregaci nabídek nemovitostí.
+              Bytomat.cz je nekomerční projekt pro agregaci nabídek nemovitostí.
             </p>
           </div>
         </div>
 
         <div className="mt-8 border-t border-divider pt-6 text-center text-xs text-muted-foreground" data-testid="footer-copyright">
-          &copy; {new Date().getFullYear()} Domov.cz. Všechna práva vyhrazena.
+          &copy; {new Date().getFullYear()} bytomat.cz
         </div>
       </div>
     </footer>

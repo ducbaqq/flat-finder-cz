@@ -34,20 +34,26 @@ export function SearchHeader({
   const activePropertyType = filters.property_type || "";
 
   return (
-    <div className="sticky top-16 z-30 border-b border-divider bg-background/95 backdrop-blur-md" data-testid="search-header">
-      <div className="flex items-center justify-between px-4 py-2.5">
+    <div
+      className="sticky top-14 z-30 border-b border-divider bg-background/80 backdrop-blur-xl"
+      data-testid="search-header"
+    >
+      <div className="flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-3">
           {/* Quick filter chips */}
-          <div className="hidden items-center gap-1.5 sm:flex" data-testid="quick-filters">
+          <div
+            className="hidden items-center gap-1 sm:flex"
+            data-testid="quick-filters"
+          >
             {quickFilters.map(({ label, value }) => (
               <button
                 key={label}
                 onClick={() => setFilter("property_type", value)}
                 className={cn(
-                  "rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors",
+                  "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
                   activePropertyType === value
-                    ? "bg-primary text-white"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 )}
                 data-testid={`quick-filter-${value || "all"}`}
               >
@@ -56,8 +62,11 @@ export function SearchHeader({
             ))}
           </div>
 
-          <span className="text-sm text-muted-foreground" data-testid="search-results-count">
-            <strong className="text-foreground">
+          <span
+            className="text-sm text-muted-foreground"
+            data-testid="search-results-count"
+          >
+            <strong className="font-semibold text-foreground tabular-nums">
               {total.toLocaleString("cs-CZ")}
             </strong>{" "}
             nabídek
@@ -74,13 +83,25 @@ export function SearchHeader({
             className="hidden sm:flex"
             data-testid="view-toggle"
           >
-            <ToggleGroupItem value="list" size="sm" data-testid="view-toggle-list">
+            <ToggleGroupItem
+              value="list"
+              size="sm"
+              data-testid="view-toggle-list"
+            >
               <List className="h-4 w-4" />
             </ToggleGroupItem>
-            <ToggleGroupItem value="hybrid" size="sm" data-testid="view-toggle-hybrid">
+            <ToggleGroupItem
+              value="hybrid"
+              size="sm"
+              data-testid="view-toggle-hybrid"
+            >
               <LayoutGrid className="h-4 w-4" />
             </ToggleGroupItem>
-            <ToggleGroupItem value="map" size="sm" data-testid="view-toggle-map">
+            <ToggleGroupItem
+              value="map"
+              size="sm"
+              data-testid="view-toggle-map"
+            >
               <Map className="h-4 w-4" />
             </ToggleGroupItem>
           </ToggleGroup>

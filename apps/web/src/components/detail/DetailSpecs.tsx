@@ -66,7 +66,7 @@ export default function DetailSpecs({ listing }: { listing: Listing }) {
       value: furnishingLabels[listing.furnishing] || listing.furnishing,
     });
   if (listing.energy_rating)
-    specs.push({ icon: Zap, label: "PENB", value: listing.energy_rating });
+    specs.push({ icon: Zap, label: "Energetická třída (PENB)", value: listing.energy_rating });
 
   return (
     <div className="space-y-4" data-testid="listing-detail-specs">
@@ -105,35 +105,6 @@ export default function DetailSpecs({ listing }: { listing: Listing }) {
         </div>
       )}
 
-      {(listing.seller_name || listing.seller_phone || listing.seller_email) && (
-        <div data-testid="listing-detail-seller">
-          <h4 className="mb-2 text-sm font-semibold">Prodávající</h4>
-          <div className="grid gap-1 text-sm">
-            {listing.seller_name && <p data-testid="listing-detail-seller-name">{listing.seller_name}</p>}
-            {listing.seller_company && (
-              <p className="text-muted-foreground" data-testid="listing-detail-seller-company">{listing.seller_company}</p>
-            )}
-            {listing.seller_phone && (
-              <a
-                href={`tel:${listing.seller_phone}`}
-                className="text-primary hover:underline"
-                data-testid="listing-detail-seller-phone"
-              >
-                {listing.seller_phone}
-              </a>
-            )}
-            {listing.seller_email && (
-              <a
-                href={`mailto:${listing.seller_email}`}
-                className="text-primary hover:underline"
-                data-testid="listing-detail-seller-email"
-              >
-                {listing.seller_email}
-              </a>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

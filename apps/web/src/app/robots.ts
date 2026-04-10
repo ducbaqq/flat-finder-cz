@@ -9,6 +9,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/api/"],
       },
     ],
-    sitemap: "https://domov.cz/sitemap.xml",
+    sitemap: "https://bytomat.cz/sitemap.xml",
   };
 }

@@ -12,7 +12,7 @@ export function QuickActions() {
 
   return (
     <div
-      className="mt-5 flex flex-col sm:flex-row items-center gap-3 w-full"
+      className="mt-4 flex flex-col items-center gap-3 sm:flex-row"
       data-testid="quick-actions"
     >
       {/* Transaction type pills */}
@@ -20,10 +20,9 @@ export function QuickActions() {
         <Link
           href="/filter?transaction_type=sale"
           className={cn(
-            "inline-flex items-center justify-center rounded-full border border-primary px-5 py-2.5 text-sm font-medium transition-all duration-200",
-            "text-primary bg-card",
-            "hover:bg-primary/5 hover:shadow-sm",
-            "active:bg-primary/10"
+            "inline-flex items-center rounded-full px-4 py-2.5 text-sm font-medium transition-all",
+            "bg-foreground text-background",
+            "hover:opacity-90"
           )}
           data-testid="quick-action-sale"
         >
@@ -32,10 +31,9 @@ export function QuickActions() {
         <Link
           href="/filter?transaction_type=rent"
           className={cn(
-            "inline-flex items-center justify-center rounded-full border border-primary px-5 py-2.5 text-sm font-medium transition-all duration-200",
-            "text-primary bg-card",
-            "hover:bg-primary/5 hover:shadow-sm",
-            "active:bg-primary/10"
+            "inline-flex items-center rounded-full px-4 py-2.5 text-sm font-medium transition-all",
+            "bg-transparent text-foreground ring-1 ring-border",
+            "hover:bg-foreground/5"
           )}
           data-testid="quick-action-rent"
         >
@@ -43,7 +41,7 @@ export function QuickActions() {
         </Link>
       </div>
 
-      {/* Location search input */}
+      {/* Location search */}
       <div className="flex-1 w-full sm:w-auto" data-testid="location-search-form">
         <LocationAutocomplete
           value={locationQuery}

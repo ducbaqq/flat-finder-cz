@@ -45,9 +45,34 @@ export const useUiStore = create<UiState>((set) => ({
   setMapBounds: (bounds) => set({ mapBounds: bounds }),
   setMapZoom: (zoom) => set({ mapZoom: zoom }),
   setPendingBbox: (bbox) => set({ pendingBbox: bbox }),
-  openDetail: (id) => set({ selectedListingId: id, detailModalOpen: true }),
-  closeDetail: () => set({ selectedListingId: null, detailModalOpen: false }),
+  openDetail: (id) => {
+    set({ selectedListingId: id, detailModalOpen: true });
+    const url = new URL(window.location.href);
+    url.searchParams.set("listing", String(id));
+    window.history.pushState(null, "", url.toString());
+  },
+  closeDetail: () => {
+    set({ selectedListingId: null, detailModalOpen: false });
+    const url = new URL(window.location.href);
+    url.searchParams.delete("listing");
+    window.history.pushState(null, "", url.toString());
+  },
   toggleWatchdogModal: () =>
-    set((s) => ({ watchdogModalOpen: !s.watchdogModalOpen })),
-  closeWatchdogModal: () => set({ watchdogModalOpen: false }),
+    set((s) => {
+      const opening = !s.watchdogModalOpen;
+      const url = new URL(window.location.href);
+      if (opening) {
+        url.searchParams.set("watchdog", "1");
+      } else {
+        url.searchParams.delete("watchdog");
+      }
+      window.history.pushState(null, "", url.toString());
+      return { watchdogModalOpen: opening };
+    }),
+  closeWatchdogModal: () => {
+    set({ watchdogModalOpen: false });
+    const url = new URL(window.location.href);
+    url.searchParams.delete("watchdog");
+    window.history.pushState(null, "", url.toString());
+  },
 }));

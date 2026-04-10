@@ -15,6 +15,8 @@ import { PillToggle } from "./PillToggle";
 import { PillRangeInput } from "./PillRangeInput";
 import { FilterSection } from "./FilterSection";
 import { LocationAutocomplete } from "@/components/filters/LocationAutocomplete";
+import { saveSearchPreferences } from "@/hooks/useSearchPreferences";
+import { useUiStore } from "@/store/ui-store";
 
 /* ------------------------------------------------------------------ */
 /*  Types & constants                                                  */
@@ -149,6 +151,7 @@ export function FilterPageForm({
   initialTransactionType,
 }: FilterPageFormProps) {
   const router = useRouter();
+  const pendingBbox = useUiStore((s) => s.pendingBbox);
 
   // --- state ----------------------------------------------------------
   const [propertyTypes, setPropertyTypes] = useState<string[]>(
@@ -193,6 +196,13 @@ export function FilterPageForm({
       params.set("amenities", amenities.join(","));
     if (energyClasses.length)
       params.set("energy_rating", energyClasses.join(","));
+
+    saveSearchPreferences({
+      property_type: propertyTypes.length ? propertyTypes.join(",") : undefined,
+      transaction_type: transactionTypes.length ? transactionTypes.join(",") : undefined,
+      location: location.trim() || undefined,
+      bbox: pendingBbox ?? undefined,
+    });
 
     router.push(`/search?${params.toString()}`);
   }, [
@@ -387,7 +397,7 @@ export function FilterPageForm({
 
       {/* 12. PENB */}
       <motion.div custom={11} variants={sectionVariants} initial="hidden" animate="visible">
-        <FilterSection title="PENB">
+        <FilterSection title="Energetická třída (PENB)">
           <div className="flex flex-wrap gap-2">
             {ENERGY_CLASSES.map(({ value, label, color }) => (
               <button

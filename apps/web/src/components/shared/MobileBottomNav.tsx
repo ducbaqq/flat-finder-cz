@@ -17,8 +17,11 @@ export function MobileBottomNav() {
   const toggleWatchdogModal = useUiStore((s) => s.toggleWatchdogModal);
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-divider bg-background/95 backdrop-blur-md md:hidden" data-testid="mobile-bottom-nav">
-      <div className="flex h-16 items-center justify-around">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-50 border-t border-divider bg-background/90 backdrop-blur-xl md:hidden"
+      data-testid="mobile-bottom-nav"
+    >
+      <div className="flex h-14 items-center justify-around">
         {items.map(({ href, icon: Icon, label }) => {
           const isActive =
             href === "/"
@@ -29,24 +32,24 @@ export function MobileBottomNav() {
               key={href}
               href={href}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-3 py-2 text-xs transition-colors",
+                "flex flex-col items-center gap-0.5 px-3 py-1.5 text-[11px] font-medium transition-colors",
                 isActive
                   ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground"
               )}
               data-testid={`mobile-nav-${label.toLowerCase()}`}
             >
-              <Icon className="h-5 w-5" />
+              <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 1.5} />
               {label}
             </Link>
           );
         })}
         <button
           onClick={toggleWatchdogModal}
-          className="flex flex-col items-center gap-0.5 px-3 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          className="flex flex-col items-center gap-0.5 px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors"
           data-testid="mobile-nav-alerts"
         >
-          <Bell className="h-5 w-5" />
+          <Bell className="h-5 w-5" strokeWidth={1.5} />
           Alerty
         </button>
       </div>

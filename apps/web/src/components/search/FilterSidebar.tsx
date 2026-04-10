@@ -32,17 +32,17 @@ interface FilterSidebarProps {
 
 export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
   return (
-    <ScrollArea className="h-[calc(100vh-64px)]" data-testid="filter-sidebar">
-      <div className="space-y-4 p-4">
+    <ScrollArea className="h-[calc(100vh-56px)]" data-testid="filter-sidebar">
+      <div className="space-y-5 p-4">
         <TransactionToggle
           value={filters.transaction_type}
           onChange={(v) => setFilter("transaction_type", v)}
         />
 
-        <Separator />
+        <Separator className="bg-divider" />
 
         <div data-testid="filter-location-group">
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Lokalita
           </label>
           <LocationAutocomplete
@@ -51,10 +51,10 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
           />
         </div>
 
-        <Separator />
+        <Separator className="bg-divider" />
 
         <div data-testid="filter-property-type-group">
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Typ nemovitosti
           </label>
           <PropertyTypeFilter
@@ -63,10 +63,10 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
           />
         </div>
 
-        <Separator />
+        <Separator className="bg-divider" />
 
         <div data-testid="filter-price-group">
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Cena
           </label>
           <PriceRangeSlider
@@ -78,7 +78,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
         </div>
 
         <div data-testid="filter-size-group">
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Plocha
           </label>
           <SizeRangeSlider
@@ -89,10 +89,10 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
           />
         </div>
 
-        <Separator />
+        <Separator className="bg-divider" />
 
         <div data-testid="filter-layout-group">
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Dispozice
           </label>
           <LayoutFilter
@@ -101,11 +101,17 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
           />
         </div>
 
-        <Separator />
+        <Separator className="bg-divider" />
 
-        <Accordion type="multiple" className="w-full" data-testid="filter-accordion">
+        <Accordion
+          type="multiple"
+          className="w-full"
+          data-testid="filter-accordion"
+        >
           <AccordionItem value="condition" data-testid="filter-condition-group">
-            <AccordionTrigger className="text-xs">Stav</AccordionTrigger>
+            <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
+              Stav
+            </AccordionTrigger>
             <AccordionContent>
               <CheckboxGroupFilter
                 options={conditionLabels}
@@ -115,8 +121,13 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="construction" data-testid="filter-construction-group">
-            <AccordionTrigger className="text-xs">Konstrukce</AccordionTrigger>
+          <AccordionItem
+            value="construction"
+            data-testid="filter-construction-group"
+          >
+            <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
+              Konstrukce
+            </AccordionTrigger>
             <AccordionContent>
               <CheckboxGroupFilter
                 options={constructionLabels}
@@ -126,8 +137,13 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="ownership" data-testid="filter-ownership-group">
-            <AccordionTrigger className="text-xs">Vlastnictví</AccordionTrigger>
+          <AccordionItem
+            value="ownership"
+            data-testid="filter-ownership-group"
+          >
+            <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
+              Vlastnictví
+            </AccordionTrigger>
             <AccordionContent>
               <CheckboxGroupFilter
                 options={ownershipLabels}
@@ -137,8 +153,13 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="furnishing" data-testid="filter-furnishing-group">
-            <AccordionTrigger className="text-xs">Vybavenost</AccordionTrigger>
+          <AccordionItem
+            value="furnishing"
+            data-testid="filter-furnishing-group"
+          >
+            <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
+              Vybavenost
+            </AccordionTrigger>
             <AccordionContent>
               <CheckboxGroupFilter
                 options={furnishingLabels}
@@ -148,8 +169,13 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="amenities" data-testid="filter-amenities-group">
-            <AccordionTrigger className="text-xs">Vybavení</AccordionTrigger>
+          <AccordionItem
+            value="amenities"
+            data-testid="filter-amenities-group"
+          >
+            <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
+              Vybavení
+            </AccordionTrigger>
             <AccordionContent>
               <CheckboxGroupFilter
                 options={amenityLabels}
@@ -160,7 +186,9 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
           </AccordionItem>
 
           <AccordionItem value="energy" data-testid="filter-energy-group">
-            <AccordionTrigger className="text-xs">PENB</AccordionTrigger>
+            <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
+              PENB
+            </AccordionTrigger>
             <AccordionContent>
               <EnergyRatingFilter
                 value={filters.energy_rating}
@@ -170,7 +198,9 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
           </AccordionItem>
 
           <AccordionItem value="source" data-testid="filter-source-group">
-            <AccordionTrigger className="text-xs">Zdroj</AccordionTrigger>
+            <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
+              Zdroj
+            </AccordionTrigger>
             <AccordionContent>
               <SourceFilter
                 value={filters.source}
