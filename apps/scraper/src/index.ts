@@ -42,7 +42,7 @@ import { CeskeRealityScraper } from "./scrapers/ceskereality.js";
 import { RealitymixScraper } from "./scrapers/realitymix.js";
 import { IdnesScraper } from "./scrapers/idnes.js";
 import { ReaLingoScraper } from "./scrapers/realingo.js";
-import { deactivateStale, deactivateByTtl, deduplicateActive } from "./deactivator.js";
+import { deactivateStale, deactivateByTtl, clusterDuplicates } from "./deactivator.js";
 import { normalizeListingFields } from "./normalizer.js";
 import { Dashboard } from "./dashboard.js";
 
@@ -181,7 +181,7 @@ Options:
   --watch             Run in watcher mode: loop continuously checking newest pages
   --full              Full scan: fetch all pages + deactivate stale listings
   --cleanup           Run TTL-based deactivation only (listings not scraped in 14 days)
-  --dedupe            Deactivate duplicates (same price, layout, size_m2, description)
+  --dedupe            Cluster cross-source duplicates (phone + geo + layout matching)
   --no-dashboard      Disable the live terminal dashboard (auto-disabled for non-TTY)
   --interval <secs>   Seconds between watcher cycles (default: ${env.WATCHER_INTERVAL_S})
   --help, -h          Show this help message
@@ -1016,15 +1016,15 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // Standalone dedupe mode -- deactivate duplicates on (price, layout, size_m2, description)
+  // Standalone dedupe mode -- cluster cross-source duplicates (phone + geo + layout)
   if (dedupe) {
-    console.log(`${ts()} [runner] Running deduplication (price + layout + size_m2 + description)...`);
+    console.log(`${ts()} [runner] Running deduplication (phone + geo + layout clustering)...`);
     if (!dryRun) {
       const conn = createDb();
       try {
-        const { found, deactivated } = await deduplicateActive(conn.db);
+        const { clustered, clusters } = await clusterDuplicates(conn.db);
         console.log(
-          `${ts()} [runner] Deduplication complete: ${found} duplicates found, ${deactivated} deactivated`,
+          `${ts()} [runner] Deduplication complete: ${clusters} clusters, ${clustered} listings grouped`,
         );
       } finally {
         await conn.sql.end();
