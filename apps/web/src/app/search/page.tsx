@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Navbar } from "@/components/shared/Navbar";
 import { MobileBottomNav } from "@/components/shared/MobileBottomNav";
@@ -12,7 +12,6 @@ import DetailModal from "@/components/detail/DetailModal";
 import WatchdogModal from "@/components/watchdog/WatchdogModal";
 import { useSearchFilters } from "@/hooks/useSearchFilters";
 import { useListings } from "@/hooks/useListings";
-import { useUiStore } from "@/store/ui-store";
 import { cn } from "@/lib/cn";
 
 const MapView = dynamic(
@@ -30,28 +29,80 @@ function MapSkeleton() {
 }
 
 function SearchPageContent() {
-  const { filters, page, setPage, view, setView, setFilter, clearFilters } =
+  const { filters, view, setView, setFilter, clearFilters } =
     useSearchFilters();
 
   const showMap = view === "map" || view === "hybrid";
   const showList = view === "list" || view === "hybrid";
 
-  // Reset to page 1 when map viewport changes
-  const mapBounds = useUiStore((s) => s.mapBounds);
-  const prevBoundsRef = useRef(mapBounds);
-  useEffect(() => {
-    if (showMap && mapBounds && prevBoundsRef.current && mapBounds !== prevBoundsRef.current) {
-      setPage(1);
-    }
-    prevBoundsRef.current = mapBounds;
-  }, [mapBounds, showMap, setPage]);
-
-  const { data, isLoading, isFetching, isError, refetch } = useListings({
+  const {
+    listings,
+    total,
+    isLoading,
+    isFetching,
+    isFetchingNextPage,
+    hasNextPage,
+    isError,
+    refetch,
+    fetchNextPage,
+  } = useListings({
     filters,
-    page,
     boundToMap: showMap,
   });
-  const total = data?.total ?? 0;
+
+  // Resizable listings panel (desktop, hybrid only). Min: 340px.
+  // Max: leaves at least 25% of the viewport horizontally for the map.
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [listingsWidth, setListingsWidth] = useState(560);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  useEffect(() => {
+    setListingsWidth((prev) =>
+      prev === 560 ? Math.round(window.innerWidth * 0.4) : prev,
+    );
+  }, []);
+
+  const clampListingsWidth = useCallback((raw: number) => {
+    const rowWidth = contentRef.current?.getBoundingClientRect().width ?? 0;
+    const mapMin = window.innerWidth * 0.25;
+    const maxW = Math.max(340, rowWidth - mapMin);
+    return Math.max(340, Math.min(maxW, raw));
+  }, []);
+
+  const handleResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startWidth = listingsWidth;
+      const onMove = (ev: MouseEvent) => {
+        setListingsWidth(clampListingsWidth(startWidth + ev.clientX - startX));
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [listingsWidth, clampListingsWidth],
+  );
+
+  // Re-clamp on viewport resize so the map never drops below 25vw.
+  useEffect(() => {
+    const onResize = () => setListingsWidth((w) => clampListingsWidth(w));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [clampListingsWidth]);
 
   return (
     <div className="flex min-h-screen flex-col" data-testid="search-page">
@@ -80,26 +131,46 @@ function SearchPageContent() {
         </aside>
 
         {/* Main content area */}
-        <div className="flex flex-1 flex-col lg:flex-row" data-testid="search-content">
+        <div
+          ref={contentRef}
+          className="flex flex-1 flex-col lg:flex-row"
+          data-testid="search-content"
+        >
           {/* Listings */}
           {showList && (
             <div
               className={cn(
-                "flex-1 overflow-y-auto p-4",
-                showMap && "lg:w-[40%] lg:min-w-[340px] lg:max-w-[40%] lg:flex-none"
+                "relative flex flex-1 flex-col",
+                showMap && "lg:min-w-[340px] lg:flex-none"
               )}
+              style={
+                showMap && isDesktop ? { width: listingsWidth } : undefined
+              }
               data-testid="listings-panel"
             >
-              <ListingResults
-                data={data}
-                isLoading={isLoading}
-                isFetching={isFetching}
-                isError={isError}
-                refetch={refetch}
-                page={page}
-                onPageChange={setPage}
-                singleColumn={showMap}
-              />
+              <div className="@container flex-1 overflow-y-auto p-4">
+                <ListingResults
+                  listings={listings}
+                  isLoading={isLoading}
+                  isFetching={isFetching}
+                  isFetchingNextPage={isFetchingNextPage}
+                  hasNextPage={hasNextPage}
+                  fetchNextPage={fetchNextPage}
+                  isError={isError}
+                  refetch={refetch}
+                  singleColumn={showMap}
+                />
+              </div>
+              {showMap && (
+                <div
+                  onMouseDown={handleResizeStart}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Změnit velikost panelu výsledků"
+                  className="absolute inset-y-0 right-0 z-10 hidden w-1.5 cursor-col-resize bg-divider/40 transition-colors hover:bg-primary/50 lg:block"
+                  data-testid="listings-panel-resizer"
+                />
+              )}
             </div>
           )}
 

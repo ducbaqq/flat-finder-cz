@@ -1,33 +1,55 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { SearchX, AlertTriangle, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
-import type { ListingsResponse, ListingCardResponse } from "@flat-finder/types";
+import type { Listing, ListingCardData } from "@flat-finder/types";
 import { PropertyCard } from "@/components/shared/PropertyCard";
 import { PropertyCardSkeleton } from "@/components/shared/PropertyCardSkeleton";
 import { Button } from "@/components/ui/button";
 
 interface ListingResultsProps {
-  data: ListingsResponse | ListingCardResponse | undefined;
+  listings: (Listing | ListingCardData)[];
   isLoading: boolean;
   isFetching?: boolean;
+  isFetchingNextPage?: boolean;
+  hasNextPage?: boolean;
+  fetchNextPage?: () => void;
   isError?: boolean;
   refetch?: () => void;
-  page: number;
-  onPageChange: (page: number) => void;
   singleColumn?: boolean;
 }
 
 export function ListingResults({
-  data,
+  listings,
   isLoading,
   isFetching,
+  isFetchingNextPage,
+  hasNextPage,
+  fetchNextPage,
   isError,
   refetch,
-  page,
-  onPageChange,
   singleColumn,
 }: ListingResultsProps) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!hasNextPage || !fetchNextPage) return;
+    const node = sentinelRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: "400px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasNextPage, fetchNextPage, isFetchingNextPage]);
+
   if (isError) {
     return (
       <div
@@ -62,14 +84,14 @@ export function ListingResults({
     );
   }
 
-  if (isLoading || (isFetching && (!data || data.listings.length === 0))) {
+  if (isLoading || (isFetching && listings.length === 0)) {
     return (
       <div
-        className={`grid gap-5 ${
+        className={
           singleColumn
-            ? "grid-cols-1"
-            : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
-        }`}
+            ? "grid grid-cols-1 gap-3 @[500px]:grid-cols-2 @[760px]:grid-cols-3"
+            : "grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3"
+        }
         data-testid="listings-loading"
       >
         {Array.from({ length: 8 }).map((_, i) => (
@@ -79,7 +101,7 @@ export function ListingResults({
     );
   }
 
-  if (!data || data.listings.length === 0) {
+  if (listings.length === 0) {
     return (
       <div
         className="flex flex-col items-center justify-center py-20 text-center"
@@ -102,8 +124,7 @@ export function ListingResults({
     );
   }
 
-  const showStaleOverlay =
-    isFetching && !isLoading && data && data.listings.length > 0;
+  const showStaleOverlay = isFetching && !isLoading && !isFetchingNextPage;
 
   return (
     <div className="relative space-y-5" data-testid="listings-results">
@@ -120,52 +141,53 @@ export function ListingResults({
         }
       >
         <motion.div
-          className={`grid gap-5 ${
+          className={
             singleColumn
-              ? "grid-cols-1"
-              : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
-          }`}
+              ? "grid grid-cols-1 gap-3 @[500px]:grid-cols-2 @[760px]:grid-cols-3"
+              : "grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3"
+          }
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3 }}
           data-testid="listings-grid"
         >
-          {data.listings.map((listing, i) => (
+          {listings.map((listing, i) => (
             <PropertyCard key={listing.id} listing={listing} index={i} />
           ))}
         </motion.div>
 
-        {data.total_pages > 1 && (
+        {hasNextPage && (
           <div
-            className="flex items-center justify-center gap-3 py-6"
-            data-testid="pagination"
+            ref={sentinelRef}
+            aria-hidden="true"
+            data-testid="listings-sentinel"
+          />
+        )}
+
+        {isFetchingNextPage && (
+          <div
+            className={
+              singleColumn
+                ? "mt-3 grid grid-cols-1 gap-3 @[500px]:grid-cols-2 @[760px]:grid-cols-3"
+                : "mt-5 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3"
+            }
+            data-testid="listings-next-skeletons"
           >
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => onPageChange(page - 1)}
-              className="rounded-full"
-              data-testid="pagination-prev"
-            >
-              Předchozí
-            </Button>
-            <span
-              className="text-sm tabular-nums text-muted-foreground"
-              data-testid="pagination-info"
-            >
-              {page} / {data.total_pages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= data.total_pages}
-              onClick={() => onPageChange(page + 1)}
-              className="rounded-full"
-              data-testid="pagination-next"
-            >
-              Další
-            </Button>
+            <PropertyCardSkeleton />
+            <PropertyCardSkeleton
+              className={
+                singleColumn
+                  ? "hidden @[500px]:block"
+                  : "hidden md:block"
+              }
+            />
+            <PropertyCardSkeleton
+              className={
+                singleColumn
+                  ? "hidden @[760px]:block"
+                  : "hidden xl:block"
+              }
+            />
           </div>
         )}
       </div>

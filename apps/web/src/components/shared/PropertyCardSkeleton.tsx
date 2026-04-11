@@ -1,8 +1,9 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/cn";
 
-export function PropertyCardSkeleton() {
+export function PropertyCardSkeleton({ className }: { className?: string }) {
   return (
-    <div data-testid="listing-card-skeleton">
+    <div className={cn(className)} data-testid="listing-card-skeleton">
       <Skeleton className="aspect-[4/3] w-full rounded-xl" />
       <div className="space-y-2 px-0.5 pt-3">
         <Skeleton className="h-4 w-3/4" />

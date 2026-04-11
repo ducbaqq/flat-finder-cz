@@ -1,13 +1,18 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import type { ListingsResponse, ListingCardResponse } from "@flat-finder/types";
+import { useMemo } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import type {
+  ListingsResponse,
+  ListingCardResponse,
+  Listing,
+  ListingCardData,
+} from "@flat-finder/types";
 import { apiGet } from "@/lib/api-client";
 import { useUiStore, type MapBounds } from "@/store/ui-store";
 
 interface UseListingsOptions {
   filters: Record<string, string>;
-  page: number;
   perPage?: number;
   /** When true, constrain results to the current map viewport */
   boundToMap?: boolean;
@@ -27,7 +32,11 @@ function hasContentFilters(filters: Record<string, string>): boolean {
 
 type CombinedResponse = ListingsResponse | ListingCardResponse;
 
-export function useListings({ filters, page, perPage = 20, boundToMap = false }: UseListingsOptions) {
+export function useListings({
+  filters,
+  perPage = 20,
+  boundToMap = false,
+}: UseListingsOptions) {
   const mapBounds = useUiStore((s) => s.mapBounds);
   const bounds: MapBounds | null = boundToMap ? mapBounds : null;
   const filtered = hasContentFilters(filters);
@@ -35,43 +44,75 @@ export function useListings({ filters, page, perPage = 20, boundToMap = false }:
   // Use instant Supercluster endpoint when: map-bounded + no content filters
   const useInstant = boundToMap && bounds !== null && !filtered;
 
-  const params: Record<string, unknown> = {
-    page,
+  const baseParams: Record<string, unknown> = {
     per_page: perPage,
   };
 
-  // Always include sort
-  if (filters.sort) params.sort = filters.sort;
+  if (filters.sort) baseParams.sort = filters.sort;
 
   if (useInstant) {
-    // Instant path: only needs bbox + pagination + sort
     if (bounds) {
-      params.sw_lat = bounds.sw_lat;
-      params.sw_lng = bounds.sw_lng;
-      params.ne_lat = bounds.ne_lat;
-      params.ne_lng = bounds.ne_lng;
+      baseParams.sw_lat = bounds.sw_lat;
+      baseParams.sw_lng = bounds.sw_lng;
+      baseParams.ne_lat = bounds.ne_lat;
+      baseParams.ne_lng = bounds.ne_lng;
     }
   } else {
-    // DB path: include all filters
     for (const [key, value] of Object.entries(filters)) {
-      if (value) params[key] = value;
+      if (value) baseParams[key] = value;
     }
     if (bounds) {
-      params.sw_lat = bounds.sw_lat;
-      params.sw_lng = bounds.sw_lng;
-      params.ne_lat = bounds.ne_lat;
-      params.ne_lng = bounds.ne_lng;
+      baseParams.sw_lat = bounds.sw_lat;
+      baseParams.sw_lng = bounds.sw_lng;
+      baseParams.ne_lat = bounds.ne_lat;
+      baseParams.ne_lng = bounds.ne_lng;
     }
   }
 
   const endpoint = useInstant ? "/markers/listings" : "/listings";
 
-  return useQuery<CombinedResponse>({
-    queryKey: [endpoint, params],
-    queryFn: ({ signal }) => apiGet<CombinedResponse>(endpoint, params, { signal }),
+  const query = useInfiniteQuery<CombinedResponse>({
+    queryKey: [endpoint, baseParams],
+    queryFn: ({ pageParam, signal }) =>
+      apiGet<CombinedResponse>(
+        endpoint,
+        { ...baseParams, page: pageParam as number },
+        { signal },
+      ),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page < lastPage.total_pages ? lastPage.page + 1 : undefined,
     staleTime: 60_000,
     retry: 2,
     retryDelay: 1000,
     placeholderData: (prev) => prev,
   });
+
+  const listings = useMemo<(Listing | ListingCardData)[]>(() => {
+    const pages = query.data?.pages;
+    if (!pages) return [];
+    const seen = new Set<number>();
+    const out: (Listing | ListingCardData)[] = [];
+    for (const p of pages) {
+      for (const l of p.listings) {
+        if (seen.has(l.id)) continue;
+        seen.add(l.id);
+        out.push(l);
+      }
+    }
+    return out;
+  }, [query.data]);
+  const total = query.data?.pages[0]?.total ?? 0;
+
+  return {
+    listings,
+    total,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    isFetchingNextPage: query.isFetchingNextPage,
+    hasNextPage: query.hasNextPage,
+    isError: query.isError,
+    refetch: query.refetch,
+    fetchNextPage: query.fetchNextPage,
+  };
 }

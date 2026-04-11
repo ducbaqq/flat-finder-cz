@@ -329,6 +329,30 @@ function MarkerLayer({ filters }: { filters: Record<string, string> }) {
   );
 }
 
+// ── Size observer — keeps Leaflet's internal size in sync with its container ──
+// Fires on mount, window resize, and when the listings panel is drag-resized.
+// Without this, Leaflet renders stale tiles in the newly-exposed area.
+
+function MapResizeObserver() {
+  const map = useMap();
+  useEffect(() => {
+    const container = map.getContainer();
+    let rafId = 0;
+    const ro = new ResizeObserver(() => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        map.invalidateSize({ animate: false, pan: false });
+      });
+    });
+    ro.observe(container);
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      ro.disconnect();
+    };
+  }, [map]);
+  return null;
+}
+
 // ── Theme-aware tile layer ──
 
 function ThemeAwareTileLayer() {
@@ -365,6 +389,7 @@ export function MapView({ filters }: MapViewProps) {
     >
       <ThemeAwareTileLayer />
       <MapEventsHandler />
+      <MapResizeObserver />
       <LocationFlyTo location={filters.location} />
       <MarkerLayer filters={filters} />
     </MapContainer>
