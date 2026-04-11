@@ -205,7 +205,7 @@ npm run scraper -- --watch --interval 60      # 60s between cycles
 | `--interval <secs>` | Seconds between watcher cycles (default: 300) |
 | `--no-dashboard` | Disable live terminal dashboard |
 | `--cleanup` | Run TTL-based deactivation only (14 day threshold) |
-| `--dedupe` | Cluster cross-source duplicates (phone + geo + layout matching) |
+| `--dedupe` | Cluster cross-source duplicates (geo + size + price + transaction_type matching) |
 
 ### Environment Variables
 

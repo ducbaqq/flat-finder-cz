@@ -14,42 +14,53 @@ function makeMockDb(executeResults: unknown[][]) {
 
   const resultQueue = [...executeResults];
 
-  const db = {
+  const db: Record<string, unknown> = {
     execute: async (query: unknown) => {
       const queryStr = String(query);
       calls.executes.push(queryStr);
       return resultQueue.shift() ?? [];
     },
-    update: (table: unknown) => ({
+    update: (_table: unknown) => ({
       set: (values: Record<string, unknown>) => ({
-        where: (condition: unknown) => {
+        where: (_condition: unknown) => {
           calls.updates.push({ set: values, whereIds: [] });
           return Promise.resolve([]);
         },
       }),
     }),
-  } as unknown as Db;
+  };
+  // Minimal transaction shim: hand the callback `db` as the tx executor.
+  // Any throw from inside the callback propagates out, matching drizzle's
+  // behaviour (commit on return, rollback on throw).
+  db.transaction = async (fn: (tx: unknown) => Promise<unknown>) => fn(db);
 
-  return { db, calls };
+  return { db: db as unknown as Db, calls };
 }
+
+// Inside the transaction, 4 execute() calls per run:
+//   [0] SET LOCAL work_mem
+//   [1] reset UPDATE
+//   [2] geo-pass RETURNING
+//   [3] address-pass RETURNING
+const EMPTY_PRELUDE = [[], []];
 
 test.describe("clusterListings", () => {
   test("returns zero counts when no duplicate clusters exist", async () => {
     const { db, calls } = makeMockDb([
-      [], // reset UPDATE result
-      [], // phone-pass RETURNING (no clusters)
+      ...EMPTY_PRELUDE,
       [], // geo-pass RETURNING (no clusters)
+      [], // address-pass RETURNING (no clusters)
     ]);
 
     const result = await clusterListings(db);
 
     expect(result).toEqual({ clustered: 0, clusters: 0 });
-    // 3 SQL statements: reset + phone pass + geo pass
-    expect(calls.executes).toHaveLength(3);
+    // Inside the transaction: work_mem + reset + geo pass + address pass
+    expect(calls.executes).toHaveLength(4);
   });
 
-  test("counts phone-based clusters correctly", async () => {
-    const phoneRows = [
+  test("counts geo-based clusters correctly", async () => {
+    const geoRows = [
       { id: 1, cluster_id: "abc123" },
       { id: 2, cluster_id: "abc123" },
       { id: 3, cluster_id: "abc123" },
@@ -58,9 +69,9 @@ test.describe("clusterListings", () => {
     ];
 
     const { db } = makeMockDb([
-      [],         // reset
-      phoneRows,  // phone pass — 2 clusters, 5 listings
-      [],         // geo pass — nothing left
+      ...EMPTY_PRELUDE,
+      geoRows,  // geo pass — 2 clusters, 5 listings
+      [],       // address pass — nothing left
     ]);
 
     const result = await clusterListings(db);
@@ -68,16 +79,16 @@ test.describe("clusterListings", () => {
     expect(result).toEqual({ clustered: 5, clusters: 2 });
   });
 
-  test("counts geo-based clusters correctly when phone pass finds nothing", async () => {
-    const geoRows = [
-      { id: 100, cluster_id: "geo-aaa" },
-      { id: 101, cluster_id: "geo-aaa" },
+  test("counts address-based clusters correctly when geo pass finds nothing", async () => {
+    const addrRows = [
+      { id: 100, cluster_id: "addr-aaa" },
+      { id: 101, cluster_id: "addr-aaa" },
     ];
 
     const { db } = makeMockDb([
-      [],        // reset
-      [],        // phone pass — no phone-based clusters
-      geoRows,   // geo pass — 1 cluster, 2 listings
+      ...EMPTY_PRELUDE,
+      [],        // geo pass — no geo-based clusters
+      addrRows,  // address pass — 1 cluster, 2 listings
     ]);
 
     const result = await clusterListings(db);
@@ -85,21 +96,21 @@ test.describe("clusterListings", () => {
     expect(result).toEqual({ clustered: 2, clusters: 1 });
   });
 
-  test("combines phone and geo clusters in totals", async () => {
-    const phoneRows = [
-      { id: 1, cluster_id: "phone-cluster-1" },
-      { id: 2, cluster_id: "phone-cluster-1" },
-    ];
+  test("combines geo and address clusters in totals", async () => {
     const geoRows = [
-      { id: 50, cluster_id: "geo-cluster-1" },
-      { id: 51, cluster_id: "geo-cluster-1" },
-      { id: 52, cluster_id: "geo-cluster-1" },
+      { id: 1, cluster_id: "geo-cluster-1" },
+      { id: 2, cluster_id: "geo-cluster-1" },
+    ];
+    const addrRows = [
+      { id: 50, cluster_id: "addr-cluster-1" },
+      { id: 51, cluster_id: "addr-cluster-1" },
+      { id: 52, cluster_id: "addr-cluster-1" },
     ];
 
     const { db } = makeMockDb([
-      [],          // reset
-      phoneRows,   // phone pass — 1 cluster, 2 listings
-      geoRows,     // geo pass — 1 cluster, 3 listings
+      ...EMPTY_PRELUDE,
+      geoRows,   // geo pass — 1 cluster, 2 listings
+      addrRows,  // address pass — 1 cluster, 3 listings
     ]);
 
     const result = await clusterListings(db);
@@ -107,11 +118,11 @@ test.describe("clusterListings", () => {
     expect(result).toEqual({ clustered: 5, clusters: 2 });
   });
 
-  test("issues exactly 3 SQL statements: reset + phone pass + geo pass", async () => {
-    const { db, calls } = makeMockDb([[], [], []]);
+  test("issues 4 statements inside the transaction: work_mem + reset + geo pass + address pass", async () => {
+    const { db, calls } = makeMockDb([[], [], [], []]);
 
     await clusterListings(db);
 
-    expect(calls.executes).toHaveLength(3);
+    expect(calls.executes).toHaveLength(4);
   });
 });

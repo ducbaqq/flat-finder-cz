@@ -293,103 +293,171 @@ export async function deactivateByTtlListings(
 }
 
 /**
- * Cluster duplicate listings across sources using phone + geo + layout matching.
+ * Cluster duplicate listings across sources using geo + size + price + transaction_type.
  * Assigns a shared `cluster_id` to rows that represent the same real-world property.
  * Marks exactly one row per cluster as `is_canonical = true` (lowest id).
  *
  * Two-phase approach:
- *   1. Phone-based: same seller_phone + layout within ~1 km  (high confidence)
- *   2. Geo-based:   same layout within ~10 m                 (no phone available)
+ *   1. Geo-based:     transaction_type + ROUND(lat,4) + ROUND(lng,4) + size_m2 + price
+ *                     ~11 m geo block, exact size + price match.
+ *   2. Address-based: transaction_type + LOWER(TRIM(address)) + size_m2 + price
+ *                     Fallback for listings without coordinates.
+ *
+ * Match keys chosen from 2026-04-10 production data analysis: phone (42%) and
+ * layout (31%) have insufficient coverage. geo+size alone creates false positives
+ * for same-building different-unit cases; adding price + transaction_type fixes
+ * that while still matching 86% of real duplicates (which share exact price).
+ * transaction_type prevents rent-vs-sale collisions at the same address.
+ *
+ * Rounding notes:
+ *   - lat/lng rounded to 4 decimals (~11 m) — both in PARTITION BY and md5 hash
+ *   - size_m2 rounded to 2 decimals — normalizes double-precision float quirks
+ *   - price rounded to integer CZK — prices are always whole CZK in practice
  *
  * All rows stay is_active — nothing is deactivated.
+ *
+ * Dry-run mode: runs the full SQL pipeline inside a transaction that is always
+ * rolled back, so counts reflect what would happen without persisting changes.
  */
 export async function clusterListings(
   db: Db,
+  opts: { dryRun?: boolean } = {},
 ): Promise<{ clustered: number; clusters: number }> {
+  // Always wrap in a transaction. Two reasons:
+  //   1. Binds every statement to a single connection, so `SET LOCAL work_mem`
+  //      stays in effect for the CTE queries. Without this, postgres-js may
+  //      route subsequent statements to different pool connections and the
+  //      bumped work_mem is lost — causing the big Phase 1 sort to spill to
+  //      disk and take 15+ minutes.
+  //   2. Lets dry-run mode cleanly roll back by throwing a sentinel error.
+  let result: { clustered: number; clusters: number } = { clustered: 0, clusters: 0 };
+  try {
+    await db.transaction(async (tx) => {
+      result = await runClusteringOps(tx as unknown as Db);
+      if (opts.dryRun) throw new DryRunRollback();
+    });
+  } catch (err) {
+    if (!(err instanceof DryRunRollback)) throw err;
+  }
+  return result;
+}
+
+class DryRunRollback extends Error {
+  constructor() {
+    super("dry-run rollback");
+    this.name = "DryRunRollback";
+  }
+}
+
+async function runClusteringOps(
+  executor: Db,
+): Promise<{ clustered: number; clusters: number }> {
+  // Bump work_mem so the Phase 1 sort (~37MB at current scale) fits in
+  // memory instead of spilling to disk. SET LOCAL scopes the bump to the
+  // surrounding transaction — valid because we always run inside one.
+  await executor.execute(sql`SET LOCAL work_mem = '256MB'`);
+
   // Reset previous clustering so the pass is fully idempotent
-  await db.execute(sql`
+  await executor.execute(sql`
     UPDATE listings
     SET cluster_id = NULL, is_canonical = true
     WHERE cluster_id IS NOT NULL
   `);
 
-  // Phase 1 — phone-based clustering
-  // Same seller_phone + same layout + same ~1 km geo block = same apartment
-  const phoneResult = await db.execute<{ id: number; cluster_id: string }>(sql`
-    WITH phone_groups AS (
-      SELECT id,
-        MIN(id) OVER w AS canonical_id,
+  // Phase 1 — geo-based clustering
+  // Same transaction_type + ~11 m geo block + size_m2 + price = same apartment.
+  //
+  // GROUP BY ... HAVING COUNT(*) > 1 lets Postgres use HashAggregate and
+  // discard non-duplicate groups early — much faster than a window function,
+  // which would have to sort the full active row set.
+  const geoResult = await executor.execute<{ id: number; cluster_id: string }>(sql`
+    WITH duplicate_groups AS (
+      SELECT
         md5(
-          seller_phone || '|' || layout || '|' ||
-          ROUND(latitude::numeric, 2)::text || '|' ||
-          ROUND(longitude::numeric, 2)::text
-        ) AS cluster_hash,
-        COUNT(*) OVER w AS group_size
-      FROM listings
-      WHERE is_active = true
-        AND seller_phone IS NOT NULL AND seller_phone <> ''
-        AND layout IS NOT NULL
-        AND latitude IS NOT NULL AND longitude IS NOT NULL
-      WINDOW w AS (
-        PARTITION BY seller_phone, layout,
-          ROUND(latitude::numeric, 2), ROUND(longitude::numeric, 2)
-      )
-    )
-    UPDATE listings l
-    SET
-      cluster_id  = pg.cluster_hash,
-      is_canonical = (l.id = pg.canonical_id)
-    FROM phone_groups pg
-    WHERE l.id = pg.id AND pg.group_size > 1
-    RETURNING l.id, l.cluster_id
-  `);
-
-  const phoneRows = phoneResult as { id: number; cluster_id: string }[];
-  const phoneClusters = new Set(phoneRows.map((r) => r.cluster_id));
-
-  // Phase 2 — geo-based clustering (unclustered listings only)
-  // Same layout within ~10 m (ROUND to 4 decimals ≈ 11 m)
-  const geoResult = await db.execute<{ id: number; cluster_id: string }>(sql`
-    WITH geo_groups AS (
-      SELECT id,
-        MIN(id) OVER w AS canonical_id,
-        md5(
-          'geo|' || layout || '|' ||
+          'geo|' || transaction_type || '|' ||
           ROUND(latitude::numeric, 4)::text || '|' ||
-          ROUND(longitude::numeric, 4)::text
+          ROUND(longitude::numeric, 4)::text || '|' ||
+          ROUND(size_m2::numeric, 2)::text || '|' ||
+          ROUND(price::numeric, 0)::text
         ) AS cluster_hash,
-        COUNT(*) OVER w AS group_size
+        MIN(id) AS canonical_id,
+        array_agg(id) AS member_ids
       FROM listings
       WHERE is_active = true
-        AND cluster_id IS NULL
-        AND layout IS NOT NULL
         AND latitude IS NOT NULL AND longitude IS NOT NULL
-      WINDOW w AS (
-        PARTITION BY layout,
-          ROUND(latitude::numeric, 4), ROUND(longitude::numeric, 4)
-      )
+        AND size_m2 IS NOT NULL
+        AND price IS NOT NULL
+      GROUP BY
+        transaction_type,
+        ROUND(latitude::numeric, 4), ROUND(longitude::numeric, 4),
+        ROUND(size_m2::numeric, 2), ROUND(price::numeric, 0)
+      HAVING COUNT(*) > 1
     )
     UPDATE listings l
     SET
-      cluster_id  = gg.cluster_hash,
-      is_canonical = (l.id = gg.canonical_id)
-    FROM geo_groups gg
-    WHERE l.id = gg.id AND gg.group_size > 1
+      cluster_id  = dg.cluster_hash,
+      is_canonical = (l.id = dg.canonical_id)
+    FROM duplicate_groups dg
+    WHERE l.id = ANY(dg.member_ids)
     RETURNING l.id, l.cluster_id
   `);
 
   const geoRows = geoResult as { id: number; cluster_id: string }[];
   const geoClusters = new Set(geoRows.map((r) => r.cluster_id));
 
+  // Phase 2 — address-based clustering (no-geo fallback)
+  // Same transaction_type + normalized address + size_m2 + price.
+  // Only operates on rows not already clustered in Phase 1.
+  const addrResult = await executor.execute<{ id: number; cluster_id: string }>(sql`
+    WITH duplicate_groups AS (
+      SELECT
+        md5(
+          'addr|' || transaction_type || '|' ||
+          LOWER(TRIM(address)) || '|' ||
+          ROUND(size_m2::numeric, 2)::text || '|' ||
+          ROUND(price::numeric, 0)::text
+        ) AS cluster_hash,
+        MIN(id) AS canonical_id,
+        array_agg(id) AS member_ids
+      FROM listings
+      WHERE is_active = true
+        AND cluster_id IS NULL
+        AND address IS NOT NULL AND TRIM(address) <> ''
+        AND size_m2 IS NOT NULL
+        AND price IS NOT NULL
+      GROUP BY
+        transaction_type,
+        LOWER(TRIM(address)),
+        ROUND(size_m2::numeric, 2), ROUND(price::numeric, 0)
+      HAVING COUNT(*) > 1
+    )
+    UPDATE listings l
+    SET
+      cluster_id  = dg.cluster_hash,
+      is_canonical = (l.id = dg.canonical_id)
+    FROM duplicate_groups dg
+    WHERE l.id = ANY(dg.member_ids)
+    RETURNING l.id, l.cluster_id
+  `);
+
+  const addrRows = addrResult as { id: number; cluster_id: string }[];
+  const addrClusters = new Set(addrRows.map((r) => r.cluster_id));
+
   return {
-    clustered: phoneRows.length + geoRows.length,
-    clusters: phoneClusters.size + geoClusters.size,
+    clustered: geoRows.length + addrRows.length,
+    clusters: geoClusters.size + addrClusters.size,
   };
 }
 
 /**
- * For a given listing, return all other listings in the same cluster.
- * Useful for the detail page "Available on N portals" panel.
+ * For a given listing, return every active row sharing its cluster_id.
+ * Used by the detail page "Available on N portals" panel. Returns the
+ * listing itself as one of the rows. Ordered by price ascending so the
+ * cheapest source is first.
+ *
+ * Includes the fields needed to build source-specific portal URLs on the
+ * frontend (source, external_id, property_type, transaction_type, layout,
+ * source_url).
  */
 export async function getClusterSiblings(db: Db, listingId: number) {
   const [row] = await db
@@ -404,8 +472,13 @@ export async function getClusterSiblings(db: Db, listingId: number) {
     .select({
       id: listings.id,
       source: listings.source,
+      external_id: listings.external_id,
       source_url: listings.source_url,
+      property_type: listings.property_type,
+      transaction_type: listings.transaction_type,
+      layout: listings.layout,
       price: listings.price,
+      currency: listings.currency,
       is_canonical: listings.is_canonical,
     })
     .from(listings)
