@@ -1,7 +1,7 @@
 import { parse as parseHtml, type HTMLElement } from "node-html-parser";
 import pLimit from "p-limit";
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
-import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
+import { BaseScraper, streamInterleave, type ScraperOptions, type PageResult } from "../base-scraper.js";
 import { normalizeAmenities } from "../amenity-normalizer.js";
 
 // ---------------------------------------------------------------------------
@@ -297,42 +297,19 @@ export class CeskeRealityScraper extends BaseScraper {
       return;
     }
 
-    // Streaming parallel: run up to categoryParallelism categories at once,
-    // yield pages immediately as they arrive (no buffering entire chunks).
-    const queue: PageResult[] = [];
-    let resolve: (() => void) | null = null;
-    let activeProducers = 0;
-
-    const catLimit = pLimit(this.categoryParallelism);
-
-    const producers = CATEGORIES.map(([urlPath, propertyType, transactionType]) =>
-      catLimit(async () => {
-        activeProducers++;
+    const self = this;
+    yield* streamInterleave(
+      [...CATEGORIES],
+      this.categoryParallelism,
+      async function* ([urlPath, propertyType, transactionType]) {
         const catName = `${transactionType}/${propertyType}`;
         try {
-          for await (const page of this.fetchCategoryPages(urlPath, propertyType, transactionType, catName)) {
-            queue.push(page);
-            resolve?.();
-          }
+          yield* self.fetchCategoryPages(urlPath, propertyType, transactionType, catName);
         } catch (err) {
-          this.log(`Error scraping ${catName}: ${err}`);
+          self.log(`Error scraping ${catName}: ${err}`);
         }
-        activeProducers--;
-        resolve?.();
-      }),
+      },
     );
-
-    const allDone = Promise.all(producers);
-    let finished = false;
-    allDone.then(() => { finished = true; resolve?.(); });
-
-    while (!finished || queue.length > 0) {
-      if (queue.length > 0) {
-        yield queue.shift()!;
-      } else {
-        await new Promise<void>((r) => { resolve = r; });
-      }
-    }
   }
 
   private async *fetchCategoryPages(
