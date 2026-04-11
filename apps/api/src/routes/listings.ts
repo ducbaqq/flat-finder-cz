@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getDb, queryListings, getListingById } from "@flat-finder/db";
+import { getDb, queryListings, getListingById, getClusterSiblings } from "@flat-finder/db";
 import type { ListingFilters } from "@flat-finder/types";
 import { rowToListing, parseNumericParam } from "../helpers.js";
 
@@ -150,6 +150,26 @@ app.get("/", async (c) => {
     per_page: result.per_page,
     total_pages: result.total_pages,
   });
+});
+
+/**
+ * GET /api/listings/:id/cluster-siblings — Cross-source duplicates of this listing.
+ * Returns every active row sharing this listing's cluster_id (including the
+ * listing itself), ordered by price ascending. Empty array if the listing has
+ * no cluster_id (unique listing or not yet dedup-processed).
+ *
+ * Declared before /:id so Hono's router matches the more specific path first.
+ */
+app.get("/:id/cluster-siblings", async (c) => {
+  const db = getDb();
+  const id = parseInt(c.req.param("id"), 10);
+
+  if (isNaN(id)) {
+    return c.json({ error: "Invalid listing ID" }, 400);
+  }
+
+  const siblings = await getClusterSiblings(db, id);
+  return c.json({ siblings });
 });
 
 /**

@@ -52,6 +52,8 @@ export function rowToListing(row: ListingRow): Listing {
     seller_email: row.seller_email,
     seller_company: row.seller_company,
     additional_params: row.additional_params ?? null,
+    cluster_id: row.cluster_id ?? null,
+    is_canonical: row.is_canonical ?? true,
   };
 }
 
