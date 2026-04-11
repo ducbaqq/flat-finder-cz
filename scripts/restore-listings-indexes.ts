@@ -1,9 +1,8 @@
 /**
  * Rollback script for `prune-listings-indexes.ts`.
  *
- * Re-creates the 13 indexes that were dropped during the 2026-04-11
- * index pruning pass. Uses `CREATE INDEX CONCURRENTLY IF NOT EXISTS` so
- * it:
+ * Re-creates the 7 indexes that were dropped during the 2026-04-11 index
+ * pruning pass. Uses `CREATE INDEX CONCURRENTLY IF NOT EXISTS` so it:
  *   - Does NOT block concurrent writes on listings
  *   - Is idempotent (safe to re-run)
  *   - Can be run partially if some indexes are already back
@@ -50,32 +49,8 @@ const INDEXES_TO_RESTORE: Array<{ name: string; create: string }> = [
     create: "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_listings_transaction_type ON listings (transaction_type)",
   },
   {
-    name: "idx_listings_district",
-    create: "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_listings_district ON listings (district)",
-  },
-  {
     name: "idx_listings_region",
     create: "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_listings_region ON listings (region)",
-  },
-  {
-    name: "idx_listings_condition",
-    create: "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_listings_condition ON listings (condition)",
-  },
-  {
-    name: "idx_listings_construction",
-    create: "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_listings_construction ON listings (construction)",
-  },
-  {
-    name: "idx_listings_ownership",
-    create: "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_listings_ownership ON listings (ownership)",
-  },
-  {
-    name: "idx_listings_furnishing",
-    create: "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_listings_furnishing ON listings (furnishing)",
-  },
-  {
-    name: "idx_listings_energy_rating",
-    create: "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_listings_energy_rating ON listings (energy_rating)",
   },
 ];
 

@@ -1,35 +1,45 @@
 /**
- * One-shot migration: drop 13 redundant/unused indexes from `listings`.
+ * One-shot migration: drop 7 redundant/unused indexes from `listings`.
  *
- * Evidence basis: production usage stats collected via
- * `scripts/index-usage-stats.ts` on 2026-04-11. All 13 dropped indexes
- * had exactly zero scans since DB start, with two exceptions:
+ * Evidence basis: production usage stats (scripts/index-usage-stats.ts)
+ * + EXPLAIN testing (scripts/test-filter-plans.ts) on 2026-04-11. Every
+ * dropped index is one of:
+ *   (a) zero scans since DB start AND never picked by the planner in
+ *       the EXPLAIN test for any realistic filter query, OR
+ *   (b) a structural duplicate of another index that was masking it.
  *
- *   - `idx_listings_external_id` — 963K scans, but it's an exact duplicate
- *     of the auto-generated `listings_external_id_unique` index that
- *     backs the `.unique()` constraint. The planner has been hitting the
- *     non-unique one due to how Drizzle emitted them; dropping the
- *     duplicate forces the planner to use the unique index, same shape,
- *     zero user-visible change.
+ * Dropped:
+ *   - idx_listings_external_id    — 963K scans, but it's an EXACT duplicate
+ *     of listings_external_id_unique (the auto-generated index backing
+ *     the .unique() constraint). The planner has been arbitrarily picking
+ *     the non-unique one. Dropping forces those 963K lookups onto the
+ *     unique index — same shape, zero user-visible change.
+ *   - idx_listings_city, idx_listings_source, idx_listings_property_type,
+ *     idx_listings_transaction_type — 0 scans. All covered by
+ *     idx_listings_stats_agg (is_active, source, property_type,
+ *     transaction_type, city) and/or idx_listings_filtered_geo.
+ *   - idx_listings_price — 8 scans total, covered by the composite
+ *     idx_listings_active_price for every sane query shape.
+ *   - idx_listings_region — 0 scans. No composite covers it directly,
+ *     but the EXPLAIN test showed the planner falls back to
+ *     idx_listings_active_listed + in-memory filter for rare regions.
  *
- *   - `idx_listings_price` — 8 scans total, for queries that don't
- *     filter by is_active. The composite `idx_listings_active_price`
- *     serves everything through the active-listings path. Acceptable
- *     regression risk for the extremely rare all-listings-by-price query.
+ * NOT dropped (originally considered, but proved in-use by the audit):
+ *   - idx_listings_condition, construction, ownership, furnishing,
+ *     energy_rating — 2-10 scans each after UI walkthrough
+ *   - idx_listings_district — 0 historical scans BUT EXPLAIN confirmed
+ *     the planner picks it for rare-district filters
  *
- * Goal: halve write amplification on listings UPDATEs. With 24 → 11
- * explicit + auto-generated indexes, each row UPDATE touches roughly
- * 46% of the original index count, and --dedupe wall time is projected
- * to drop from ~55 minutes to ~25 minutes.
+ * Impact: 24 → 17 indexes = 71% of original. --dedupe wall time projected
+ * to drop from ~55 min to ~39 min. Also reclaims 145 MB of index storage.
  *
  * Uses DROP INDEX CONCURRENTLY IF EXISTS, which:
  *   - Does NOT block concurrent SELECT / INSERT / UPDATE / DELETE
  *   - Is idempotent (safe to re-run)
  *   - Cannot run inside a transaction (hence the unsafe() calls)
  *
- * If any query regresses after running this, the paired script
- * `scripts/restore-listings-indexes.ts` re-creates all 13 indexes via
- * `CREATE INDEX CONCURRENTLY IF NOT EXISTS`.
+ * Paired rollback: scripts/restore-listings-indexes.ts re-creates all 7
+ * via CREATE INDEX CONCURRENTLY IF NOT EXISTS.
  *
  * Usage: npx tsx scripts/prune-listings-indexes.ts
  */
@@ -47,13 +57,7 @@ const INDEXES_TO_DROP = [
   "idx_listings_source",
   "idx_listings_property_type",
   "idx_listings_transaction_type",
-  "idx_listings_district",
   "idx_listings_region",
-  "idx_listings_condition",
-  "idx_listings_construction",
-  "idx_listings_ownership",
-  "idx_listings_furnishing",
-  "idx_listings_energy_rating",
 ] as const;
 
 function connect() {
@@ -119,6 +123,12 @@ async function main() {
       "idx_listings_filtered_geo",
       "idx_listings_stats_agg",
       "idx_listings_layout",
+      "idx_listings_condition",
+      "idx_listings_construction",
+      "idx_listings_ownership",
+      "idx_listings_furnishing",
+      "idx_listings_energy_rating",
+      "idx_listings_district",
       "idx_listings_cluster_id",
       "idx_listings_canonical",
       "listings_external_id_unique",

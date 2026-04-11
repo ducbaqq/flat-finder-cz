@@ -56,37 +56,45 @@ export const listings = pgTable(
     is_canonical: boolean("is_canonical").default(true),
   },
   (table) => [
-    // Index selection is data-driven. Production usage stats on 2026-04-11
-    // (via scripts/index-usage-stats.ts) showed 12 of the original 24
-    // indexes had zero scans since DB start. Pruning them roughly halves
-    // the write amplification on listings UPDATE operations, which is the
-    // dominant cost of the --dedupe pass.
+    // Index selection is data-driven. Production usage stats + EXPLAIN
+    // testing on 2026-04-11 (via scripts/index-usage-stats.ts and
+    // scripts/test-filter-plans.ts) showed 7 of the original 24 indexes
+    // were either redundant or unused. Pruning them reduces write
+    // amplification on listings UPDATE operations from 24 index
+    // maintenance passes per row to 17 (~71% of original), cutting
+    // --dedupe wall time by roughly a third.
     //
-    // Dropped indexes (see perf/prune-listings-indexes branch for the
-    // full rationale): idx_listings_city, idx_listings_price,
-    // idx_listings_source, idx_listings_property_type,
-    // idx_listings_transaction_type, idx_listings_external_id (was a
-    // duplicate of the auto-generated listings_external_id_unique),
-    // idx_listings_district, idx_listings_region, idx_listings_condition,
-    // idx_listings_construction, idx_listings_ownership,
-    // idx_listings_furnishing, idx_listings_energy_rating.
+    // Dropped (7): idx_listings_external_id (EXACT duplicate of the
+    // auto-generated listings_external_id_unique that backs .unique()),
+    // idx_listings_city, idx_listings_price, idx_listings_source,
+    // idx_listings_property_type, idx_listings_transaction_type,
+    // idx_listings_region.
     //
-    // If any of those queries regress, scripts/restore-listings-indexes.ts
-    // re-creates them with CREATE INDEX CONCURRENTLY IF NOT EXISTS.
+    // KEPT (and briefly considered for dropping but proved in-use by
+    // empirical testing):
+    // - idx_listings_condition, construction, furnishing, energy_rating,
+    //   ownership — UI-driven filter page queries hit all of these
+    // - idx_listings_district — planner picked it in the EXPLAIN test
+    //   for `WHERE district = 'Praha 6'` (rare enough that single-column
+    //   bitmap scan wins over the composite)
+    // - idx_listings_layout — filter page's heavy hitter
+    //
+    // If any query regresses post-deploy, scripts/restore-listings-indexes.ts
+    // re-creates the 7 dropped indexes via CREATE INDEX CONCURRENTLY.
 
-    // is_active alone: 105 scans at the time of the audit, used by
-    // queries that filter only by active flag without needing the geo
-    // or listed_at composites.
+    // is_active alone: used by queries that filter only by active flag
+    // without needing the geo or listed_at composites.
     index("idx_listings_is_active").on(table.is_active),
 
-    // Geo: Supercluster loader + map bounding-box queries (1,217 scans).
+    // ── Composite indexes for hot query patterns ──
+    // Geo: Supercluster loader + map bounding-box queries (1,317 scans).
     index("idx_listings_geo").on(table.is_active, table.latitude, table.longitude),
-    // Default newest sort: WHERE is_active = true ORDER BY listed_at DESC (183 scans).
+    // Default newest sort + most filter-page queries with LIMIT 20 use
+    // this as an index-scan-backward path to get ordering cheaply.
     index("idx_listings_active_listed").on(table.is_active, table.listed_at),
-    // Price sort: WHERE is_active = true ORDER BY price (2 scans, but the
-    // canonical path for price-sorted listings pages).
+    // Price sort path.
     index("idx_listings_active_price").on(table.is_active, table.price),
-    // Filtered map: common map queries with property_type + transaction_type (2,787 scans).
+    // Filtered map: common map queries with property_type + transaction_type.
     index("idx_listings_filtered_geo").on(
       table.is_active,
       table.property_type,
@@ -94,8 +102,9 @@ export const listings = pgTable(
       table.latitude,
       table.longitude,
     ),
-    // Stats aggregation: GROUP BY source, property_type, transaction_type, city
-    // where is_active = true — covers the listing_stats materialization (1,398 scans).
+    // Stats aggregation covers the materialization query AND acts as
+    // fallback for single-column filters on source/property_type/
+    // transaction_type/city (all leading columns after is_active).
     index("idx_listings_stats_agg").on(
       table.is_active,
       table.source,
@@ -103,12 +112,24 @@ export const listings = pgTable(
       table.transaction_type,
       table.city,
     ),
-    // Layout filter: used by the filter page (8 scans, 135K tup_read).
-    // The other filter-column indexes (condition, construction, etc.) had
-    // zero scans so they were dropped; layout is the heavy-hitter that
-    // filter-page traffic actually uses.
+
+    // ── Filter-column indexes (proven in use by the 2026-04-11 audit) ──
+    // layout: the filter page's most-used filter (8 scans, 135K tup_read).
     index("idx_listings_layout").on(table.layout),
-    // Deduplication: cluster_id lookups + is_canonical search filter.
+    // condition: 10 scans, chosen by planner for e.g. condition='after_renovation'.
+    index("idx_listings_condition").on(table.condition),
+    // construction, ownership, furnishing, energy_rating: each had 2-6
+    // scans after a targeted UI walkthrough. Originally zero-scan but
+    // that was because nobody had filtered by them recently in production.
+    index("idx_listings_construction").on(table.construction),
+    index("idx_listings_ownership").on(table.ownership),
+    index("idx_listings_furnishing").on(table.furnishing),
+    index("idx_listings_energy_rating").on(table.energy_rating),
+    // district: zero historical scans but EXPLAIN confirmed the planner
+    // picks it for rare-district filters like WHERE district = 'Praha 6'.
+    index("idx_listings_district").on(table.district),
+
+    // ── Deduplication indexes ──
     index("idx_listings_cluster_id").on(table.cluster_id),
     index("idx_listings_canonical").on(table.is_active, table.is_canonical),
   ],
