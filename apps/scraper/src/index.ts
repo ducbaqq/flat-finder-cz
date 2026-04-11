@@ -109,7 +109,6 @@ interface RunSourceOpts {
   watch: boolean;
   full: boolean;
   dryRun: boolean;
-  watcherMaxPages: number;
   watcherDetailConcurrency: number;
   dashboard: Dashboard | null;
 }
@@ -489,31 +488,19 @@ async function runSource(
       // ----------------------------------------------------------------
       // WATCH MODE: check newest pages only, enrich + upsert inline
       // ----------------------------------------------------------------
-      const maxPages = opts.watcherMaxPages;
       const skippedCategories = new Set<string>();
       let lastCategory = "";
-      let categoryPageCount = 0;
 
       for await (const page of scraper.fetchPages()) {
-        // Track pages per category
         if (page.category !== lastCategory) {
           lastCategory = page.category;
-          categoryPageCount = 0;
           if (dashboard) dashboard.setCategory(source, page.category);
         }
-        categoryPageCount++;
 
         if (dashboard) dashboard.addPageFetched(source, page.listings.length, page.totalPages);
 
         // Skip categories we've already decided to skip
         if (skippedCategories.has(page.category)) continue;
-
-        // Limit pages per category in watch mode
-        if (categoryPageCount > maxPages) {
-          skippedCategories.add(page.category);
-          scraper.skipCategory(page.category);
-          continue;
-        }
 
         if (opts.dryRun || !db) {
           log(`[DRY RUN] Page ${page.page}/${page.totalPages} of ${page.category}: ${page.listings.length} listings`);
@@ -994,7 +981,6 @@ async function main(): Promise<void> {
     watch,
     full,
     dryRun,
-    watcherMaxPages: env.WATCHER_MAX_PAGES,
     watcherDetailConcurrency: env.WATCHER_DETAIL_CONCURRENCY,
     dashboard,
   };
