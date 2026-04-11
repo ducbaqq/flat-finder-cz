@@ -157,8 +157,6 @@ app.get("/", async (c) => {
  * Returns every active row sharing this listing's cluster_id (including the
  * listing itself), ordered by price ascending. Empty array if the listing has
  * no cluster_id (unique listing or not yet dedup-processed).
- *
- * Declared before /:id so Hono's router matches the more specific path first.
  */
 app.get("/:id/cluster-siblings", async (c) => {
   const db = getDb();

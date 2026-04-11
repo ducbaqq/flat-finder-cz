@@ -27,8 +27,9 @@ export async function deactivateStale(
 }
 
 /**
- * Cluster duplicate listings across sources using geo + size + price + transaction_type.
- * Assigns cluster_id + is_canonical — does NOT deactivate anything.
+ * Cluster duplicate listings across sources by geo + size + price + transaction_type.
+ * Assigns cluster_id + is_canonical — does NOT deactivate anything. Listings
+ * without coordinates remain unclustered (see clusterListings for rationale).
  *
  * When `dryRun` is true, runs inside a transaction that is rolled back, so the
  * returned counts reflect what would happen without persisting any changes.

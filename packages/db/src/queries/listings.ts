@@ -293,24 +293,27 @@ export async function deactivateByTtlListings(
 }
 
 /**
- * Cluster duplicate listings across sources using geo + size + price + transaction_type.
- * Assigns a shared `cluster_id` to rows that represent the same real-world property.
- * Marks exactly one row per cluster as `is_canonical = true` (lowest id).
+ * Cluster duplicate listings across sources.
  *
- * Two-phase approach:
- *   1. Geo-based:     transaction_type + ROUND(lat,4) + ROUND(lng,4) + size_m2 + price
- *                     ~11 m geo block, exact size + price match.
- *   2. Address-based: transaction_type + LOWER(TRIM(address)) + size_m2 + price
- *                     Fallback for listings without coordinates.
+ * Match key: `transaction_type + ROUND(lat,4) + ROUND(lng,4) + size_m2 + price`
+ * (roughly: same transaction, same ~11 m geo block, same size, same price).
+ * Listings sharing the full key get the same `cluster_id`; one row per cluster
+ * is marked `is_canonical = true` (lowest id).
  *
  * Match keys chosen from 2026-04-10 production data analysis: phone (42%) and
  * layout (31%) have insufficient coverage. geo+size alone creates false positives
  * for same-building different-unit cases; adding price + transaction_type fixes
  * that while still matching 86% of real duplicates (which share exact price).
- * transaction_type prevents rent-vs-sale collisions at the same address.
+ * transaction_type prevents rent-vs-sale collisions at the same location.
+ *
+ * An earlier version had a second address-based phase for listings without
+ * coordinates. It was removed because Czech portal `address` is frequently the
+ * coarse district name ("Praha 2"), which collapsed genuinely distinct units
+ * in the same district at the same round price into a single cluster. Listings
+ * without coordinates simply stay unclustered now; that's the safer default.
  *
  * Rounding notes:
- *   - lat/lng rounded to 4 decimals (~11 m) — both in PARTITION BY and md5 hash
+ *   - lat/lng rounded to 4 decimals (~11 m) — both in GROUP BY and md5 hash
  *   - size_m2 rounded to 2 decimals — normalizes double-precision float quirks
  *   - price rounded to integer CZK — prices are always whole CZK in practice
  *
@@ -352,25 +355,25 @@ class DryRunRollback extends Error {
 async function runClusteringOps(
   executor: Db,
 ): Promise<{ clustered: number; clusters: number }> {
-  // Bump work_mem so the Phase 1 sort (~37MB at current scale) fits in
-  // memory instead of spilling to disk. SET LOCAL scopes the bump to the
+  // Bump work_mem so the sort (~37MB at current scale) fits in memory
+  // instead of spilling to disk. SET LOCAL scopes the bump to the
   // surrounding transaction — valid because we always run inside one.
   await executor.execute(sql`SET LOCAL work_mem = '256MB'`);
 
-  // Reset previous clustering so the pass is fully idempotent
+  // Reset previous clustering so the pass is fully idempotent.
   await executor.execute(sql`
     UPDATE listings
     SET cluster_id = NULL, is_canonical = true
     WHERE cluster_id IS NOT NULL
   `);
 
-  // Phase 1 — geo-based clustering
-  // Same transaction_type + ~11 m geo block + size_m2 + price = same apartment.
-  //
-  // GROUP BY ... HAVING COUNT(*) > 1 lets Postgres use HashAggregate and
-  // discard non-duplicate groups early — much faster than a window function,
-  // which would have to sort the full active row set.
-  const geoResult = await executor.execute<{ id: number; cluster_id: string }>(sql`
+  // Group active listings by the rounded match key; any group with ≥2
+  // members is a cluster. `GROUP BY ... HAVING COUNT(*) > 1` lets Postgres
+  // use HashAggregate and discard non-duplicate groups early — much faster
+  // than a window function, which would have to sort the full active row
+  // set. md5 includes a 'geo|' namespace prefix so future additional phases
+  // (if any) can coexist without hash collisions.
+  const result = await executor.execute<{ id: number; cluster_id: string }>(sql`
     WITH duplicate_groups AS (
       SELECT
         md5(
@@ -402,50 +405,12 @@ async function runClusteringOps(
     RETURNING l.id, l.cluster_id
   `);
 
-  const geoRows = geoResult as { id: number; cluster_id: string }[];
-  const geoClusters = new Set(geoRows.map((r) => r.cluster_id));
-
-  // Phase 2 — address-based clustering (no-geo fallback)
-  // Same transaction_type + normalized address + size_m2 + price.
-  // Only operates on rows not already clustered in Phase 1.
-  const addrResult = await executor.execute<{ id: number; cluster_id: string }>(sql`
-    WITH duplicate_groups AS (
-      SELECT
-        md5(
-          'addr|' || transaction_type || '|' ||
-          LOWER(TRIM(address)) || '|' ||
-          ROUND(size_m2::numeric, 2)::text || '|' ||
-          ROUND(price::numeric, 0)::text
-        ) AS cluster_hash,
-        MIN(id) AS canonical_id,
-        array_agg(id) AS member_ids
-      FROM listings
-      WHERE is_active = true
-        AND cluster_id IS NULL
-        AND address IS NOT NULL AND TRIM(address) <> ''
-        AND size_m2 IS NOT NULL
-        AND price IS NOT NULL
-      GROUP BY
-        transaction_type,
-        LOWER(TRIM(address)),
-        ROUND(size_m2::numeric, 2), ROUND(price::numeric, 0)
-      HAVING COUNT(*) > 1
-    )
-    UPDATE listings l
-    SET
-      cluster_id  = dg.cluster_hash,
-      is_canonical = (l.id = dg.canonical_id)
-    FROM duplicate_groups dg
-    WHERE l.id = ANY(dg.member_ids)
-    RETURNING l.id, l.cluster_id
-  `);
-
-  const addrRows = addrResult as { id: number; cluster_id: string }[];
-  const addrClusters = new Set(addrRows.map((r) => r.cluster_id));
+  const rows = result as { id: number; cluster_id: string }[];
+  const clusters = new Set(rows.map((r) => r.cluster_id));
 
   return {
-    clustered: geoRows.length + addrRows.length,
-    clusters: geoClusters.size + addrClusters.size,
+    clustered: rows.length,
+    clusters: clusters.size,
   };
 }
 
