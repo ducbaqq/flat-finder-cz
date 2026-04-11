@@ -73,35 +73,41 @@ export class IdnesScraper extends BaseScraper {
       return;
     }
 
-    // Parallel categories: run N categories concurrently, yield results as they come
-    const chunks: Category[][] = [];
-    for (let i = 0; i < CATEGORIES.length; i += this.categoryParallelism) {
-      chunks.push(CATEGORIES.slice(i, i + this.categoryParallelism));
-    }
+    // Streaming parallel: run up to categoryParallelism categories at once,
+    // yield pages immediately as they arrive (no buffering entire chunks).
+    const queue: PageResult[] = [];
+    let resolve: (() => void) | null = null;
+    let activeProducers = 0;
 
-    for (const chunk of chunks) {
-      // Collect all pages from parallel categories, then yield them
-      const allResults: PageResult[][] = await Promise.all(
-        chunk.map(async (category) => {
-          const categoryLabel = `${category.transactionSlug}/${category.propertySlug}`;
-          this.log(`Scraping category: ${categoryLabel}`);
-          const pages: PageResult[] = [];
-          try {
-            for await (const page of this.fetchCategoryPages(category)) {
-              pages.push(page);
-            }
-          } catch (err) {
-            this.log(`  ERROR scraping ${categoryLabel}: ${err}`);
+    const catLimit = pLimit(this.categoryParallelism);
+
+    const producers = CATEGORIES.map((category) =>
+      catLimit(async () => {
+        activeProducers++;
+        const categoryLabel = `${category.transactionSlug}/${category.propertySlug}`;
+        this.log(`Scraping category: ${categoryLabel}`);
+        try {
+          for await (const page of this.fetchCategoryPages(category)) {
+            queue.push(page);
+            resolve?.();
           }
-          return pages;
-        }),
-      );
-
-      // Yield all pages from this chunk
-      for (const pages of allResults) {
-        for (const page of pages) {
-          yield page;
+        } catch (err) {
+          this.log(`  ERROR scraping ${categoryLabel}: ${err}`);
         }
+        activeProducers--;
+        resolve?.();
+      }),
+    );
+
+    const allDone = Promise.all(producers);
+    let finished = false;
+    allDone.then(() => { finished = true; resolve?.(); });
+
+    while (!finished || queue.length > 0) {
+      if (queue.length > 0) {
+        yield queue.shift()!;
+      } else {
+        await new Promise<void>((r) => { resolve = r; });
       }
     }
   }

@@ -34,15 +34,15 @@ const envSchema = z.object({
   EREALITY_CONCURRENCY: z.coerce.number().default(8),  // was 3, 32% utilization at 10 RPS
   EUROBYDLENI_RPS: z.coerce.number().default(10),
   EUROBYDLENI_CONCURRENCY: z.coerce.number().default(8), // was 3, 30% utilization at 10 RPS
-  CESKEREALITY_RPS: z.coerce.number().default(3),             // hard 429 limit at ~3 RPS
-  CESKEREALITY_CONCURRENCY: z.coerce.number().default(3),    // keep conservative due to 429s
-  CESKEREALITY_CATEGORY_PARALLELISM: z.coerce.number().default(2), // run 2 categories concurrently
+  CESKEREALITY_RPS: z.coerce.number().default(5),             // benchmarked: 429 cliff at ~8 conc, safe at 5
+  CESKEREALITY_CONCURRENCY: z.coerce.number().default(5),    // 5.5 eff RPS at conc=3, 9.1 at conc=5
+  CESKEREALITY_CATEGORY_PARALLELISM: z.coerce.number().default(4), // streaming interleave, no chunk blocking
   CESKEREALITY_SKIP_ENRICHMENT_HOURS: z.coerce.number().default(24),
   REALITYMIX_RPS: z.coerce.number().default(5),
   REALITYMIX_CONCURRENCY: z.coerce.number().default(5),  // was 3, 57% utilization
-  IDNES_RPS: z.coerce.number().default(20),               // benchmarked: 0 errors at 25 conc, ~0.5s avg
-  IDNES_CONCURRENCY: z.coerce.number().default(15),      // sweet spot: 20 eff RPS at conc=20
-  IDNES_CATEGORY_PARALLELISM: z.coerce.number().default(3), // run 3 categories concurrently
+  IDNES_RPS: z.coerce.number().default(25),               // benchmarked: 0 errors at conc=50, no rate limiting
+  IDNES_CONCURRENCY: z.coerce.number().default(25),      // 24 eff RPS at conc=40, diminishing after
+  IDNES_CATEGORY_PARALLELISM: z.coerce.number().default(5), // streaming interleave, all categories fast
   IDNES_SKIP_ENRICHMENT_HOURS: z.coerce.number().default(24), // skip detail re-fetch if scraped within N hours
   REALINGO_RPS: z.coerce.number().default(5),
   REALINGO_CONCURRENCY: z.coerce.number().default(5),    // was 3, 56% utilization
