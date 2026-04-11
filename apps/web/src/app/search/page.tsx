@@ -1,6 +1,13 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import dynamic from "next/dynamic";
 import { Navbar } from "@/components/shared/Navbar";
 import { MobileBottomNav } from "@/components/shared/MobileBottomNav";
@@ -13,6 +20,12 @@ import WatchdogModal from "@/components/watchdog/WatchdogModal";
 import { useSearchFilters } from "@/hooks/useSearchFilters";
 import { useListings } from "@/hooks/useListings";
 import { cn } from "@/lib/cn";
+
+// SSR-safe: useLayoutEffect on the client (runs before paint), useEffect on
+// the server (no-op, avoids the React "useLayoutEffect does nothing on the
+// server" warning).
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 const MapView = dynamic(
   () =>
@@ -56,13 +69,6 @@ function SearchPageContent() {
   const [listingsWidth, setListingsWidth] = useState(560);
   const contentRef = useRef<HTMLDivElement>(null);
   const listingsScrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const sync = () => setIsDesktop(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
 
   const clampListingsWidth = useCallback((raw: number) => {
     const rowWidth = contentRef.current?.getBoundingClientRect().width ?? 0;
@@ -71,12 +77,19 @@ function SearchPageContent() {
     return Math.max(340, Math.min(maxW, raw));
   }, []);
 
-  useEffect(() => {
+  // Resolve viewport-dependent state synchronously before first paint so the
+  // grid doesn't flash from 1 → 2 columns on initial load.
+  useIsomorphicLayoutEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    setIsDesktop(mq.matches);
     setListingsWidth((prev) =>
       prev === 560
         ? clampListingsWidth(Math.round(window.innerWidth * 0.4))
         : prev,
     );
+    const sync = () => setIsDesktop(mq.matches);
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
   }, [clampListingsWidth]);
 
   const handleResizeStart = useCallback(
@@ -167,7 +180,7 @@ function SearchPageContent() {
                   isError={isError}
                   refetch={refetch}
                   singleColumn={showMap}
-                  scrollRootRef={listingsScrollRef}
+                  scrollRootRef={showMap ? listingsScrollRef : undefined}
                 />
               </div>
               {showMap && (
