@@ -56,25 +56,37 @@ export const listings = pgTable(
     is_canonical: boolean("is_canonical").default(true),
   },
   (table) => [
-    // ── Single-column indexes for simple equality filters ──
-    index("idx_listings_city").on(table.city),
-    index("idx_listings_price").on(table.price),
-    index("idx_listings_source").on(table.source),
-    index("idx_listings_property_type").on(table.property_type),
-    index("idx_listings_transaction_type").on(table.transaction_type),
-    index("idx_listings_is_active").on(table.is_active),
-    index("idx_listings_external_id").on(table.external_id),
-    index("idx_listings_district").on(table.district),
-    index("idx_listings_region").on(table.region),
+    // Index selection is data-driven. Production usage stats on 2026-04-11
+    // (via scripts/index-usage-stats.ts) showed 12 of the original 24
+    // indexes had zero scans since DB start. Pruning them roughly halves
+    // the write amplification on listings UPDATE operations, which is the
+    // dominant cost of the --dedupe pass.
+    //
+    // Dropped indexes (see perf/prune-listings-indexes branch for the
+    // full rationale): idx_listings_city, idx_listings_price,
+    // idx_listings_source, idx_listings_property_type,
+    // idx_listings_transaction_type, idx_listings_external_id (was a
+    // duplicate of the auto-generated listings_external_id_unique),
+    // idx_listings_district, idx_listings_region, idx_listings_condition,
+    // idx_listings_construction, idx_listings_ownership,
+    // idx_listings_furnishing, idx_listings_energy_rating.
+    //
+    // If any of those queries regress, scripts/restore-listings-indexes.ts
+    // re-creates them with CREATE INDEX CONCURRENTLY IF NOT EXISTS.
 
-    // ── Composite indexes for common query patterns ──
-    // Geo: used by Supercluster loader and map bounding-box queries
+    // is_active alone: 105 scans at the time of the audit, used by
+    // queries that filter only by active flag without needing the geo
+    // or listed_at composites.
+    index("idx_listings_is_active").on(table.is_active),
+
+    // Geo: Supercluster loader + map bounding-box queries (1,217 scans).
     index("idx_listings_geo").on(table.is_active, table.latitude, table.longitude),
-    // Default sort (newest): covers WHERE is_active = true ORDER BY listed_at DESC
+    // Default newest sort: WHERE is_active = true ORDER BY listed_at DESC (183 scans).
     index("idx_listings_active_listed").on(table.is_active, table.listed_at),
-    // Price sort: covers WHERE is_active = true ORDER BY price
+    // Price sort: WHERE is_active = true ORDER BY price (2 scans, but the
+    // canonical path for price-sorted listings pages).
     index("idx_listings_active_price").on(table.is_active, table.price),
-    // Filtered map: covers common map queries with property_type + transaction_type
+    // Filtered map: common map queries with property_type + transaction_type (2,787 scans).
     index("idx_listings_filtered_geo").on(
       table.is_active,
       table.property_type,
@@ -82,8 +94,8 @@ export const listings = pgTable(
       table.latitude,
       table.longitude,
     ),
-    // Stats aggregation: covers GROUP BY source, property_type, transaction_type, city
-    // where is_active = true — enables index-only scan for the stats query
+    // Stats aggregation: GROUP BY source, property_type, transaction_type, city
+    // where is_active = true — covers the listing_stats materialization (1,398 scans).
     index("idx_listings_stats_agg").on(
       table.is_active,
       table.source,
@@ -91,14 +103,12 @@ export const listings = pgTable(
       table.transaction_type,
       table.city,
     ),
-    // ── Filter column indexes for bitmap index scan combining ──
+    // Layout filter: used by the filter page (8 scans, 135K tup_read).
+    // The other filter-column indexes (condition, construction, etc.) had
+    // zero scans so they were dropped; layout is the heavy-hitter that
+    // filter-page traffic actually uses.
     index("idx_listings_layout").on(table.layout),
-    index("idx_listings_condition").on(table.condition),
-    index("idx_listings_construction").on(table.construction),
-    index("idx_listings_ownership").on(table.ownership),
-    index("idx_listings_furnishing").on(table.furnishing),
-    index("idx_listings_energy_rating").on(table.energy_rating),
-    // ── Deduplication indexes ──
+    // Deduplication: cluster_id lookups + is_canonical search filter.
     index("idx_listings_cluster_id").on(table.cluster_id),
     index("idx_listings_canonical").on(table.is_active, table.is_canonical),
   ],
