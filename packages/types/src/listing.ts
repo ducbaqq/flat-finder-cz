@@ -40,6 +40,26 @@ export interface Listing {
   seller_email: string | null;
   seller_company: string | null;
   additional_params: Record<string, unknown> | null;
+  cluster_id: string | null;
+  is_canonical: boolean;
+}
+
+/** One row of a cluster returned by GET /api/listings/:id/cluster-siblings. */
+export interface ClusterSibling {
+  id: number;
+  source: Source;
+  external_id: string;
+  source_url: string | null;
+  property_type: PropertyType;
+  transaction_type: TransactionType;
+  layout: string | null;
+  price: number | null;
+  currency: string | null;
+  is_canonical: boolean;
+}
+
+export interface ClusterSiblingsResponse {
+  siblings: ClusterSibling[];
 }
 
 export interface ListingFilters {
