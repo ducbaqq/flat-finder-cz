@@ -34,7 +34,15 @@ export default function ClusterSiblings({ listingId, currentSource }: Props) {
   // listing has actual cross-source siblings (>1 member in the cluster).
   if (!siblings || siblings.length <= 1) return null;
 
-  const cheapestPrice = siblings[0]?.price ?? null;
+  // Only highlight "nejlevnější" when prices actually vary across portals.
+  // When all siblings share the same price (e.g. a cluster of identical
+  // parking spots all at 1 890 CZK), highlighting every row is visual noise.
+  const definedPrices = siblings
+    .map((s) => s.price)
+    .filter((p): p is number => p != null);
+  const priceMin = definedPrices.length > 0 ? Math.min(...definedPrices) : null;
+  const priceMax = definedPrices.length > 0 ? Math.max(...definedPrices) : null;
+  const pricesVary = priceMin != null && priceMax != null && priceMin !== priceMax;
 
   return (
     <>
@@ -47,7 +55,7 @@ export default function ClusterSiblings({ listingId, currentSource }: Props) {
           {siblings.map((s) => {
             const url = urlFor(s);
             const isCheapest =
-              s.price != null && cheapestPrice != null && s.price === cheapestPrice;
+              pricesVary && s.price != null && s.price === priceMin;
             const isCurrent = s.source === currentSource;
             return (
               <li

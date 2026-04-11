@@ -415,14 +415,19 @@ async function runClusteringOps(
 }
 
 /**
- * For a given listing, return every active row sharing its cluster_id.
- * Used by the detail page "Available on N portals" panel. Returns the
- * listing itself as one of the rows. Ordered by price ascending so the
- * cheapest source is first.
+ * For a given listing, return one row per source in the same cluster — the
+ * most recently scraped row for each portal. Used by the detail page
+ * "Available on N portals" panel.
  *
- * Includes the fields needed to build source-specific portal URLs on the
- * frontend (source, external_id, property_type, transaction_type, layout,
- * source_url).
+ * A single portal often publishes the same listing under multiple external
+ * IDs (e.g. ereality listed the same Prague 9 garage parking spot 7 times at
+ * 1 890 CZK). Users only want one link per domain, and they want the
+ * freshest one — the listing still alive on the portal, not a stale
+ * republication.
+ *
+ * Implementation: `SELECT DISTINCT ON (source) ... ORDER BY source,
+ * scraped_at DESC` picks the most recent row per source. The result is
+ * re-sorted by price ascending in JS so the cheapest portal comes first.
  */
 export async function getClusterSiblings(db: Db, listingId: number) {
   const [row] = await db
@@ -433,8 +438,8 @@ export async function getClusterSiblings(db: Db, listingId: number) {
 
   if (!row?.cluster_id) return [];
 
-  return db
-    .select({
+  const distinct = await db
+    .selectDistinctOn([listings.source], {
       id: listings.id,
       source: listings.source,
       external_id: listings.external_id,
@@ -453,7 +458,17 @@ export async function getClusterSiblings(db: Db, listingId: number) {
         eq(listings.is_active, true),
       ),
     )
-    .orderBy(asc(listings.price));
+    // DISTINCT ON requires its target column to come first in ORDER BY.
+    // Within each source partition, prefer the most recently scraped row.
+    .orderBy(listings.source, desc(listings.scraped_at));
+
+  // Re-sort by price ascending so the cheapest portal is first in the UI.
+  return distinct.sort((a, b) => {
+    if (a.price == null && b.price == null) return 0;
+    if (a.price == null) return 1;
+    if (b.price == null) return -1;
+    return a.price - b.price;
+  });
 }
 
 export async function deactivateStaleListings(
