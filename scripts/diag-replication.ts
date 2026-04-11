@@ -31,6 +31,22 @@ function connect() {
   return postgres(url, { ssl, max: 1, connect_timeout: 15 });
 }
 
+/**
+ * Returns true if the error is a Postgres "this column or table does not
+ * exist" schema-mismatch. We expect these when probing catalog views that
+ * changed between PG versions (pg_stat_wal, pg_stat_bgwriter) — but we do
+ * NOT want to swallow transient issues like auth failures or dropped
+ * connections, which would just hide real problems during triage.
+ *
+ * SQLSTATE codes:
+ *   42703 = undefined_column
+ *   42P01 = undefined_table
+ */
+function isSchemaMismatch(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code;
+  return code === "42703" || code === "42P01";
+}
+
 async function main() {
   const sql = connect();
   try {
@@ -82,7 +98,14 @@ async function main() {
       console.log(`  wal_syncs:        ${wal.wal_sync}`);
       console.log(`  stats reset:      ${wal.stats_reset}`);
     } catch (err) {
-      console.log(`  (pg_stat_wal not accessible: ${(err as Error).message})`);
+      // Only swallow schema-mismatch errors (column / table missing between
+      // PG versions). Anything else — auth failures, connection drops,
+      // query cancellation — should surface as a real error.
+      if (isSchemaMismatch(err)) {
+        console.log(`  (pg_stat_wal not accessible on this PG version: ${(err as Error).message})`);
+      } else {
+        throw err;
+      }
     }
 
     console.log("\n=== bgwriter / checkpointer ===");
@@ -111,7 +134,15 @@ async function main() {
       console.log(`  buffers_clean:          ${bg.buffers_clean}  ← buffers flushed by bgwriter`);
       console.log(`  buffers_backend:        ${bg.buffers_backend}  ← buffers written by backends (bad if high)`);
     } catch (err) {
-      console.log(`  (pg_stat_bgwriter not accessible: ${(err as Error).message})`);
+      // Same rationale as the pg_stat_wal block above — in PG 17 the
+      // columns we're reading (checkpoints_timed, buffers_clean, ...)
+      // were moved into pg_stat_checkpointer, so a column-missing error
+      // here is expected on newer PG tiers.
+      if (isSchemaMismatch(err)) {
+        console.log(`  (pg_stat_bgwriter not accessible on this PG version: ${(err as Error).message})`);
+      } else {
+        throw err;
+      }
     }
 
     console.log("\n=== Cache hit ratio ===");
