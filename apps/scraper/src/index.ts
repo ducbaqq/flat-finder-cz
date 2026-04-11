@@ -54,6 +54,39 @@ function ts(): string {
   return new Date().toLocaleTimeString("en-GB", { hour12: false });
 }
 
+/**
+ * Walk the Error.cause chain and return a single string with each layer's
+ * message + key pg fields. Drizzle wraps pg errors so the top-level .message
+ * is just "Failed query: ..." — the real reason lives in err.cause.
+ */
+function formatErrorChain(err: unknown): string {
+  const parts: string[] = [];
+  let cur: unknown = err;
+  let depth = 0;
+  while (cur && depth < 5) {
+    if (cur instanceof Error) {
+      const extras: string[] = [];
+      const anyErr = cur as Error & {
+        code?: string;
+        severity?: string;
+        detail?: string;
+        hint?: string;
+      };
+      if (anyErr.code) extras.push(`code=${anyErr.code}`);
+      if (anyErr.severity) extras.push(`severity=${anyErr.severity}`);
+      if (anyErr.detail) extras.push(`detail=${anyErr.detail}`);
+      const suffix = extras.length ? ` [${extras.join(" ")}]` : "";
+      parts.push(`${cur.name}: ${cur.message}${suffix}`);
+      cur = (cur as { cause?: unknown }).cause;
+    } else {
+      parts.push(String(cur));
+      break;
+    }
+    depth++;
+  }
+  return parts.join("\n  caused by: ");
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -180,7 +213,7 @@ Options:
   --watch             Run in watcher mode: loop continuously checking newest pages
   --full              Full scan: fetch all pages + deactivate stale listings
   --cleanup           Run TTL-based deactivation only (listings not scraped in 14 days)
-  --dedupe            Cluster cross-source duplicates (phone + geo + layout matching)
+  --dedupe            Cluster cross-source duplicates (geo + size + price + transaction_type matching)
   --no-dashboard      Disable the live terminal dashboard (auto-disabled for non-TTY)
   --interval <secs>   Seconds between watcher cycles (default: ${env.WATCHER_INTERVAL_S})
   --help, -h          Show this help message
@@ -715,8 +748,9 @@ async function runSource(
   } catch (err) {
     // Fatal error for this source
     const elapsedMs = Math.round(performance.now() - t0);
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    const errorMsg = formatErrorChain(err);
     log(`Fatal error: ${errorMsg}`);
+    if (err instanceof Error && err.stack) log(err.stack);
     if (dashboard) dashboard.setStatus(source, "error");
 
     if (runId != null && db) {
@@ -1002,21 +1036,19 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // Standalone dedupe mode -- cluster cross-source duplicates (phone + geo + layout)
+  // Standalone dedupe mode -- cluster cross-source duplicates (geo + size + price + transaction_type)
   if (dedupe) {
-    console.log(`${ts()} [runner] Running deduplication (phone + geo + layout clustering)...`);
-    if (!dryRun) {
-      const conn = createDb();
-      try {
-        const { clustered, clusters } = await clusterDuplicates(conn.db);
-        console.log(
-          `${ts()} [runner] Deduplication complete: ${clusters} clusters, ${clustered} listings grouped`,
-        );
-      } finally {
-        await conn.sql.end();
-      }
-    } else {
-      console.log(`${ts()} [runner] DRY RUN -- skipping deduplication`);
+    const label = dryRun ? "dry-run" : "clustering";
+    console.log(`${ts()} [runner] Running deduplication ${label} (geo + size + price + transaction_type)...`);
+    const conn = createDb();
+    try {
+      const { clustered, clusters } = await clusterDuplicates(conn.db, { dryRun });
+      const verb = dryRun ? "would be" : "were";
+      console.log(
+        `${ts()} [runner] Deduplication ${dryRun ? "preview" : "complete"}: ${clusters} clusters ${verb} formed, ${clustered} listings ${verb} grouped`,
+      );
+    } finally {
+      await conn.sql.end();
     }
     process.exit(0);
   }

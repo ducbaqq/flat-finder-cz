@@ -27,20 +27,26 @@ export async function deactivateStale(
 }
 
 /**
- * Cluster duplicate listings across sources using phone + geo + layout matching.
- * Assigns cluster_id + is_canonical — does NOT deactivate anything.
+ * Cluster duplicate listings across sources by geo + size + price + transaction_type.
+ * Assigns cluster_id + is_canonical — does NOT deactivate anything. Listings
+ * without coordinates remain unclustered (see clusterListings for rationale).
+ *
+ * When `dryRun` is true, runs inside a transaction that is rolled back, so the
+ * returned counts reflect what would happen without persisting any changes.
  */
 export async function clusterDuplicates(
   db: Db,
+  opts: { dryRun?: boolean } = {},
 ): Promise<{ clustered: number; clusters: number }> {
   const t = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
-  const result = await clusterListings(db);
+  const result = await clusterListings(db, opts);
+  const prefix = opts.dryRun ? "[dedup dry-run]" : "[dedup]";
   if (result.clusters > 0) {
     console.log(
-      `${t()} [dedup] Clustering complete: ${result.clusters} clusters, ${result.clustered} listings grouped`,
+      `${t()} ${prefix} Clustering ${opts.dryRun ? "preview" : "complete"}: ${result.clusters} clusters, ${result.clustered} listings grouped`,
     );
   } else {
-    console.log(`${t()} [dedup] No duplicate clusters found`);
+    console.log(`${t()} ${prefix} No duplicate clusters found`);
   }
   return result;
 }
