@@ -101,7 +101,6 @@ export const listings = pgTable(
     // ── Deduplication indexes ──
     index("idx_listings_cluster_id").on(table.cluster_id),
     index("idx_listings_canonical").on(table.is_active, table.is_canonical),
-    index("idx_listings_seller_phone").on(table.seller_phone),
   ],
 );
 

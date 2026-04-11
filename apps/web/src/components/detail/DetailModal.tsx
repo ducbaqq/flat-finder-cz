@@ -25,6 +25,7 @@ import {
 import ImageGallery from "./ImageGallery";
 import DetailSpecs from "./DetailSpecs";
 import MiniMap from "./MiniMap";
+import ClusterSiblings from "./ClusterSiblings";
 
 const sourceColors: Record<string, string> = {
   sreality: "bg-sreality text-white",
@@ -203,6 +204,14 @@ export default function DetailModal() {
                         </a>
                       </Button>
                     </>
+                  )}
+
+                  {/* Cross-source cluster siblings — only renders if >1 portal has this listing */}
+                  {listing.cluster_id && (
+                    <ClusterSiblings
+                      listingId={listing.id}
+                      currentSource={listing.source}
+                    />
                   )}
 
                   {/* Mini map */}
