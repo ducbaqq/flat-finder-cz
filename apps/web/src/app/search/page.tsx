@@ -55,17 +55,13 @@ function SearchPageContent() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [listingsWidth, setListingsWidth] = useState(560);
   const contentRef = useRef<HTMLDivElement>(null);
+  const listingsScrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
     const sync = () => setIsDesktop(mq.matches);
     sync();
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
-  }, []);
-  useEffect(() => {
-    setListingsWidth((prev) =>
-      prev === 560 ? Math.round(window.innerWidth * 0.4) : prev,
-    );
   }, []);
 
   const clampListingsWidth = useCallback((raw: number) => {
@@ -74,6 +70,14 @@ function SearchPageContent() {
     const maxW = Math.max(340, rowWidth - mapMin);
     return Math.max(340, Math.min(maxW, raw));
   }, []);
+
+  useEffect(() => {
+    setListingsWidth((prev) =>
+      prev === 560
+        ? clampListingsWidth(Math.round(window.innerWidth * 0.4))
+        : prev,
+    );
+  }, [clampListingsWidth]);
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -141,14 +145,18 @@ function SearchPageContent() {
             <div
               className={cn(
                 "relative flex flex-1 flex-col",
-                showMap && "lg:min-w-[340px] lg:flex-none"
+                showMap &&
+                  "lg:sticky lg:top-[100px] lg:h-[calc(100vh-100px)] lg:min-w-[340px] lg:flex-none"
               )}
               style={
                 showMap && isDesktop ? { width: listingsWidth } : undefined
               }
               data-testid="listings-panel"
             >
-              <div className="@container flex-1 overflow-y-auto p-4">
+              <div
+                ref={listingsScrollRef}
+                className="@container flex-1 overflow-y-auto p-4"
+              >
                 <ListingResults
                   listings={listings}
                   isLoading={isLoading}
@@ -159,6 +167,7 @@ function SearchPageContent() {
                   isError={isError}
                   refetch={refetch}
                   singleColumn={showMap}
+                  scrollRootRef={listingsScrollRef}
                 />
               </div>
               {showMap && (

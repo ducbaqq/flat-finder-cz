@@ -18,6 +18,7 @@ interface ListingResultsProps {
   isError?: boolean;
   refetch?: () => void;
   singleColumn?: boolean;
+  scrollRootRef?: React.RefObject<HTMLElement | null>;
 }
 
 export function ListingResults({
@@ -30,6 +31,7 @@ export function ListingResults({
   isError,
   refetch,
   singleColumn,
+  scrollRootRef,
 }: ListingResultsProps) {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -44,11 +46,14 @@ export function ListingResults({
           fetchNextPage();
         }
       },
-      { rootMargin: "400px 0px" },
+      {
+        root: scrollRootRef?.current ?? null,
+        rootMargin: "400px 0px",
+      },
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [hasNextPage, fetchNextPage, isFetchingNextPage]);
+  }, [hasNextPage, fetchNextPage, isFetchingNextPage, scrollRootRef]);
 
   if (isError) {
     return (

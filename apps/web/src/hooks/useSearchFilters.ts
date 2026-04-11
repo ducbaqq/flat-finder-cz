@@ -1,11 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import {
-  useQueryState,
-  parseAsString,
-  parseAsInteger,
-} from "nuqs";
+import { useQueryState, parseAsString } from "nuqs";
 import { getSearchPreferences, saveSearchPreferences } from "./useSearchPreferences";
 import { useUiStore } from "@/store/ui-store";
 
@@ -77,7 +73,6 @@ export function useSearchFilters() {
     "sort",
     parseAsString.withDefault(defaultSort)
   );
-  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
   const [view, setView] = useQueryState(
     "view",
     parseAsString.withDefault("hybrid")
@@ -141,22 +136,22 @@ export function useSearchFilters() {
 
   const setFilter = (key: string, value: string) => {
     const setters: Record<string, (v: string) => void> = {
-      transaction_type: (v) => { setTransactionType(v || null); setPage(1); },
-      property_type: (v) => { setPropertyType(v || null); setPage(1); },
-      location: (v) => { setLocation(v || null); setPage(1); },
-      price_min: (v) => { setPriceMin(v || null); setPage(1); },
-      price_max: (v) => { setPriceMax(v || null); setPage(1); },
-      size_min: (v) => { setSizeMin(v || null); setPage(1); },
-      size_max: (v) => { setSizeMax(v || null); setPage(1); },
-      layout: (v) => { setLayout(v || null); setPage(1); },
-      condition: (v) => { setCondition(v || null); setPage(1); },
-      construction: (v) => { setConstruction(v || null); setPage(1); },
-      ownership: (v) => { setOwnership(v || null); setPage(1); },
-      furnishing: (v) => { setFurnishing(v || null); setPage(1); },
-      energy_rating: (v) => { setEnergyRating(v || null); setPage(1); },
-      amenities: (v) => { setAmenities(v || null); setPage(1); },
-      source: (v) => { setSource(v || null); setPage(1); },
-      sort: (v) => { setSort(v || defaultSort); setPage(1); },
+      transaction_type: (v) => setTransactionType(v || null),
+      property_type: (v) => setPropertyType(v || null),
+      location: (v) => setLocation(v || null),
+      price_min: (v) => setPriceMin(v || null),
+      price_max: (v) => setPriceMax(v || null),
+      size_min: (v) => setSizeMin(v || null),
+      size_max: (v) => setSizeMax(v || null),
+      layout: (v) => setLayout(v || null),
+      condition: (v) => setCondition(v || null),
+      construction: (v) => setConstruction(v || null),
+      ownership: (v) => setOwnership(v || null),
+      furnishing: (v) => setFurnishing(v || null),
+      energy_rating: (v) => setEnergyRating(v || null),
+      amenities: (v) => setAmenities(v || null),
+      source: (v) => setSource(v || null),
+      sort: (v) => setSort(v || defaultSort),
     };
     setters[key]?.(value);
   };
@@ -178,13 +173,10 @@ export function useSearchFilters() {
     setAmenities(null);
     setSource(null);
     setSort(defaultSort);
-    setPage(1);
   };
 
   return {
     filters,
-    page,
-    setPage,
     view,
     setView,
     setFilter,
