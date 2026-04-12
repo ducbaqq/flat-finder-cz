@@ -76,9 +76,10 @@ const BUILDING_CONDITIONS = [
 ] as const;
 
 const OWNERSHIP_TYPES = [
-  { value: "private", label: "Osobní" },
+  { value: "personal", label: "Osobní" },
   { value: "cooperative", label: "Družstevní" },
-  { value: "municipal", label: "Obecní" },
+  { value: "state", label: "Státní / Obecní" },
+  { value: "other", label: "Ostatní" },
 ] as const;
 
 const FURNISHING_OPTIONS = [

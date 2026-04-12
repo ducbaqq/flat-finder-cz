@@ -199,7 +199,7 @@ export function FilterSidebar({ filters, setFilter }: FilterSidebarProps) {
 
           <AccordionItem value="source" data-testid="filter-source-group">
             <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
-              Zdroj
+              Zdroj inzerátu
             </AccordionTrigger>
             <AccordionContent>
               <SourceFilter
