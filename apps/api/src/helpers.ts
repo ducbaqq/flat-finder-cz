@@ -5,7 +5,7 @@ import type { Listing } from "@flat-finder/types";
  * Convert a DB row from Drizzle into the API response format.
  *
  * - image_urls: already jsonb array from Drizzle, ensure it's an array
- * - amenities: split comma-separated string into array, or empty array if null
+ * - amenities: parse JSON array or comma-separated string into array
  * - additional_params: already jsonb from Drizzle
  * - is_active: already boolean from Drizzle
  */
@@ -36,9 +36,7 @@ export function rowToListing(row: ListingRow): Listing {
     ownership: row.ownership,
     furnishing: row.furnishing,
     energy_rating: row.energy_rating,
-    amenities: row.amenities
-      ? row.amenities.split(",").map((a) => a.trim()).filter(Boolean)
-      : [],
+    amenities: parseAmenities(row.amenities),
     image_urls: Array.isArray(row.image_urls) ? row.image_urls : [],
     thumbnail_url: row.thumbnail_url,
     source_url: row.source_url,
@@ -55,6 +53,25 @@ export function rowToListing(row: ListingRow): Listing {
     cluster_id: row.cluster_id ?? null,
     is_canonical: row.is_canonical ?? true,
   };
+}
+
+/**
+ * Parse amenities from the DB text column. The normalizer stores them as
+ * JSON arrays (e.g. '["balcony","cellar"]'), but older rows or edge cases
+ * may use comma-separated strings. Handle both.
+ */
+function parseAmenities(raw: string | null): string[] {
+  if (!raw) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    } catch {
+      // malformed JSON — fall through to comma split
+    }
+  }
+  return trimmed.split(",").map((a) => a.trim()).filter(Boolean);
 }
 
 /**

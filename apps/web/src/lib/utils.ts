@@ -106,9 +106,10 @@ export const constructionLabels: Record<string, string> = {
 };
 
 export const ownershipLabels: Record<string, string> = {
-  private: "Osobn\u00ed",
-  cooperative: "Dru\u017estevn\u00ed",
-  municipal: "Obecn\u00ed",
+  personal: "Osobní",
+  cooperative: "Družstevní",
+  state: "Státní / Obecní",
+  other: "Ostatní",
 };
 
 export const furnishingLabels: Record<string, string> = {
@@ -118,16 +119,20 @@ export const furnishingLabels: Record<string, string> = {
 };
 
 export const amenityLabels: Record<string, string> = {
-  balcony: "Balk\u00f3n",
-  elevator: "V\u00fdtah",
-  parking: "Parkov\u00e1n\u00ed",
+  balcony: "Balkón",
+  lift: "Výtah",
+  elevator: "Výtah",
+  parking: "Parkování",
   cellar: "Sklep",
   garden: "Zahrada",
   terrace: "Terasa",
-  loggia: "Lod\u017eie",
-  garage: "Gar\u00e1\u017e",
-  dishwasher: "My\u010dka",
-  washing_machine: "Pra\u010dka",
+  loggia: "Lodžie",
+  garage: "Garáž",
+  barrier_free: "Bezbariérový",
+  pool: "Bazén",
+  air_conditioning: "Klimatizace",
+  dishwasher: "Myčka",
+  washing_machine: "Pračka",
 };
 
 export interface FilterSummaryTag {
