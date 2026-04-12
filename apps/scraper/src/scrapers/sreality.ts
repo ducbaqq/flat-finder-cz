@@ -308,7 +308,8 @@ export class SrealityScraper extends BaseScraper {
     const transCz = TRANSACTION_CZ[transactionType] ?? transactionType;
     const propCz = PROPERTY_CZ[propertyType] ?? propertyType;
     const subSlug = SUB_SLUGS[catSub] ?? "x";
-    const sourceUrl = `https://www.sreality.cz/detail/${transCz}/${propCz}/${subSlug}/x/${hashId}`;
+    const localitySlug = seo.locality || "x";
+    const sourceUrl = `https://www.sreality.cz/detail/${transCz}/${propCz}/${subSlug}/${localitySlug}/${hashId}`;
 
     const now = new Date().toISOString();
     const { city, district } = extractCityAndDistrict(locality);
@@ -567,6 +568,7 @@ interface SrealityEstate {
     category_main_cb?: number;
     category_sub_cb?: number;
     category_type_cb?: number;
+    locality?: string;
   };
   category_main_cb?: number;
   category_type_cb?: number;
