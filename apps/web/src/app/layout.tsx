@@ -60,7 +60,6 @@ export const metadata: Metadata = {
   },
 };
 
-// Replace with your actual GA4 Measurement ID when ready
 const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 
 export default function RootLayout({
@@ -86,7 +85,7 @@ export default function RootLayout({
           </ThemeProvider>
         </NuqsAdapter>
 
-        {/* Analytics: Google Analytics 4 — set NEXT_PUBLIC_GA_MEASUREMENT_ID env var to enable */}
+        {/* Google Analytics 4 — set NEXT_PUBLIC_GA_MEASUREMENT_ID in .env to enable */}
         {GA_MEASUREMENT_ID && (
           <>
             <Script
