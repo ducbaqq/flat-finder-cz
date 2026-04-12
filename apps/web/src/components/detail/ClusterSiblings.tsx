@@ -9,11 +9,9 @@ import { Separator } from "@/components/ui/separator";
 
 interface Props {
   listingId: number;
-  /** The listing currently displayed — used to visually mark "you are here". */
-  currentSource: string;
 }
 
-export default function ClusterSiblings({ listingId, currentSource }: Props) {
+export default function ClusterSiblings({ listingId }: Props) {
   const [siblings, setSiblings] = useState<ClusterSibling[] | null>(null);
 
   useEffect(() => {
@@ -56,7 +54,6 @@ export default function ClusterSiblings({ listingId, currentSource }: Props) {
             const url = urlFor(s);
             const isCheapest =
               pricesVary && s.price != null && s.price === priceMin;
-            const isCurrent = s.source === currentSource;
             return (
               <li
                 key={s.id}
@@ -70,17 +67,12 @@ export default function ClusterSiblings({ listingId, currentSource }: Props) {
                       nejlevnější
                     </span>
                   )}
-                  {isCurrent && (
-                    <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                      zobrazeno
-                    </span>
-                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-semibold">
                     {formatPrice(s.price, s.currency ?? undefined)}
                   </span>
-                  {url && !isCurrent && (
+                  {url && (
                     <a
                       href={url}
                       target="_blank"

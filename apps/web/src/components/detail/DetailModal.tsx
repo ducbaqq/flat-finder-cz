@@ -3,35 +3,23 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, MapPin } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { Listing } from "@flat-finder/types";
+import type { Listing, ClusterSibling, ClusterSiblingsResponse } from "@flat-finder/types";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUiStore } from "@/store/ui-store";
 import { apiGet } from "@/lib/api-client";
-import {
-  formatPrice,
-  buildSourceUrl,
-  propertyTypeLabels,
-} from "@/lib/utils";
+import { formatPrice, buildSourceUrl } from "@/lib/utils";
 import ImageGallery from "./ImageGallery";
 import DetailSpecs from "./DetailSpecs";
 import MiniMap from "./MiniMap";
 import ClusterSiblings from "./ClusterSiblings";
-
-const sourceColors: Record<string, string> = {
-  sreality: "bg-sreality text-white",
-  bezrealitky: "bg-bezrealitky text-white",
-  ulovdomov: "bg-ulovdomov text-white",
-};
 
 export default function DetailModal() {
   const detailModalOpen = useUiStore((s) => s.detailModalOpen);
@@ -41,6 +29,7 @@ export default function DetailModal() {
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [siblings, setSiblings] = useState<ClusterSibling[]>([]);
 
   // Open modal if ?listing=ID is in the URL on mount
   useEffect(() => {
@@ -56,19 +45,25 @@ export default function DetailModal() {
     setLoading(true);
     setError(false);
     setListing(null);
+    setSiblings([]);
 
     apiGet<Listing>(`/listings/${selectedListingId}`)
       .then((data) => {
         setListing(data);
         setLoading(false);
+        if (data.cluster_id) {
+          apiGet<ClusterSiblingsResponse>(
+            `/listings/${selectedListingId}/cluster-siblings`,
+          )
+            .then((r) => setSiblings(r.siblings))
+            .catch(() => {});
+        }
       })
       .catch(() => {
         setError(true);
         setLoading(false);
       });
   }, [selectedListingId]);
-
-  const sourceUrl = listing ? buildSourceUrl(listing) : null;
 
   return (
     <Dialog open={detailModalOpen} onOpenChange={(open) => !open && closeDetail()}>
@@ -121,22 +116,8 @@ export default function DetailModal() {
                 <ImageGallery images={listing.image_urls || []} />
 
                 <div className="space-y-5 p-5 sm:p-6">
-                  {/* Badges */}
-                  <div className="flex flex-wrap gap-1.5" data-testid="listing-detail-badges">
-                    <Badge
-                      className={
-                        sourceColors[listing.source] ||
-                        "bg-primary text-primary-foreground"
-                      }
-                      data-testid="listing-detail-source"
-                    >
-                      {listing.source}.cz
-                    </Badge>
-                    <Badge variant="secondary" data-testid="listing-detail-property-type">
-                      {propertyTypeLabels[listing.property_type] ||
-                        listing.property_type}
-                    </Badge>
-                  </div>
+                  {/* Source pills */}
+                  <SourcePills listing={listing} siblings={siblings} />
 
                   {/* Title + Price */}
                   <div>
@@ -184,34 +165,9 @@ export default function DetailModal() {
                     </>
                   )}
 
-                  {/* Source link */}
-                  {sourceUrl && (
-                    <>
-                      <Separator className="bg-divider" />
-                      <Button
-                        className="w-full rounded-lg bg-[var(--terracotta)] text-white hover:bg-[var(--terracotta)]/90"
-                        size="lg"
-                        asChild
-                        data-testid="listing-detail-source-link"
-                      >
-                        <a
-                          href={sourceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <ExternalLink className="mr-2 h-4 w-4" />
-                          Zobrazit na {listing.source}.cz
-                        </a>
-                      </Button>
-                    </>
-                  )}
-
                   {/* Cross-source cluster siblings — only renders if >1 portal has this listing */}
                   {listing.cluster_id && (
-                    <ClusterSiblings
-                      listingId={listing.id}
-                      currentSource={listing.source}
-                    />
+                    <ClusterSiblings listingId={listing.id} />
                   )}
 
                   {/* Mini map */}
@@ -226,4 +182,66 @@ export default function DetailModal() {
       </DialogContent>
     </Dialog>
   );
+}
+
+function SourcePills({
+  listing,
+  siblings,
+}: {
+  listing: Listing;
+  siblings: ClusterSibling[];
+}) {
+  // Build list of sources to show. If siblings loaded and contain >1 entry,
+  // use them (each has its own source_url). Otherwise fall back to just the
+  // current listing as the sole source.
+  const sources =
+    siblings.length > 1
+      ? siblings.map((s) => ({
+          source: s.source,
+          url: siblingUrl(s),
+        }))
+      : [{ source: listing.source, url: buildSourceUrl(listing) }];
+
+  return (
+    <div
+      className="flex flex-wrap gap-1.5"
+      data-testid="listing-detail-sources"
+    >
+      {sources.map(({ source, url }) =>
+        url ? (
+          <a
+            key={source}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+            data-testid={`listing-source-pill-${source}`}
+          >
+            {source}.cz
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        ) : (
+          <span
+            key={source}
+            className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground"
+            data-testid={`listing-source-pill-${source}`}
+          >
+            {source}.cz
+          </span>
+        ),
+      )}
+    </div>
+  );
+}
+
+function siblingUrl(s: ClusterSibling): string | null {
+  const asListing = {
+    source: s.source,
+    external_id: s.external_id,
+    source_url: s.source_url,
+    property_type: s.property_type,
+    transaction_type: s.transaction_type,
+    layout: s.layout,
+  } as unknown as Listing;
+  return buildSourceUrl(asListing);
 }

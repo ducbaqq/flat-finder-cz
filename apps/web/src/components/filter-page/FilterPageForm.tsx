@@ -65,14 +65,15 @@ const LAYOUTS = [
 ] as const;
 
 const BUILDING_CONDITIONS = [
+  { value: "new", label: "Novostavba" },
   { value: "very_good", label: "Velmi dobrý" },
   { value: "good", label: "Dobrý" },
-  { value: "bad", label: "Špatný" },
+  { value: "after_reconstruction", label: "Po rekonstrukci" },
+  { value: "before_reconstruction", label: "Před rekonstrukcí" },
   { value: "under_construction", label: "Ve výstavbě" },
-  { value: "new_build", label: "Novostavba" },
-  { value: "for_demolition", label: "K demolici" },
-  { value: "before_renovation", label: "Před rekonstrukcí" },
-  { value: "after_renovation", label: "Po rekonstrukci" },
+  { value: "project", label: "Projekt" },
+  { value: "poor", label: "Špatný" },
+  { value: "demolition", label: "K demolici" },
 ] as const;
 
 const OWNERSHIP_TYPES = [
@@ -89,8 +90,14 @@ const FURNISHING_OPTIONS = [
 ] as const;
 
 const BUILDING_TYPES = [
-  { value: "panel", label: "Panelová" },
   { value: "brick", label: "Cihlová" },
+  { value: "panel", label: "Panelová" },
+  { value: "mixed", label: "Smíšená" },
+  { value: "skeleton", label: "Skeletová" },
+  { value: "wood", label: "Dřevěná" },
+  { value: "prefab", label: "Montovaná" },
+  { value: "stone", label: "Kamenná" },
+  { value: "modular", label: "Modulární" },
   { value: "other", label: "Ostatní" },
 ] as const;
 

@@ -84,25 +84,27 @@ export const propertyTypeLabels: Record<string, string> = {
 };
 
 export const conditionLabels: Record<string, string> = {
-  very_good: "Velmi dobr\u00fd",
-  good: "Dobr\u00fd",
-  bad: "\u0160patn\u00fd",
-  new_build: "Novostavba",
-  after_renovation: "Po rekonstrukci",
-  before_renovation: "P\u0159ed rekonstrukc\u00ed",
-  under_construction: "Ve v\u00fdstavb\u011b",
+  new: "Novostavba",
+  very_good: "Velmi dobrý",
+  good: "Dobrý",
+  after_reconstruction: "Po rekonstrukci",
+  before_reconstruction: "Před rekonstrukcí",
+  under_construction: "Ve výstavbě",
   project: "Projekt",
-  for_demolition: "K demolici",
+  poor: "Špatný",
+  demolition: "K demolici",
 };
 
 export const constructionLabels: Record<string, string> = {
-  brick: "Cihlov\u00e1",
-  panel: "Panelov\u00e1",
-  wooden: "D\u0159ev\u011bn\u00e1",
-  stone: "Kamenn\u00e1",
-  mixed: "Sm\u00ed\u0161en\u00e1",
-  prefab: "Montovan\u00e1",
-  skeletal: "Skeletov\u00e1",
+  brick: "Cihlová",
+  panel: "Panelová",
+  mixed: "Smíšená",
+  skeleton: "Skeletová",
+  other: "Ostatní",
+  wood: "Dřevěná",
+  prefab: "Montovaná",
+  stone: "Kamenná",
+  modular: "Modulární",
 };
 
 export const ownershipLabels: Record<string, string> = {

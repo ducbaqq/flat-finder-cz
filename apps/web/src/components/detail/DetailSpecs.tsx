@@ -66,7 +66,7 @@ export default function DetailSpecs({ listing }: { listing: Listing }) {
       value: furnishingLabels[listing.furnishing] || listing.furnishing,
     });
   if (listing.energy_rating)
-    specs.push({ icon: Zap, label: "Energetická třída (PENB)", value: listing.energy_rating });
+    specs.push({ icon: Zap, label: "Energetická třída", value: listing.energy_rating });
 
   return (
     <div className="space-y-4" data-testid="listing-detail-specs">
