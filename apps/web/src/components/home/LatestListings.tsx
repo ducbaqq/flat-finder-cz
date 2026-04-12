@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
@@ -55,8 +55,23 @@ function buildSubtitle(prefs: SearchPreferences): string {
 export function LatestListings() {
   const { ref, inView } = useInView({ triggerOnce: true, threshold: 0.1 });
 
-  const preferences = useMemo(() => getSearchPreferences(), []);
-  const hasPreferences = preferences !== null;
+  // Read preferences after mount to avoid SSR/client hydration mismatch —
+  // localStorage is only available on the client.
+  const [preferences, setPreferences] = useState<SearchPreferences | null>(
+    null,
+  );
+  useEffect(() => {
+    setPreferences(getSearchPreferences());
+  }, []);
+
+  // Only treat the saved record as "preferences" for UI purposes when it
+  // contains at least one filter field. A saved view alone shouldn't flip
+  // the homepage copy to "Your last search".
+  const hasPreferences =
+    preferences !== null &&
+    (!!preferences.property_type ||
+      !!preferences.transaction_type ||
+      !!preferences.location);
 
   const { data, isLoading } = useQuery<ListingsResponse>({
     queryKey: [

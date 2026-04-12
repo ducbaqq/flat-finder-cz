@@ -1,11 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import {
-  useQueryState,
-  parseAsString,
-  parseAsInteger,
-} from "nuqs";
+import { useQueryState, parseAsString } from "nuqs";
 import { getSearchPreferences, saveSearchPreferences } from "./useSearchPreferences";
 import { useUiStore } from "@/store/ui-store";
 
@@ -77,7 +73,6 @@ export function useSearchFilters() {
     "sort",
     parseAsString.withDefault(defaultSort)
   );
-  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
   const [view, setView] = useQueryState(
     "view",
     parseAsString.withDefault("hybrid")
@@ -101,31 +96,44 @@ export function useSearchFilters() {
     sort,
   };
 
-  // Restore saved preferences on mount when URL has no filters
+  // Restore saved preferences on mount. Filter restoration is skipped when
+  // the URL already has explicit filter params; view restoration is skipped
+  // only when the URL has an explicit ?view= param (so users with shared
+  // filter links still get their preferred view).
   const restoredRef = useRef(false);
   const setPendingBbox = useUiStore((s) => s.setPendingBbox);
   useEffect(() => {
     if (restoredRef.current) return;
     restoredRef.current = true;
 
-    // Only restore if URL has no filter params
     const params = new URLSearchParams(window.location.search);
-    const hasFilters = params.has("property_type") || params.has("transaction_type") || params.has("location");
-    if (hasFilters) return;
+    const hasFilters =
+      params.has("property_type") ||
+      params.has("transaction_type") ||
+      params.has("location");
+    const hasView = params.has("view");
 
     const prefs = getSearchPreferences();
 
-    // Apply saved preferences, or sensible defaults for cold visitors
-    const pType = prefs?.property_type || "flat";
-    const tType = prefs?.transaction_type || "rent";
+    if (!hasFilters) {
+      // Apply saved preferences, or sensible defaults for cold visitors
+      const pType = prefs?.property_type || "flat";
+      const tType = prefs?.transaction_type || "rent";
 
-    setPropertyType(pType);
-    setTransactionType(tType);
-    if (prefs?.location) setLocation(prefs.location);
-    if (prefs?.bbox) setPendingBbox(prefs.bbox);
+      setPropertyType(pType);
+      setTransactionType(tType);
+      if (prefs?.location) setLocation(prefs.location);
+      if (prefs?.bbox) setPendingBbox(prefs.bbox);
+    }
+
+    if (!hasView && prefs?.view) {
+      setView(prefs.view);
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist the three preference fields to localStorage whenever they change
+  // Persist preference fields to localStorage whenever they change.
+  // View is persisted independently so users get their preferred layout
+  // even before any filter has been set.
   useEffect(() => {
     if (transactionType || propertyType || location) {
       saveSearchPreferences({
@@ -139,24 +147,31 @@ export function useSearchFilters() {
     }
   }, [transactionType, propertyType, location, mapBounds]);
 
+  useEffect(() => {
+    if (!restoredRef.current) return;
+    if (view === "list" || view === "map" || view === "hybrid") {
+      saveSearchPreferences({ view });
+    }
+  }, [view]);
+
   const setFilter = (key: string, value: string) => {
     const setters: Record<string, (v: string) => void> = {
-      transaction_type: (v) => { setTransactionType(v || null); setPage(1); },
-      property_type: (v) => { setPropertyType(v || null); setPage(1); },
-      location: (v) => { setLocation(v || null); setPage(1); },
-      price_min: (v) => { setPriceMin(v || null); setPage(1); },
-      price_max: (v) => { setPriceMax(v || null); setPage(1); },
-      size_min: (v) => { setSizeMin(v || null); setPage(1); },
-      size_max: (v) => { setSizeMax(v || null); setPage(1); },
-      layout: (v) => { setLayout(v || null); setPage(1); },
-      condition: (v) => { setCondition(v || null); setPage(1); },
-      construction: (v) => { setConstruction(v || null); setPage(1); },
-      ownership: (v) => { setOwnership(v || null); setPage(1); },
-      furnishing: (v) => { setFurnishing(v || null); setPage(1); },
-      energy_rating: (v) => { setEnergyRating(v || null); setPage(1); },
-      amenities: (v) => { setAmenities(v || null); setPage(1); },
-      source: (v) => { setSource(v || null); setPage(1); },
-      sort: (v) => { setSort(v || defaultSort); setPage(1); },
+      transaction_type: (v) => setTransactionType(v || null),
+      property_type: (v) => setPropertyType(v || null),
+      location: (v) => setLocation(v || null),
+      price_min: (v) => setPriceMin(v || null),
+      price_max: (v) => setPriceMax(v || null),
+      size_min: (v) => setSizeMin(v || null),
+      size_max: (v) => setSizeMax(v || null),
+      layout: (v) => setLayout(v || null),
+      condition: (v) => setCondition(v || null),
+      construction: (v) => setConstruction(v || null),
+      ownership: (v) => setOwnership(v || null),
+      furnishing: (v) => setFurnishing(v || null),
+      energy_rating: (v) => setEnergyRating(v || null),
+      amenities: (v) => setAmenities(v || null),
+      source: (v) => setSource(v || null),
+      sort: (v) => setSort(v || defaultSort),
     };
     setters[key]?.(value);
   };
@@ -178,13 +193,10 @@ export function useSearchFilters() {
     setAmenities(null);
     setSource(null);
     setSort(defaultSort);
-    setPage(1);
   };
 
   return {
     filters,
-    page,
-    setPage,
     view,
     setView,
     setFilter,

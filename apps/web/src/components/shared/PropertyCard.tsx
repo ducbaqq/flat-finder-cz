@@ -26,7 +26,7 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{
         duration: 0.4,
-        delay: index * 0.04,
+        delay: index < 20 ? index * 0.04 : 0,
         ease: [0.16, 1, 0.3, 1],
       }}
       className="group cursor-pointer"
