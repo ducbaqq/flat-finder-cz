@@ -19,6 +19,46 @@ export interface PageResult {
 }
 
 /**
+ * Run up to `parallelism` async generators concurrently, yielding results
+ * from a shared queue as soon as any producer emits. No chunk buffering.
+ *
+ * Safety: the returned generator only terminates after every producer has
+ * finished pushing. If the consumer breaks out early, in-flight producers
+ * run to completion harmlessly (no cancellation).
+ */
+export async function* streamInterleave<T>(
+  items: T[],
+  parallelism: number,
+  fn: (item: T) => AsyncGenerator<PageResult>,
+): AsyncGenerator<PageResult> {
+  const queue: PageResult[] = [];
+  let resolve: (() => void) | null = null;
+
+  const catLimit = pLimit(parallelism);
+
+  const producers = items.map((item) =>
+    catLimit(async () => {
+      for await (const page of fn(item)) {
+        queue.push(page);
+        resolve?.();
+      }
+    }),
+  );
+
+  const allDone = Promise.all(producers);
+  let finished = false;
+  allDone.finally(() => { finished = true; resolve?.(); });
+
+  while (!finished || queue.length > 0) {
+    if (queue.length > 0) {
+      yield queue.shift()!;
+    } else {
+      await new Promise<void>((r) => { resolve = r; });
+    }
+  }
+}
+
+/**
  * Abstract base class for all scrapers.
  *
  * Provides:

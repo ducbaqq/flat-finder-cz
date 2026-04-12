@@ -1,7 +1,7 @@
 import { parse as parseHtml, type HTMLElement } from "node-html-parser";
 import pLimit from "p-limit";
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
-import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
+import { BaseScraper, streamInterleave, type ScraperOptions, type PageResult } from "../base-scraper.js";
 import { normalizeAmenities } from "../amenity-normalizer.js";
 
 // ---------------------------------------------------------------------------
@@ -297,34 +297,19 @@ export class CeskeRealityScraper extends BaseScraper {
       return;
     }
 
-    // Parallel categories
-    const chunks: (typeof CATEGORIES)[] = [];
-    for (let i = 0; i < CATEGORIES.length; i += this.categoryParallelism) {
-      chunks.push(CATEGORIES.slice(i, i + this.categoryParallelism));
-    }
-
-    for (const chunk of chunks) {
-      const allResults: PageResult[][] = await Promise.all(
-        chunk.map(async ([urlPath, propertyType, transactionType]) => {
-          const catName = `${transactionType}/${propertyType}`;
-          const pages: PageResult[] = [];
-          try {
-            for await (const page of this.fetchCategoryPages(urlPath, propertyType, transactionType, catName)) {
-              pages.push(page);
-            }
-          } catch (err) {
-            this.log(`Error scraping ${catName}: ${err}`);
-          }
-          return pages;
-        }),
-      );
-
-      for (const pages of allResults) {
-        for (const page of pages) {
-          yield page;
+    const self = this;
+    yield* streamInterleave(
+      [...CATEGORIES],
+      this.categoryParallelism,
+      async function* ([urlPath, propertyType, transactionType]) {
+        const catName = `${transactionType}/${propertyType}`;
+        try {
+          yield* self.fetchCategoryPages(urlPath, propertyType, transactionType, catName);
+        } catch (err) {
+          self.log(`Error scraping ${catName}: ${err}`);
         }
-      }
-    }
+      },
+    );
   }
 
   private async *fetchCategoryPages(
