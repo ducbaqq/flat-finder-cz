@@ -31,6 +31,14 @@ export interface ScraperResult {
   source_url: string | null;
   listed_at: string | null;
   scraped_at: string;
+  /**
+   * Set by the scraper runner (not individual scrapers) to "now" iff a
+   * detail-page enrichment run actually populated at least one field.
+   * Listings where enrichment silently failed stay null → the skip-gate
+   * (findRecentlyEnrichedIds) won't match them, so they're re-tried on
+   * the next cycle instead of being pinned by scraped_at for 24h.
+   */
+  enriched_at?: string | null;
   is_active: boolean;
   deactivated_at: string | null;
   seller_name: string | null;

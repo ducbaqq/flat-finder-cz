@@ -22,7 +22,7 @@ import {
   createDb,
   upsertListing,
   findExistingExternalIds,
-  findRecentlyScrapedIds,
+  findRecentlyEnrichedIds,
   createScraperRun,
   finishScraperRun,
   type Db,
@@ -436,6 +436,7 @@ function toNewListing(result: ScraperResult): NewListing {
     source_url: result.source_url,
     listed_at: result.listed_at,
     scraped_at: result.scraped_at,
+    enriched_at: result.enriched_at ?? null,
     is_active: result.is_active,
     deactivated_at: result.deactivated_at,
     seller_name: result.seller_name,
@@ -449,6 +450,40 @@ function toNewListing(result: ScraperResult): NewListing {
 // ---------------------------------------------------------------------------
 // Upsert helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Stamp `enriched_at = now` on each listing in the batch whose detail-page
+ * enrichment actually populated something. Listings whose per-item enrich
+ * silently failed (scrapers catch the error, leaving every detail field
+ * null) stay with enriched_at = null — so findRecentlyEnrichedIds won't
+ * match them on the next watch cycle, and they're automatically re-tried.
+ *
+ * Heuristic: "enrichment succeeded" = at least one of the detail-only
+ * fields is non-null / non-empty. A listing with a genuinely empty detail
+ * page on the portal (no description, no seller, no params, one image) will
+ * fail this check forever; that's an accepted trade-off — retries are cheap
+ * at incremental/watch volumes, and false positives on the OTHER side (marking
+ * a failed enrich as done) are what we're trying to fix.
+ */
+function stampEnrichedAt(batch: ScraperResult[]): void {
+  const now = new Date().toISOString();
+  for (const l of batch) {
+    if (wasEnriched(l)) l.enriched_at = now;
+  }
+}
+
+function wasEnriched(l: ScraperResult): boolean {
+  if (l.description) return true;
+  if (l.seller_name || l.seller_phone || l.seller_email) return true;
+  if (l.floor !== null) return true;
+  if (l.energy_rating) return true;
+  if (l.condition || l.construction || l.furnishing || l.ownership) return true;
+  if (l.additional_params && l.additional_params !== "{}" && l.additional_params !== "null") return true;
+  try {
+    if (Array.isArray(JSON.parse(l.image_urls)) && JSON.parse(l.image_urls).length > 1) return true;
+  } catch { /* ignore */ }
+  return false;
+}
 
 async function upsertBatch(
   db: Db,
@@ -563,6 +598,7 @@ async function runSource(
           await scraper.enrichListings(newListings, {
             concurrency: opts.watcherDetailConcurrency,
           });
+          stampEnrichedAt(newListings);
           if (dashboard) dashboard.setStatus(source, "scanning");
         }
 
@@ -604,11 +640,11 @@ async function runSource(
           const skipHours = (scraper as any).skipEnrichmentHours;
           if (skipHours && skipHours > 0) {
             const externalIds = page.listings.map((l) => l.external_id);
-            const recentlyScraped = await findRecentlyScrapedIds(db, externalIds, skipHours);
-            if (recentlyScraped.size > 0) {
-              toEnrich = page.listings.filter((l) => !recentlyScraped.has(l.external_id));
+            const recentlyEnriched = await findRecentlyEnrichedIds(db, externalIds, skipHours);
+            if (recentlyEnriched.size > 0) {
+              toEnrich = page.listings.filter((l) => !recentlyEnriched.has(l.external_id));
               if (toEnrich.length < page.listings.length) {
-                log(`  Skipping enrichment for ${page.listings.length - toEnrich.length} recently-scraped listings`);
+                log(`  Skipping enrichment for ${page.listings.length - toEnrich.length} recently-enriched listings`);
               }
             }
           }
@@ -616,6 +652,7 @@ async function runSource(
           if (toEnrich.length > 0) {
             if (dashboard) dashboard.setStatus(source, "enriching");
             await scraper.enrichListings(toEnrich);
+            stampEnrichedAt(toEnrich);
             if (dashboard) dashboard.setStatus(source, "scanning");
           }
         }
@@ -698,6 +735,7 @@ async function runSource(
         if (scraper.hasDetailPhase && newListings.length > 0) {
           if (dashboard) dashboard.setStatus(source, "enriching");
           await scraper.enrichListings(newListings);
+          stampEnrichedAt(newListings);
           if (dashboard) dashboard.setStatus(source, "scanning");
         }
 

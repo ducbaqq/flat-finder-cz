@@ -44,6 +44,7 @@ export const listings = pgTable(
     source_url: text("source_url"),
     listed_at: timestamp("listed_at", { mode: "string" }),
     scraped_at: timestamp("scraped_at", { mode: "string" }).defaultNow(),
+    enriched_at: timestamp("enriched_at", { mode: "string" }),
     created_at: timestamp("created_at", { mode: "string" }).defaultNow(),
     is_active: boolean("is_active").default(true),
     deactivated_at: timestamp("deactivated_at", { mode: "string" }),

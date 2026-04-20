@@ -267,6 +267,32 @@ export async function findRecentlyScrapedIds(
 }
 
 /**
+ * Return external IDs whose *detail enrichment* succeeded within the last
+ * `hours` hours. Parallels findRecentlyScrapedIds but gates on enriched_at
+ * — so listings where enrichment silently failed (null enriched_at) always
+ * fall through and get re-tried on the next cycle, regardless of how
+ * recently we sighted them on the list page.
+ */
+export async function findRecentlyEnrichedIds(
+  db: Db,
+  externalIds: string[],
+  hours: number,
+): Promise<Set<string>> {
+  if (externalIds.length === 0 || hours <= 0) return new Set();
+  const cutoff = new Date(Date.now() - hours * 3600_000).toISOString();
+  const rows = await db
+    .select({ external_id: listings.external_id })
+    .from(listings)
+    .where(
+      and(
+        inArray(listings.external_id, externalIds),
+        gte(listings.enriched_at, cutoff),
+      ),
+    );
+  return new Set(rows.map((r) => r.external_id));
+}
+
+/**
  * SCR-09: TTL-based deactivation.
  * Deactivates active listings whose scraped_at is older than `ttlDays` days.
  * This catches stale listings that accumulate when running in incremental/watch mode.
