@@ -415,6 +415,131 @@ async function runClusteringOps(
 }
 
 /**
+ * Incremental "smart-probe" dedup — cluster new active listings against
+ * existing clusters + each other without touching rows that are already
+ * clustered.
+ *
+ * For every active listing with cluster_id IS NULL that has geo + size +
+ * price, compute its prospective cluster_hash (same formula as
+ * clusterListings). Then two outcomes per candidate:
+ *
+ *   1. Another active row already holds this hash → candidate joins that
+ *      cluster, is_canonical stays false (the existing canonical is not
+ *      touched).
+ *   2. Multiple candidates share the hash and no existing cluster uses
+ *      it → they form a new cluster. MIN(id) becomes canonical.
+ *
+ * Candidates whose hash matches nothing stay cluster_id IS NULL — eligible
+ * to cluster on any future call.
+ *
+ * Statement timeout of 90s protects the watch loop from pathological
+ * slowdowns; the pass aborts cleanly rather than holding locks past the
+ * sleep interval.
+ *
+ * Designed to run at the end of every watch-mode scraper cycle. Does NOT
+ * replace clusterListings — that still runs daily via --dedupe cron to
+ * reset drifted clusters, recompute canonicals, and catch price-change
+ * drift on already-clustered rows.
+ */
+export async function clusterNewListings(
+  db: Db,
+  opts: { dryRun?: boolean } = {},
+): Promise<{ clustered: number; clusters: number; joined_existing: number }> {
+  let result = { clustered: 0, clusters: 0, joined_existing: 0 };
+  try {
+    await db.transaction(async (tx) => {
+      result = await runIncrementalClusteringOps(tx as unknown as Db);
+      if (opts.dryRun) throw new DryRunRollback();
+    });
+  } catch (err) {
+    if (!(err instanceof DryRunRollback)) throw err;
+  }
+  return result;
+}
+
+async function runIncrementalClusteringOps(
+  executor: Db,
+): Promise<{ clustered: number; clusters: number; joined_existing: number }> {
+  // 90s safety net — the watch loop sleeps for ~300s; we never want this
+  // pass to hold locks past that. If the candidate pool ever grows large
+  // enough to exceed 90s, that's the signal to introduce match_hash.
+  await executor.execute(sql`SET LOCAL statement_timeout = '90s'`);
+  // Match clusterListings for sort-in-memory headroom; the candidate pool
+  // can reach six figures between daily full rebuilds.
+  await executor.execute(sql`SET LOCAL work_mem = '256MB'`);
+
+  const rows = (await executor.execute<{
+    id: number;
+    cluster_id: string;
+    is_canonical: boolean;
+    existing_cluster: boolean;
+  }>(sql`
+    WITH candidate_hashes AS (
+      SELECT
+        id,
+        md5(
+          'geo|' || transaction_type || '|' ||
+          ROUND(latitude::numeric, 4)::text || '|' ||
+          ROUND(longitude::numeric, 4)::text || '|' ||
+          ROUND(size_m2::numeric, 2)::text || '|' ||
+          ROUND(price::numeric, 0)::text
+        ) AS prospective_hash
+      FROM listings
+      WHERE is_active = true
+        AND cluster_id IS NULL
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        AND size_m2 IS NOT NULL AND price IS NOT NULL
+    ),
+    resolved AS (
+      SELECT
+        ch.id,
+        ch.prospective_hash,
+        EXISTS (
+          SELECT 1 FROM listings l
+          WHERE l.cluster_id = ch.prospective_hash
+            AND l.is_active = true
+        ) AS existing_cluster,
+        COUNT(*) OVER (PARTITION BY ch.prospective_hash) AS hash_peers,
+        MIN(ch.id) OVER (PARTITION BY ch.prospective_hash) AS new_canonical_id
+      FROM candidate_hashes ch
+    ),
+    assignments AS (
+      SELECT
+        id,
+        prospective_hash,
+        existing_cluster,
+        CASE
+          WHEN existing_cluster THEN false
+          ELSE (id = new_canonical_id)
+        END AS new_is_canonical
+      FROM resolved
+      WHERE existing_cluster OR hash_peers > 1
+    )
+    UPDATE listings l
+    SET
+      cluster_id   = a.prospective_hash,
+      is_canonical = a.new_is_canonical
+    FROM assignments a
+    WHERE l.id = a.id
+    RETURNING l.id, l.cluster_id, l.is_canonical, a.existing_cluster
+  `)) as Array<{
+    id: number;
+    cluster_id: string;
+    is_canonical: boolean;
+    existing_cluster: boolean;
+  }>;
+
+  const clusters = new Set(rows.map((r) => r.cluster_id)).size;
+  const joined_existing = rows.filter((r) => r.existing_cluster).length;
+
+  return {
+    clustered: rows.length,
+    clusters,
+    joined_existing,
+  };
+}
+
+/**
  * For a given listing, return one row per source in the same cluster — the
  * most recently scraped row for each portal. Used by the detail page
  * "Available on N portals" panel.
