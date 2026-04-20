@@ -69,4 +69,21 @@ test.describe("clusterNewListings", () => {
       joined_existing: 2,
     });
   });
+
+  test("dry-run rolls back via sentinel but still returns counts", async () => {
+    const returningRows = [
+      { id: 1, cluster_id: "h1", is_canonical: true, existing_cluster: false },
+      { id: 2, cluster_id: "h1", is_canonical: false, existing_cluster: false },
+    ];
+
+    const { db } = makeMockDb([
+      [], // SET LOCAL statement_timeout
+      [], // SET LOCAL work_mem
+      returningRows,
+    ]);
+
+    const result = await clusterNewListings(db, { dryRun: true });
+
+    expect(result).toEqual({ clustered: 2, clusters: 1, joined_existing: 0 });
+  });
 });
