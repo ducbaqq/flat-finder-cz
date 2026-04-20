@@ -55,7 +55,7 @@ test.describe("clusterNewListings", () => {
       { id: 203, cluster_id: "new-hash", is_canonical: false, existing_cluster: false },
     ];
 
-    const { db } = makeMockDb([
+    const { db, calls } = makeMockDb([
       [], // SET LOCAL statement_timeout
       [], // SET LOCAL work_mem
       returningRows,
@@ -68,6 +68,7 @@ test.describe("clusterNewListings", () => {
       clusters: 2,
       joined_existing: 2,
     });
+    expect(calls.executes).toHaveLength(PRELUDE_LENGTH + 1);
   });
 
   test("dry-run rolls back via sentinel but still returns counts", async () => {
@@ -76,7 +77,7 @@ test.describe("clusterNewListings", () => {
       { id: 2, cluster_id: "h1", is_canonical: false, existing_cluster: false },
     ];
 
-    const { db } = makeMockDb([
+    const { db, calls } = makeMockDb([
       [], // SET LOCAL statement_timeout
       [], // SET LOCAL work_mem
       returningRows,
@@ -85,5 +86,6 @@ test.describe("clusterNewListings", () => {
     const result = await clusterNewListings(db, { dryRun: true });
 
     expect(result).toEqual({ clustered: 2, clusters: 1, joined_existing: 0 });
+    expect(calls.executes).toHaveLength(PRELUDE_LENGTH + 1);
   });
 });
