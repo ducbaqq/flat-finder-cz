@@ -1,7 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Flag, ImagePlus, Loader2, Send, X } from "lucide-react";
+import {
+  Camera,
+  Check,
+  CloudUpload,
+  FileImage,
+  Flag,
+  Image as ImageIcon,
+  Loader2,
+  Mountain,
+  Plus,
+  Send,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { useUiStore } from "@/store/ui-store";
 import {
   Dialog,
@@ -63,6 +76,8 @@ export default function ReportProblemModal() {
   const [images, setImages] = useState<File[]>([]);
   const [error, setError] = useState("");
   const [state, setState] = useState<SubmitState>("idle");
+  const [isDragging, setIsDragging] = useState(false);
+  const dragDepth = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Reset form state whenever the modal closes so reopening is a fresh session.
@@ -73,6 +88,8 @@ export default function ReportProblemModal() {
       setImages([]);
       setError("");
       setState("idle");
+      setIsDragging(false);
+      dragDepth.current = 0;
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }, [open]);
@@ -129,6 +146,42 @@ export default function ReportProblemModal() {
     setImages((prev) => prev.filter((_, i) => i !== idx));
   }, []);
 
+  // Drag state tracked with a depth counter so nested children don't flicker
+  // dragleave/dragenter as the pointer moves over inner elements.
+  const isSubmitting = state === "submitting";
+  const onDragEnter = useCallback(
+    (e: React.DragEvent) => {
+      if (isSubmitting) return;
+      e.preventDefault();
+      dragDepth.current += 1;
+      if (e.dataTransfer.types.includes("Files")) setIsDragging(true);
+    },
+    [isSubmitting],
+  );
+  const onDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (isSubmitting) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    },
+    [isSubmitting],
+  );
+  const onDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setIsDragging(false);
+  }, []);
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      if (isSubmitting) return;
+      e.preventDefault();
+      dragDepth.current = 0;
+      setIsDragging(false);
+      handleFilesSelected(e.dataTransfer.files);
+    },
+    [isSubmitting, handleFilesSelected],
+  );
+
   const handleSubmit = useCallback(async () => {
     const trimmed = description.trim();
     if (!trimmed) {
@@ -173,7 +226,7 @@ export default function ReportProblemModal() {
     }
   }, [description, signature, images]);
 
-  const submitting = state === "submitting";
+  const submitting = isSubmitting;
   const success = state === "success";
 
   return (
@@ -259,7 +312,7 @@ export default function ReportProblemModal() {
             </div>
 
             <div className="space-y-2">
-              <Label>Obrázky (volitelné)</Label>
+              <Label htmlFor="reportProblemImages">Obrázky (volitelné)</Label>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -271,20 +324,116 @@ export default function ReportProblemModal() {
                 id="reportProblemImages"
                 data-testid="report-problem-images-input"
               />
-              <div className="flex flex-wrap items-center gap-2">
+              <div
+                role="button"
+                tabIndex={submitting || images.length >= MAX_IMAGES ? -1 : 0}
+                aria-label="Přetáhněte obrázky nebo klikněte pro výběr"
+                onClick={() => {
+                  if (submitting || images.length >= MAX_IMAGES) return;
+                  fileInputRef.current?.click();
+                }}
+                onKeyDown={(e) => {
+                  if (submitting || images.length >= MAX_IMAGES) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
+                onDragEnter={onDragEnter}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onDrop={onDrop}
+                data-testid="report-problem-dropzone"
+                className={cn(
+                  "relative flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all duration-200 outline-none",
+                  "focus-visible:ring-2 focus-visible:ring-primary/40",
+                  isDragging
+                    ? "border-primary bg-primary/10 scale-[1.01]"
+                    : "border-primary/30 bg-primary/5 hover:border-primary/60 hover:bg-primary/10",
+                  (submitting || images.length >= MAX_IMAGES) &&
+                    "cursor-not-allowed opacity-60 pointer-events-none",
+                )}
+              >
+                {/* Icon cluster */}
+                <div className="relative">
+                  {/* Decorative sparkles/pluses */}
+                  <Sparkles
+                    className="absolute -left-7 -top-2 h-3 w-3 text-primary/50"
+                    aria-hidden
+                  />
+                  <Plus
+                    className="absolute -right-8 top-0 h-3 w-3 text-primary/50"
+                    aria-hidden
+                  />
+                  <Sparkles
+                    className="absolute -right-6 -bottom-1 h-2.5 w-2.5 text-primary/40"
+                    aria-hidden
+                  />
+                  <Plus
+                    className="absolute -left-6 bottom-1 h-2.5 w-2.5 text-primary/40"
+                    aria-hidden
+                  />
+
+                  <div className="relative flex items-end gap-2">
+                    <FileImage
+                      className="h-8 w-8 -rotate-6 text-primary/60"
+                      strokeWidth={1.6}
+                      aria-hidden
+                    />
+                    <ImageIcon
+                      className="h-9 w-9 text-primary/70"
+                      strokeWidth={1.6}
+                      aria-hidden
+                    />
+                    {/* Center: cloud with upward arrow */}
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-background shadow-sm ring-2 ring-primary/20">
+                      <CloudUpload
+                        className="h-7 w-7 text-primary"
+                        strokeWidth={1.8}
+                        aria-hidden
+                      />
+                    </div>
+                    <Mountain
+                      className="h-9 w-9 text-primary/70"
+                      strokeWidth={1.6}
+                      aria-hidden
+                    />
+                    <Camera
+                      className="h-8 w-8 rotate-6 text-primary/60"
+                      strokeWidth={1.6}
+                      aria-hidden
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">
+                    {isDragging
+                      ? "Pusťte obrázky sem"
+                      : "Přetáhněte obrázky sem"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    nebo klikněte pro výběr · PNG, JPEG, HEIC · max 5 MB/obrázek
+                  </p>
+                </div>
+
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
+                  tabIndex={-1}
                   disabled={submitting || images.length >= MAX_IMAGES}
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
                   data-testid="report-problem-images-button"
                 >
-                  <ImagePlus className="mr-2 h-4 w-4" />
-                  Přidat obrázky
+                  Vybrat obrázky
                 </Button>
-                <span className="text-xs text-muted-foreground">
-                  {images.length}/{MAX_IMAGES} · PNG, JPEG, HEIC · max 5 MB/obrázek
+
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {images.length}/{MAX_IMAGES}
                 </span>
               </div>
               {images.length > 0 && (
