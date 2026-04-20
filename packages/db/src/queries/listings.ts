@@ -486,13 +486,12 @@ export async function clusterNewListings(
 async function runIncrementalClusteringOps(
   executor: Db,
 ): Promise<{ clustered: number; clusters: number; joined_existing: number }> {
-  // Candidate rows read match_hash directly from the STORED generated
-  // column (populated automatically by Postgres on every insert/update).
-  // The per-candidate md5 computation + idx_listings_cluster_id probe
-  // has been replaced by a partial index lookup on idx_listings_match_hash,
-  // which is O(log N) per candidate and sub-second even on 100K+ candidates.
-  // No statement_timeout needed — the query is fast enough that the 300s
-  // watch-loop safety margin is no longer relevant.
+  // The STORED match_hash column lets us skip the per-candidate md5 call.
+  // Instead of two scans (one for candidates, one for existing clusters),
+  // we GROUP BY match_hash across all active+hashable rows and per-group
+  // decide whether to assign. This is the same HashAggregate pattern
+  // clusterListings uses for the daily rebuild — one scan of the active
+  // rows, bounded by the number of distinct hashes (not rows).
   await executor.execute(sql`SET LOCAL work_mem = '256MB'`);
 
   const rows = (await executor.execute<{
@@ -501,46 +500,40 @@ async function runIncrementalClusteringOps(
     is_canonical: boolean;
     existing_cluster: boolean;
   }>(sql`
-    WITH candidates AS (
-      SELECT id, match_hash
+    WITH hash_groups AS (
+      SELECT
+        match_hash,
+        -- Existing-cluster groups: any row in the group already has a
+        -- cluster_id set. New members inherit that cluster_id and stay
+        -- is_canonical = false.
+        bool_or(cluster_id IS NOT NULL) AS existing_cluster,
+        -- Candidates: rows in this group that still need a cluster_id.
+        array_agg(id) FILTER (WHERE cluster_id IS NULL) AS candidate_ids,
+        -- Canonical for a new (no-existing) cluster: smallest candidate id.
+        min(id) FILTER (WHERE cluster_id IS NULL) AS new_canonical_id,
+        count(*) FILTER (WHERE cluster_id IS NULL) AS candidate_count
       FROM listings
       WHERE is_active = true
-        AND cluster_id IS NULL
         AND match_hash IS NOT NULL
-    ),
-    resolved AS (
-      SELECT
-        c.id,
-        c.match_hash,
-        EXISTS (
-          SELECT 1 FROM listings l
-          WHERE l.match_hash = c.match_hash
-            AND l.cluster_id IS NOT NULL
-            AND l.is_active = true
-        ) AS existing_cluster,
-        COUNT(*) OVER (PARTITION BY c.match_hash) AS hash_peers,
-        MIN(c.id) OVER (PARTITION BY c.match_hash) AS new_canonical_id
-      FROM candidates c
-    ),
-    assignments AS (
-      SELECT
-        id,
-        match_hash,
-        existing_cluster,
-        CASE
-          WHEN existing_cluster THEN false
-          ELSE (id = new_canonical_id)
-        END AS new_is_canonical
-      FROM resolved
-      WHERE existing_cluster OR hash_peers > 1
+      GROUP BY match_hash
+      HAVING
+        -- Need at least one candidate to UPDATE.
+        count(*) FILTER (WHERE cluster_id IS NULL) > 0
+        -- AND either an existing cluster to join OR ≥2 candidates forming
+        -- a new one. Single unique candidates stay NULL until a sibling
+        -- arrives (then caught on a future cycle or the daily rebuild).
+        AND (
+          bool_or(cluster_id IS NOT NULL)
+          OR count(*) FILTER (WHERE cluster_id IS NULL) >= 2
+        )
     )
     UPDATE listings l
     SET
-      cluster_id   = a.match_hash,
-      is_canonical = a.new_is_canonical
-    FROM assignments a
-    WHERE l.id = a.id
-    RETURNING l.id, l.cluster_id, l.is_canonical, a.existing_cluster
+      cluster_id   = hg.match_hash,
+      is_canonical = (NOT hg.existing_cluster AND l.id = hg.new_canonical_id)
+    FROM hash_groups hg
+    WHERE l.id = ANY(hg.candidate_ids)
+    RETURNING l.id, l.cluster_id, l.is_canonical, hg.existing_cluster
   `)) as Array<{
     id: number;
     cluster_id: string;
