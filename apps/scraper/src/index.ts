@@ -1084,14 +1084,22 @@ async function main(): Promise<void> {
       if (shouldStop) break;
 
       // Incremental dedup — cluster newly scraped rows against existing
-      // clusters + each other. Failures are logged inside the wrapper and
-      // do not interrupt the watch loop.
+      // clusters + each other. A failure here must not kill the watch
+      // loop: we log it and continue into the sleep, then retry next
+      // cycle. Policy lives here, not in the wrapper, so the wrapper stays
+      // contract-consistent with the other deactivator helpers.
       if (!dryRun) {
         const conn = createDb();
         try {
           await clusterNewDuplicates(conn.db);
+        } catch (err) {
+          console.error(`${ts()} [runner] Incremental dedup failed, continuing:`, err);
         } finally {
-          await conn.sql.end();
+          try {
+            await conn.sql.end();
+          } catch {
+            // ignore close errors — matches runCycle pattern
+          }
         }
       }
 

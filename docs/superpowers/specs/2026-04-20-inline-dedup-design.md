@@ -42,7 +42,7 @@ The SQL is one statement wrapped in a transaction with `SET LOCAL work_mem = '25
 
 - **New exported function** in `packages/db/src/queries/listings.ts`: `clusterNewListings(db): Promise<{ clustered: number, clusters: number, joined_existing: number }>` — contains the SQL pipeline. Shape matches the existing `clusterListings()` return plus `joined_existing` for the rows that attached to a pre-existing cluster.
 - **New wrapper** in `apps/scraper/src/deactivator.ts`: `clusterNewDuplicates(db)` — thin wrapper matching the style of existing `clusterDuplicates()` that handles logging and returns the counts.
-- **Watch-loop hook** in `apps/scraper/src/index.ts`: after `printSummary(results)` and before `sleep(interval * 1000)`, call the new wrapper. Wrap in try/catch so a failure logs but does not kill the watch loop.
+- **Watch-loop hook** in `apps/scraper/src/index.ts`: after `printSummary(results)` and before `sleep(interval * 1000)`, call the new wrapper. The call site (not the wrapper) wraps in try/catch so a failure logs with the `[runner]` prefix and continues to the sleep — the wrapper itself propagates errors like every other helper in `deactivator.ts`.
 - **Standalone script** `scripts/incremental-dedup.ts` (already exists from the benchmark) stays as an ops tool. Update it to call the new `clusterNewListings()` so both paths share one code definition.
 
 ### Not touched
