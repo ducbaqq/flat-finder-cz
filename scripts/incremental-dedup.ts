@@ -14,9 +14,8 @@
  *   npx tsx scripts/incremental-dedup.ts --hours=120  # dry-run, past 5d only
  *   npx tsx scripts/incremental-dedup.ts --apply      # persist
  */
-import { config } from "dotenv";
-config();
-
+// @flat-finder/config loads .env at module init (transitively via @flat-finder/db),
+// so no explicit dotenv call here.
 import { createDb, clusterNewListings } from "@flat-finder/db";
 import { sql } from "drizzle-orm";
 

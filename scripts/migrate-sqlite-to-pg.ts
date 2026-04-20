@@ -51,7 +51,7 @@ async function main() {
   // Build SSL option
   let ssl: postgres.Options<Record<string, postgres.PostgresType>>["ssl"] = false;
   if (sslmode !== "disable") {
-    const caPath = path.resolve(__dirname, "../certs/ca-certificate.crt");
+    const caPath = path.resolve(import.meta.dirname, "../certs/ca-certificate.crt");
     if (fs.existsSync(caPath)) {
       ssl = { ca: fs.readFileSync(caPath, "utf-8"), rejectUnauthorized: true };
     } else {
