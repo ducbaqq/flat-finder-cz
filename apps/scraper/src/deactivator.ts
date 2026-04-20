@@ -1,5 +1,5 @@
 import type { Db } from "@flat-finder/db";
-import { deactivateStaleListings, deactivateByTtlListings, clusterListings } from "@flat-finder/db";
+import { deactivateStaleListings, deactivateByTtlListings, clusterListings, clusterNewListings } from "@flat-finder/db";
 
 /**
  * Deactivate listings from `source` that were NOT seen in the current run.
@@ -68,4 +68,33 @@ export async function deactivateByTtl(
     );
   }
   return count;
+}
+
+/**
+ * Incremental dedup — clusters new active listings against existing clusters
+ * and each other. Designed for the end-of-cycle hook in the watch loop.
+ * Does NOT replace clusterDuplicates (the full rebuild).
+ *
+ * Failure mode: any error is logged and swallowed so the caller (the watch
+ * loop) continues into its sleep. The next cycle retries in 5 min.
+ */
+export async function clusterNewDuplicates(db: Db): Promise<void> {
+  const t = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
+  const started = Date.now();
+  try {
+    const result = await clusterNewListings(db);
+    const ms = Date.now() - started;
+    if (result.clustered === 0) {
+      console.log(`${t()} [dedup-inc] No new clusters (${ms} ms)`);
+      return;
+    }
+    console.log(
+      `${t()} [dedup-inc] ${result.clustered} rows -> ${result.clusters} clusters ` +
+        `(${result.joined_existing} joined existing, ` +
+        `${result.clustered - result.joined_existing} new-cluster members) in ${ms} ms`,
+    );
+  } catch (err) {
+    const ms = Date.now() - started;
+    console.error(`${t()} [dedup-inc] FAILED after ${ms} ms:`, err);
+  }
 }
