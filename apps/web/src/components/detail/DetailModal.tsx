@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUiStore } from "@/store/ui-store";
 import { apiGet } from "@/lib/api-client";
+import { trackEvent } from "@/lib/analytics";
 import { formatPrice, buildSourceUrl } from "@/lib/utils";
 import ImageGallery from "./ImageGallery";
 import DetailSpecs from "./DetailSpecs";
@@ -51,6 +52,15 @@ export default function DetailModal() {
       .then((data) => {
         setListing(data);
         setLoading(false);
+        trackEvent("listing_view", {
+          listing_id: data.id,
+          source: data.source,
+          property_type: data.property_type,
+          transaction_type: data.transaction_type,
+          city: data.city ?? undefined,
+          price: data.price ?? undefined,
+          cluster_id: data.cluster_id ?? undefined,
+        });
         if (data.cluster_id) {
           apiGet<ClusterSiblingsResponse>(
             `/listings/${selectedListingId}/cluster-siblings`,

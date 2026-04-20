@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { Bricolage_Grotesque, Figtree } from "next/font/google";
 import Script from "next/script";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
+import { Suspense } from "react";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import AnalyticsListener from "@/components/analytics/AnalyticsListener";
 import "./globals.css";
 
 const figtree = Figtree({
@@ -61,7 +63,9 @@ export default function RootLayout({
           </ThemeProvider>
         </NuqsAdapter>
 
-        {/* Google Analytics 4 — set NEXT_PUBLIC_GA_MEASUREMENT_ID in .env to enable */}
+        {/* Google Analytics 4 — set NEXT_PUBLIC_GA_MEASUREMENT_ID in .env to enable.
+            send_page_view is off so <AnalyticsListener> can fire a page_view on
+            every pathname+search change (including ?listing=N modal opens). */}
         {GA_MEASUREMENT_ID && (
           <>
             <Script
@@ -73,9 +77,12 @@ export default function RootLayout({
                 window.dataLayer = window.dataLayer || [];
                 function gtag(){dataLayer.push(arguments);}
                 gtag('js', new Date());
-                gtag('config', '${GA_MEASUREMENT_ID}');
+                gtag('config', '${GA_MEASUREMENT_ID}', { send_page_view: false });
               `}
             </Script>
+            <Suspense fallback={null}>
+              <AnalyticsListener />
+            </Suspense>
           </>
         )}
       </body>
