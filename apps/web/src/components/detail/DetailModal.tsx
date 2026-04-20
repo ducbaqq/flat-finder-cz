@@ -159,7 +159,7 @@ export default function DetailModal() {
                       <div data-testid="listing-detail-description">
                         <h3 className="mb-2 text-sm font-semibold">Popis</h3>
                         <p className="max-w-[72ch] whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
-                          {listing.description}
+                          {listing.description.replace(/\n(\s*\n)+/g, "\n\n")}
                         </p>
                       </div>
                     </>

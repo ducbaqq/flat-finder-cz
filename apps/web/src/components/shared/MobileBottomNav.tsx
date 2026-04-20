@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, Map, Bell } from "lucide-react";
+import { Home, Search, Map, Bell, Flag } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useUiStore } from "@/store/ui-store";
 
@@ -15,6 +15,7 @@ const items = [
 export function MobileBottomNav() {
   const pathname = usePathname();
   const toggleWatchdogModal = useUiStore((s) => s.toggleWatchdogModal);
+  const openReportProblemModal = useUiStore((s) => s.openReportProblemModal);
 
   return (
     <nav
@@ -51,6 +52,14 @@ export function MobileBottomNav() {
         >
           <Bell className="h-5 w-5" strokeWidth={1.5} />
           Alerty
+        </button>
+        <button
+          onClick={openReportProblemModal}
+          className="flex flex-col items-center gap-0.5 px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors"
+          data-testid="mobile-nav-report-problem"
+        >
+          <Flag className="h-5 w-5" strokeWidth={1.5} />
+          Nahlásit
         </button>
       </div>
     </nav>

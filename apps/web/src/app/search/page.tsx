@@ -17,6 +17,7 @@ import { FilterSidebar } from "@/components/search/FilterSidebar";
 import { ListingResults } from "@/components/search/ListingResults";
 import DetailModal from "@/components/detail/DetailModal";
 import WatchdogModal from "@/components/watchdog/WatchdogModal";
+import ReportProblemModal from "@/components/report-problem/ReportProblemModal";
 import { useSearchFilters } from "@/hooks/useSearchFilters";
 import { useListings } from "@/hooks/useListings";
 import { cn } from "@/lib/cn";
@@ -216,6 +217,7 @@ function SearchPageContent() {
       <MobileBottomNav />
       <DetailModal />
       <WatchdogModal />
+      <ReportProblemModal />
     </div>
   );
 }

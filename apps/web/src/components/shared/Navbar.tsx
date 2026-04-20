@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Home, Search } from "lucide-react";
+import { Bell, Flag, Home, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Logo } from "./Logo";
@@ -11,6 +11,7 @@ import { useWatchdogs } from "@/hooks/useWatchdogs";
 
 export function Navbar() {
   const toggleWatchdogModal = useUiStore((s) => s.toggleWatchdogModal);
+  const openReportProblemModal = useUiStore((s) => s.openReportProblemModal);
   const { activeCount } = useWatchdogs();
 
   return (
@@ -35,6 +36,17 @@ export function Navbar() {
 
         <div className="flex items-center gap-1.5" data-testid="nav-actions">
           <ThemeToggle />
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            onClick={openReportProblemModal}
+            data-testid="nav-report-problem-button"
+          >
+            <Flag className="h-4 w-4" />
+            <span className="sr-only">Nahlásit problém</span>
+          </Button>
 
           <Button
             variant="ghost"

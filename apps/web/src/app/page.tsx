@@ -9,6 +9,7 @@ import { QuickActions } from "@/components/home/QuickActions";
 import { LatestListings } from "@/components/home/LatestListings";
 import DetailModal from "@/components/detail/DetailModal";
 import WatchdogModal from "@/components/watchdog/WatchdogModal";
+import ReportProblemModal from "@/components/report-problem/ReportProblemModal";
 
 export default function HomePage() {
   return (
@@ -25,6 +26,7 @@ export default function HomePage() {
       <MobileBottomNav />
       <DetailModal />
       <WatchdogModal />
+      <ReportProblemModal />
     </>
   );
 }

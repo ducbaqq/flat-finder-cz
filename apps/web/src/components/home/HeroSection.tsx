@@ -26,28 +26,35 @@ export function HeroSection({ children }: { children: React.ReactNode }) {
         <span className="text-primary">nový domov</span>
       </motion.h1>
 
-      <motion.p
-        className="mt-4 max-w-md text-center text-muted-foreground sm:mt-5"
+      <motion.div
+        className="mt-4 max-w-2xl space-y-3 text-center text-muted-foreground sm:mt-5"
         style={{ fontSize: "var(--text-lg)" }}
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
       >
-        {totalListings > 0 ? (
-          <>
-            <span className="font-medium text-foreground tabular-nums">
-              {totalListings.toLocaleString("cs-CZ")}
-            </span>{" "}
-            nabídek z{" "}
-            <span className="font-medium text-foreground tabular-nums">
-              {sourcesCount}
-            </span>{" "}
-            portálů na jednom místě
-          </>
-        ) : (
-          "Prohledáváme všechny české realitní portály na jednom místě"
-        )}
-      </motion.p>
+        <p className="font-medium text-foreground">
+          Jsme moderní realitní vyhledávač v ČR.
+        </p>
+        <p>
+          Nemusíte procházet desítky různých webů a bát se, že vám něco unikne.
+          Shromáždili jsme pro vás nabídky z nejdůležitějších realitních
+          serverů na jednom místě.
+          {totalListings > 0 && (
+            <>
+              {" "}Aktuálně disponujeme{" "}
+              <span className="font-medium text-foreground tabular-nums">
+                {totalListings.toLocaleString("cs-CZ")}
+              </span>{" "}
+              nabídkami z{" "}
+              <span className="font-medium text-foreground tabular-nums">
+                {sourcesCount}
+              </span>{" "}
+              těchto serverů.
+            </>
+          )}
+        </p>
+      </motion.div>
 
       {/* Children: PropertyTypeTabs + QuickActions */}
       <motion.div

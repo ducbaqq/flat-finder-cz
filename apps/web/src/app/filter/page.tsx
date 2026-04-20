@@ -7,6 +7,7 @@ import { Navbar } from "@/components/shared/Navbar";
 import { Footer } from "@/components/shared/Footer";
 import { MobileBottomNav } from "@/components/shared/MobileBottomNav";
 import { FilterPageForm } from "@/components/filter-page/FilterPageForm";
+import ReportProblemModal from "@/components/report-problem/ReportProblemModal";
 
 function FilterPageContent() {
   const searchParams = useSearchParams();
@@ -36,6 +37,7 @@ function FilterPageContent() {
       </div>
       <Footer />
       <MobileBottomNav />
+      <ReportProblemModal />
     </div>
   );
 }

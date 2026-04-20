@@ -13,6 +13,7 @@ interface UiState {
   selectedListingId: number | null;
   detailModalOpen: boolean;
   watchdogModalOpen: boolean;
+  reportProblemModalOpen: boolean;
   mapBounds: MapBounds | null;
   mapZoom: number | null;
   pendingBbox: [number, number, number, number] | null;
@@ -27,6 +28,8 @@ interface UiState {
   closeDetail: () => void;
   toggleWatchdogModal: () => void;
   closeWatchdogModal: () => void;
+  openReportProblemModal: () => void;
+  closeReportProblemModal: () => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -35,6 +38,7 @@ export const useUiStore = create<UiState>((set) => ({
   selectedListingId: null,
   detailModalOpen: false,
   watchdogModalOpen: false,
+  reportProblemModalOpen: false,
   mapBounds: null,
   mapZoom: null,
   pendingBbox: null,
@@ -75,4 +79,6 @@ export const useUiStore = create<UiState>((set) => ({
     url.searchParams.delete("watchdog");
     window.history.pushState(null, "", url.toString());
   },
+  openReportProblemModal: () => set({ reportProblemModalOpen: true }),
+  closeReportProblemModal: () => set({ reportProblemModalOpen: false }),
 }));
