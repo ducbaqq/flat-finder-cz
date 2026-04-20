@@ -1,6 +1,12 @@
 import pLimit from "p-limit";
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
-import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
+import {
+  BaseScraper,
+  type LivenessResponse,
+  type LivenessVerdict,
+  type PageResult,
+  type ScraperOptions,
+} from "../base-scraper.js";
 
 // ---------------------------------------------------------------------------
 // Constants & lookup maps
@@ -95,6 +101,35 @@ export class SrealityScraper extends BaseScraper {
     this.batchMultiplier = opts.batchMultiplier ?? 2;
     this.detailBatchSize = opts.detailBatchSize ?? 20;
     this.perPage = opts.watchMode ? PER_PAGE_WATCH : PER_PAGE_FULL;
+  }
+
+  /**
+   * Sreality returns 410 Gone on pulled listings (observed on production
+   * backfill runs). A correct `/detail/<trans>/<prop>/<slug>/<locality>/<hashId>`
+   * URL returns 200 on active listings, 410 on removed ones, and 301 to
+   * the corrected slug when our stored URL has `/x/` as the locality —
+   * that redirect does NOT mean the listing is dead, so follow it (or
+   * treat as alive). A 301 to the search/landing page DOES mean dead.
+   */
+  classifyLiveness(res: LivenessResponse): LivenessVerdict {
+    if (res.status === 404 || res.status === 410) return "dead";
+    if (res.status === 301 || res.status === 302) {
+      const loc = res.location.toLowerCase();
+      // 301 to another /detail/ URL is the locality-slug redirect → alive.
+      if (loc.includes("/detail/")) return "alive";
+      // 301 back to the landing page or a search URL means delisted.
+      if (
+        loc === "https://www.sreality.cz/" ||
+        loc.endsWith("sreality.cz") ||
+        loc.includes("/hledani/") ||
+        loc.includes("/vyhledavani/")
+      ) {
+        return "dead";
+      }
+      return "unknown";
+    }
+    if (res.status >= 200 && res.status < 300) return "alive";
+    return "unknown";
   }
 
   // ------------------------------------------------------------------

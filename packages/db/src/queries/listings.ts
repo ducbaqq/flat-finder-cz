@@ -370,7 +370,11 @@ export async function deactivateByTtlListings(
 
   const result = await db
     .update(listings)
-    .set({ is_active: false, deactivated_at: now })
+    .set({
+      is_active: false,
+      deactivated_at: now,
+      deactivation_reason: "ttl",
+    })
     .where(
       and(
         eq(listings.is_active, true),
@@ -380,6 +384,146 @@ export async function deactivateByTtlListings(
     .returning({ id: listings.id });
 
   return result.length;
+}
+
+// -----------------------------------------------------------------------
+// Freshness sweep helpers (used by apps/scraper/src/refresh.ts)
+// -----------------------------------------------------------------------
+
+/**
+ * Shape the sweep engine consumes per row: enough to do a liveness GET +
+ * route to the right classifier/enricher.
+ */
+export interface LivenessCandidate {
+  id: number;
+  external_id: string;
+  source: string;
+  source_url: string | null;
+  thumbnail_url: string | null;
+  enriched_at: string | null;
+  last_checked_at: string | null;
+  image_urls: string[] | null;
+}
+
+/**
+ * Pick the next batch of listings to liveness-check for a source.
+ * Ordering: NULLS FIRST on last_checked_at, so a listing never checked
+ * before goes to the front of the queue. Deterministic secondary sort by
+ * id so concurrent sweeps don't race for the same row (combined with
+ * row-level locking via FOR UPDATE SKIP LOCKED if needed later — for now
+ * there's only one sweep worker so a plain ORDER BY is fine).
+ */
+export async function pickStaleForLiveness(
+  db: Db,
+  source: string,
+  limit: number,
+): Promise<LivenessCandidate[]> {
+  if (limit <= 0) return [];
+  const rows = await db
+    .select({
+      id: listings.id,
+      external_id: listings.external_id,
+      source: listings.source,
+      source_url: listings.source_url,
+      thumbnail_url: listings.thumbnail_url,
+      enriched_at: listings.enriched_at,
+      last_checked_at: listings.last_checked_at,
+      image_urls: listings.image_urls,
+    })
+    .from(listings)
+    .where(
+      and(
+        eq(listings.is_active, true),
+        eq(listings.source, source),
+        isNotNull(listings.source_url),
+      ),
+    )
+    .orderBy(asc(listings.last_checked_at), asc(listings.id))
+    .limit(limit);
+  return rows as LivenessCandidate[];
+}
+
+/**
+ * Stamp `last_checked_at = now` on a listing — called after every sweep
+ * pass regardless of verdict so the priority queue advances even when the
+ * classifier returns "unknown".
+ */
+export async function stampChecked(db: Db, id: number): Promise<void> {
+  await db
+    .update(listings)
+    .set({ last_checked_at: new Date().toISOString() })
+    .where(eq(listings.id, id));
+}
+
+/**
+ * Batch variant — used when the sweep processes a chunk of IDs.
+ */
+export async function stampCheckedBatch(
+  db: Db,
+  ids: number[],
+): Promise<void> {
+  if (ids.length === 0) return;
+  await db
+    .update(listings)
+    .set({ last_checked_at: new Date().toISOString() })
+    .where(inArray(listings.id, ids));
+}
+
+/**
+ * Single-row deactivation driven by the liveness classifier.
+ * Records a reason so post-hoc triage can tell "liveness said dead" apart
+ * from "TTL ran out" and "missing-from-full-scrape".
+ */
+export async function deactivateById(
+  db: Db,
+  id: number,
+  reason: string,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await db
+    .update(listings)
+    .set({
+      is_active: false,
+      deactivated_at: now,
+      deactivation_reason: reason,
+      last_checked_at: now,
+    })
+    .where(and(eq(listings.id, id), eq(listings.is_active, true)));
+}
+
+/**
+ * Reactivate a listing that the sweep previously marked dead but is now
+ * responding alive again. Only flips rows that were deactivated by the
+ * sweep (deactivation_reason = 'liveness_*') within `withinDays` — we
+ * don't resurrect TTL-deactivated rows this way.
+ */
+export async function reactivateIfLivenessDeactivated(
+  db: Db,
+  id: number,
+  withinDays = 7,
+): Promise<boolean> {
+  const cutoff = new Date(
+    Date.now() - withinDays * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const now = new Date().toISOString();
+  const result = await db
+    .update(listings)
+    .set({
+      is_active: true,
+      deactivated_at: null,
+      deactivation_reason: null,
+      last_checked_at: now,
+    })
+    .where(
+      and(
+        eq(listings.id, id),
+        eq(listings.is_active, false),
+        ilike(listings.deactivation_reason, "liveness_%"),
+        gte(listings.deactivated_at, cutoff),
+      ),
+    )
+    .returning({ id: listings.id });
+  return result.length > 0;
 }
 
 /**

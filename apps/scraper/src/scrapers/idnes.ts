@@ -1,7 +1,14 @@
 import { parse as parseHtml, type HTMLElement } from "node-html-parser";
 import pLimit from "p-limit";
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
-import { BaseScraper, streamInterleave, type ScraperOptions, type PageResult } from "../base-scraper.js";
+import {
+  BaseScraper,
+  streamInterleave,
+  type LivenessResponse,
+  type LivenessVerdict,
+  type PageResult,
+  type ScraperOptions,
+} from "../base-scraper.js";
 import { normalizeAmenities } from "../amenity-normalizer.js";
 
 const ITEMS_PER_PAGE = 30;
@@ -52,6 +59,36 @@ export class IdnesScraper extends BaseScraper {
     super(opts);
     this.categoryParallelism = opts.categoryParallelism ?? 3;
     this.skipEnrichmentHours = opts.skipEnrichmentHours ?? 24;
+  }
+
+  /**
+   * Idnes serves 404 on pulled listings. It can also respond 200 with a
+   * "Tato nabídka již není inzerována" banner when the listing is frozen
+   * but the URL stays live — treat both as dead. A 3xx to the category
+   * landing (no slug) means removed; 3xx to a different detail URL (slug
+   * change) is alive.
+   */
+  classifyLiveness(res: LivenessResponse): LivenessVerdict {
+    if (res.status === 404 || res.status === 410) return "dead";
+    if (res.status === 301 || res.status === 302) {
+      const loc = res.location.toLowerCase();
+      if (loc.includes("/detail/")) return "alive";
+      return "dead";
+    }
+    if (res.status >= 200 && res.status < 300) {
+      const b = res.body;
+      if (
+        b.includes("tato nabídka již není") ||
+        b.includes("tato nabidka jiz neni") ||
+        b.includes("inzerát byl ukončen") ||
+        b.includes("inzerat byl ukoncen") ||
+        b.includes("nabídka byla ukončena")
+      ) {
+        return "dead";
+      }
+      return "alive";
+    }
+    return "unknown";
   }
 
   // ─── Phase 1: List scan ────────────────────────────────────────────

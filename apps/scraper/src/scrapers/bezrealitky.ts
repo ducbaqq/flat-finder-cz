@@ -1,5 +1,11 @@
 import type { ScraperResult, PropertyType, TransactionType } from "@flat-finder/types";
-import { BaseScraper, type ScraperOptions, type PageResult } from "../base-scraper.js";
+import {
+  BaseScraper,
+  type LivenessResponse,
+  type LivenessVerdict,
+  type PageResult,
+  type ScraperOptions,
+} from "../base-scraper.js";
 import { normalizeAmenities } from "../amenity-normalizer.js";
 
 // ---------------------------------------------------------------------------
@@ -180,6 +186,23 @@ export class BezrealitkyScraper extends BaseScraper {
 
   // No detail phase needed — GraphQL returns all fields
   override get hasDetailPhase() { return false; }
+
+  /**
+   * Bezrealitky 404s on removed listings. 301 to the search page also
+   * indicates removal; redirect to another detail URL (slug change) is
+   * alive. 403/empty body sometimes indicates Cloudflare blocking; mark
+   * as unknown so we don't mass-deactivate during an IP block.
+   */
+  override classifyLiveness(res: LivenessResponse): LivenessVerdict {
+    if (res.status === 404 || res.status === 410) return "dead";
+    if (res.status === 301 || res.status === 302) {
+      const loc = res.location.toLowerCase();
+      if (loc.includes("/nemovitosti-byty-domy/")) return "alive";
+      return "dead";
+    }
+    if (res.status >= 200 && res.status < 300) return "alive";
+    return "unknown";
+  }
 
   private readonly batchMultiplier: number;
 

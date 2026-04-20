@@ -136,6 +136,21 @@ export abstract class BaseScraper {
     return false;
   }
 
+  // --------------------------------------------------------------------
+  // Liveness classification (freshness sweep)
+  // --------------------------------------------------------------------
+
+  /**
+   * Default liveness verdict: 404/410 → dead; 2xx → alive; everything
+   * else (3xx, 429, 5xx, network error) → unknown. Subclasses override
+   * for portals that do soft-404s or 301-to-search on removed listings.
+   */
+  classifyLiveness(res: LivenessResponse): LivenessVerdict {
+    if (res.status === 404 || res.status === 410) return "dead";
+    if (res.status >= 200 && res.status < 300) return "alive";
+    return "unknown";
+  }
+
   /** Convenience: consume generator + enrich. Backwards compat. */
   async fetchListings(): Promise<ScraperResult[]> {
     this.init();
@@ -146,4 +161,23 @@ export abstract class BaseScraper {
     await this.enrichListings(all);
     return all;
   }
+}
+
+// ------------------------------------------------------------------------
+// Liveness classification types (shared by BaseScraper + refresh engine)
+// ------------------------------------------------------------------------
+
+export type LivenessVerdict = "alive" | "dead" | "unknown";
+
+export interface LivenessResponse {
+  /** Final response status. `0` when the request errored before a response. */
+  status: number;
+  /** `Location` header on 3xx; empty on non-redirect. */
+  location: string;
+  /** URL we actually hit — helpful for classifiers that inspect domain/path. */
+  url: string;
+  /** First ~1 MB of body text, lower-cased already. Empty on non-text / fetch failures. */
+  body: string;
+  /** `true` if the fetch threw (DNS, connect timeout, TLS, etc.). */
+  networkError: boolean;
 }

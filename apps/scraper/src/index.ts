@@ -44,6 +44,7 @@ import { RealitymixScraper } from "./scrapers/realitymix.js";
 import { IdnesScraper } from "./scrapers/idnes.js";
 import { ReaLingoScraper } from "./scrapers/realingo.js";
 import { deactivateStale, deactivateByTtl, clusterDuplicates, clusterNewDuplicates } from "./deactivator.js";
+import { runFreshnessSweep } from "./refresh.js";
 import { normalizeListingFields } from "./normalizer.js";
 import { Dashboard } from "./dashboard.js";
 
@@ -1122,6 +1123,8 @@ async function main(): Promise<void> {
     let cycle = 0;
     while (!shouldStop) {
       cycle++;
+      const cycleStart = Date.now();
+      const cycleDeadlineMs = cycleStart + interval * 1000;
 
       if (!useDashboard) {
         console.log(`\n${ts()} --- Watcher cycle ${cycle} ---`);
@@ -1168,8 +1171,36 @@ async function main(): Promise<void> {
         }
       }
 
-      console.log(`${ts()} [runner] Sleeping ${interval}s until next cycle...`);
-      await sleep(interval * 1000);
+      // Freshness sweep — walk oldest-checked active listings per source
+      // within the remaining-cycle window. Hard deadline so the next
+      // cycle always starts on schedule. Failures here must not kill the
+      // watch loop, matching the dedup policy above.
+      if (!dryRun && !shouldStop) {
+        const conn = createDb();
+        try {
+          const sweepScrapers: Record<string, BaseScraper> = {};
+          for (const s of sources) sweepScrapers[s] = createScraper(s, true);
+          await runFreshnessSweep(conn.db, sweepScrapers, {
+            deadlineMs: cycleDeadlineMs,
+          });
+        } catch (err) {
+          console.error(`${ts()} [runner] Freshness sweep failed, continuing:`, err);
+        } finally {
+          try {
+            await conn.sql.end();
+          } catch {
+            // ignore close errors — matches runCycle pattern
+          }
+        }
+      }
+
+      const remaining = cycleDeadlineMs - Date.now();
+      if (remaining > 0) {
+        console.log(`${ts()} [runner] Sleeping ${Math.round(remaining / 1000)}s until next cycle...`);
+        await sleep(remaining);
+      } else {
+        console.log(`${ts()} [runner] Cycle overran by ${-Math.round(remaining / 1000)}s; starting next cycle immediately.`);
+      }
 
       // Reset dashboard for next cycle
       if (useDashboard) {
