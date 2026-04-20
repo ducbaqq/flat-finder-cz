@@ -33,15 +33,9 @@ type SubmitState = "idle" | "submitting" | "success";
 const MAX_IMAGES = 5;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TOTAL_IMAGE_BYTES = 10 * 1024 * 1024;
-const ACCEPTED_MIME = [
-  "image/png",
-  "image/jpeg",
-  "image/jpg",
-  "image/heic",
-  "image/heif",
-];
-const ACCEPT_ATTR = `${ACCEPTED_MIME.join(",")},.heic,.heif`;
-const EXT_RE = /\.(png|jpe?g|heic|heif)$/i;
+const ACCEPTED_MIME = ["image/png", "image/jpeg", "image/jpg"];
+const ACCEPT_ATTR = ACCEPTED_MIME.join(",");
+const EXT_RE = /\.(png|jpe?g)$/i;
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -117,7 +111,7 @@ export default function ReportProblemModal() {
         const typeOk =
           ACCEPTED_MIME.includes(f.type.toLowerCase()) || EXT_RE.test(f.name);
         if (!typeOk) {
-          setError("Povolené formáty: PNG, JPEG, JPG, HEIC.");
+          setError("Povolené formáty: PNG, JPEG.");
           continue;
         }
         if (f.size > MAX_IMAGE_BYTES) {
@@ -413,7 +407,7 @@ export default function ReportProblemModal() {
                       : "Přetáhněte snímky obrazovky sem"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    PNG, JPEG, HEIC · max 5 MB/snímek · {images.length}/{MAX_IMAGES}
+                    PNG, JPEG · max 5 MB/snímek · {images.length}/{MAX_IMAGES}
                   </p>
                 </div>
 

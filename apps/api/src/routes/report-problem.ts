@@ -8,14 +8,11 @@ const MAX_SIGNATURE = 200;
 const MAX_IMAGES = 5;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB per image
 const MAX_TOTAL_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB combined (Brevo ceiling)
-const ALLOWED_MIME = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/jpg",
-  "image/heic",
-  "image/heif",
-]);
-const ALLOWED_EXT = /\.(png|jpe?g|heic|heif)$/i;
+// HEIC/HEIF are intentionally NOT here — Brevo's /smtp/email rejects them
+// with "Unsupported file format: heic". iPhone users can submit screenshots
+// (PNG) without issue. Revisit if we add server-side HEIC→JPEG conversion.
+const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/jpg"]);
+const ALLOWED_EXT = /\.(png|jpe?g)$/i;
 
 interface IncomingImage {
   name: string;
@@ -93,7 +90,7 @@ app.post("/", async (c) => {
       }
       if (!ALLOWED_MIME.has(img.type.toLowerCase()) && !ALLOWED_EXT.test(img.name)) {
         return c.json(
-          { error: "Povolené formáty: PNG, JPEG, JPG, HEIC." },
+          { error: "Povolené formáty: PNG, JPEG." },
           400,
         );
       }
