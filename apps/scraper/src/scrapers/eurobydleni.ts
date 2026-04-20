@@ -7,6 +7,43 @@ import { normalizeAmenities } from "../amenity-normalizer.js";
 /**
  * Category definitions: [urlPath, propertyType, transactionType]
  */
+/**
+ * Pull a square-meter value out of a eurobydleni title string.
+ *
+ * Eurobydleni titles embed the size in many wordings and frequently drop
+ * the "²" exponent. Observed patterns:
+ *   "Prodej bytu 2+1, 51 m, Aš, Moravská"                    (bare "51 m")
+ *   "Byt 4+1 na prodej Znojmo o výměře 156 m2"
+ *   "... s rozlohou 113 m2 ..."
+ *   "... o velikosti 109 m2 ..."
+ *   "... a plochou 79 m²"
+ *
+ * Strategy: scan for "<digits> m[²2]?" matches, prefer the one adjacent to
+ * an area-keyword (plocha / výměra / rozloha / velikost) when present, else
+ * fall back to the first match whose number is in a plausible apartment
+ * range (10–1000). Bounds filter out street numbers like "bytu 151".
+ */
+export function extractSizeFromEurobydleniTitle(title: string): number | null {
+  const t = title.toLowerCase();
+  const pattern = /(\d{2,4})\s*m(?:[²2])?(?=\b|[\s,.])/gi;
+  const matches: Array<{ value: number; idx: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(t)) !== null) {
+    const v = parseInt(m[1], 10);
+    if (v >= 10 && v <= 2000) matches.push({ value: v, idx: m.index });
+  }
+  if (matches.length === 0) return null;
+
+  const keywords = ["plocha", "ploch", "výměr", "vymer", "rozloh", "velikost"];
+  for (const { value, idx } of matches) {
+    // Look back up to 40 chars for an area keyword.
+    const window = t.slice(Math.max(0, idx - 40), idx);
+    if (keywords.some((k) => window.includes(k))) return value;
+  }
+  // Fallback: first plausible match.
+  return matches[0].value;
+}
+
 const CATEGORIES: [string, PropertyType, TransactionType][] = [
   // Sale
   ["byty/prodej", "flat", "sale"],
@@ -270,7 +307,9 @@ export class EurobydleniScraper extends BaseScraper {
         continue;
       }
 
-      const sizeMatch = text.match(/([\d.,]+)\s*m[2²]/i);
+      // Eurobydleni sometimes drops the "²" ("51 m"). Allow optional 2/²
+      // but require a word boundary so we don't match street numbers.
+      const sizeMatch = text.match(/([\d.,]+)\s*m(?:[²2])?(?=\b|[\s,.])/i);
       if (sizeMatch) {
         sizeM2 = parseFloat(sizeMatch[1].replace(",", "."));
         continue;
@@ -402,6 +441,17 @@ export class EurobydleniScraper extends BaseScraper {
     if (data.propertyBlock) {
       this.parsePropertyBlock(listing, data.propertyBlock);
     }
+
+    // Title is the only reliable place size_m2 appears for most eurobydleni
+    // listings — box-params doesn't expose it, and the site frequently drops
+    // the "²" exponent ("51 m, Aš, Moravská"). List-page extraction catches
+    // some but misses ~95% (2026-04-20 audit). Run as a post-fallback after
+    // parsePropertyBlock so we don't override a more reliable structured
+    // value if one exists.
+    if (listing.size_m2 == null && listing.title) {
+      const sizeFromTitle = extractSizeFromEurobydleniTitle(listing.title);
+      if (sizeFromTitle != null) listing.size_m2 = sizeFromTitle;
+    }
   }
 
   private parsePropertyBlock(listing: ScraperResult, html: string): void {
@@ -473,7 +523,7 @@ export class EurobydleniScraper extends BaseScraper {
       // "velikost" all appear in detail pages for the same concept. Earlier
       // versions only matched the first two and left size_m2 unpopulated on
       // ~94% of listings (2026-04-20 audit against a fresh scrape).
-      const detailSizeMatch = text.match(/(\d+)\s*m[²2]/);
+      const detailSizeMatch = text.match(/(\d+)\s*m(?:[²2])?(?=\b|[\s,.])/);
       if (
         detailSizeMatch &&
         (text.includes("plocha") ||
