@@ -9,8 +9,8 @@ Run cross-source duplicate clustering automatically at the end of every watch-mo
 
 ## Non-Goals
 
-- Replace the existing `clusterListings()` full-pipeline rebuild. That stays as the nightly/weekly safety net (`npm run scraper -- --dedupe`).
-- Re-cluster previously-clustered rows on price changes or other edits. The weekly full rebuild handles that drift.
+- Replace the existing `clusterListings()` full-pipeline rebuild. That stays as the nightly safety net (`npm run scraper -- --dedupe`).
+- Re-cluster previously-clustered rows on price changes or other edits. The daily full rebuild handles that drift.
 - Any schema change (no `match_hash` column, no `dedup_checked_at` column). This design is deliberately zero-migration.
 - Change how canonical is chosen inside an existing cluster (we always leave the existing canonical alone and join as non-canonical).
 
@@ -32,7 +32,7 @@ The SQL is one statement wrapped in a transaction with `SET LOCAL work_mem = '25
 
 1. **Late duplicates are caught.** If row A is scraped on day 1 (stays NULL, no match) and row B scraped on day 4 (also NULL at that moment), the day-4 cycle groups them because both are still candidates.
 2. **Even-later duplicates are caught.** If row C is scraped on day 8 and hashes identically to the A+B cluster, C finds that cluster via the `EXISTS` probe and joins — regardless of age.
-3. **No re-clustering of already-clustered rows.** Rows with `cluster_id IS NOT NULL` are skipped. This means a price drop on an existing clustered row that would newly match a different cluster is NOT handled inline — only the weekly full rebuild catches this drift. Documented as an accepted limitation.
+3. **No re-clustering of already-clustered rows.** Rows with `cluster_id IS NOT NULL` are skipped. This means a price drop on an existing clustered row that would newly match a different cluster is NOT handled inline — only the daily full rebuild catches this drift. Documented as an accepted limitation.
 4. **Idempotent.** Running the pass twice in a row with no new scraper activity produces the same result on the second run (0 updates).
 5. **Canonical is stable within a cluster.** Once a row is canonical, it stays canonical across inline passes. Only the full rebuild can reassign canonicity.
 
@@ -69,11 +69,11 @@ From benchmarking on production data (2026-04-20):
 
 Most of the cost is the `EXISTS` probe per candidate against `idx_listings_cluster_id`, not row-count-dependent. So expect **30–45s per cycle** in steady state. Comfortably within the 300s watch interval (scraper cycle itself is 1–2 min; combined cycle 2–4 min total).
 
-Performance will slowly grow as the still-unclustered pool grows between weekly rebuilds, bounded by the weekly reset. If pipeline time exceeds ~90s consistently, that's the signal to introduce the `match_hash` column optimization (explicitly out of scope for this design).
+Performance will slowly grow as the still-unclustered pool grows between daily rebuilds, bounded by the daily reset. If pipeline time exceeds ~90s consistently, that's the signal to introduce the `match_hash` column optimization (explicitly out of scope for this design).
 
 ## Operational Considerations
 
-- **Weekly full rebuild is a prerequisite, not part of this design.** The inline pass only clusters rows that were `NULL` at probe time; it does not reset or reorganize existing clusters. Price drift, geo corrections, canonical rotation all depend on the periodic full pipeline. A weekly `--dedupe` cron needs to be scheduled separately (per the runbook in the `listing-deduplication` project note). Without it, the inline pass still works correctly but gradually accumulates drift.
+- **Weekly full rebuild is a prerequisite, not part of this design.** The inline pass only clusters rows that were `NULL` at probe time; it does not reset or reorganize existing clusters. Price drift, geo corrections, canonical rotation all depend on the periodic full pipeline. The daily `--dedupe` cron is chained into the existing midnight `--full` cron on the droplet (per the runbook in the `listing-deduplication` project note). Without it, the inline pass still works correctly but gradually accumulates drift.
 - **No cache-warming needed after inline passes.** The inline UPDATE touches ≤100 rows per cycle — a rounding error against the working set. The cache eviction problem only applies to the full rebuild (~300K row touches).
 - **Dedupe cron runbook does not change.** Full `--dedupe` still requires pausing the scraper, because it takes a single transaction lock across ~300K rows for ~20+ minutes. The inline pass is fundamentally different: sub-minute, touches tens of rows, interleaves safely with the scraper's own upserts.
 
@@ -93,7 +93,7 @@ Match the existing project convention: mock-based unit tests + manual integratio
 
 1. Merge and deploy to droplet.
 2. Watch first 2–3 cycles via `pm2 logs scraper` — confirm pipeline timing stays under 60s, no transaction errors.
-3. Query `SELECT COUNT(*) FILTER (WHERE cluster_id IS NOT NULL) FROM listings WHERE is_active = true` over the next day — should trend up gradually instead of only jumping after the weekly full rebuild.
+3. Query `SELECT COUNT(*) FILTER (WHERE cluster_id IS NOT NULL) FROM listings WHERE is_active = true` over the next day — should trend up gradually instead of only jumping after the daily full rebuild.
 4. If pipeline time creeps above 90s, schedule the `match_hash` follow-up.
 
 ## Open Questions
