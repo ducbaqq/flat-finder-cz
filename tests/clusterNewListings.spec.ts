@@ -43,4 +43,30 @@ test.describe("clusterNewListings", () => {
     expect(result).toEqual({ clustered: 0, clusters: 0, joined_existing: 0 });
     expect(calls.executes).toHaveLength(PRELUDE_LENGTH + 1);
   });
+
+  test("counts joined_existing separately from new-cluster members", async () => {
+    const returningRows = [
+      // Two candidates joined an existing cluster "existing-hash"
+      { id: 101, cluster_id: "existing-hash", is_canonical: false, existing_cluster: true },
+      { id: 102, cluster_id: "existing-hash", is_canonical: false, existing_cluster: true },
+      // Three candidates formed a new cluster "new-hash"
+      { id: 201, cluster_id: "new-hash", is_canonical: true, existing_cluster: false },
+      { id: 202, cluster_id: "new-hash", is_canonical: false, existing_cluster: false },
+      { id: 203, cluster_id: "new-hash", is_canonical: false, existing_cluster: false },
+    ];
+
+    const { db } = makeMockDb([
+      [], // SET LOCAL statement_timeout
+      [], // SET LOCAL work_mem
+      returningRows,
+    ]);
+
+    const result = await clusterNewListings(db);
+
+    expect(result).toEqual({
+      clustered: 5,
+      clusters: 2,
+      joined_existing: 2,
+    });
+  });
 });
