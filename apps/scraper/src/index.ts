@@ -42,7 +42,7 @@ import { CeskeRealityScraper } from "./scrapers/ceskereality.js";
 import { RealitymixScraper } from "./scrapers/realitymix.js";
 import { IdnesScraper } from "./scrapers/idnes.js";
 import { ReaLingoScraper } from "./scrapers/realingo.js";
-import { deactivateStale, deactivateByTtl, clusterDuplicates } from "./deactivator.js";
+import { deactivateStale, deactivateByTtl, clusterDuplicates, clusterNewDuplicates } from "./deactivator.js";
 import { normalizeListingFields } from "./normalizer.js";
 import { Dashboard } from "./dashboard.js";
 
@@ -1082,6 +1082,18 @@ async function main(): Promise<void> {
       printSummary(results);
 
       if (shouldStop) break;
+
+      // Incremental dedup — cluster newly scraped rows against existing
+      // clusters + each other. Failures are logged inside the wrapper and
+      // do not interrupt the watch loop.
+      if (!dryRun) {
+        const conn = createDb();
+        try {
+          await clusterNewDuplicates(conn.db);
+        } finally {
+          await conn.sql.end();
+        }
+      }
 
       console.log(`${ts()} [runner] Sleeping ${interval}s until next cycle...`);
       await sleep(interval * 1000);
