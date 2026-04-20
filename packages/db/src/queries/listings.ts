@@ -8,6 +8,7 @@ import {
   ilike,
   inArray,
   isNotNull,
+  isNull,
   lte,
   or,
   type SQL,
@@ -267,26 +268,89 @@ export async function findRecentlyScrapedIds(
 }
 
 /**
- * Return external IDs whose *detail enrichment* succeeded within the last
- * `hours` hours. Parallels findRecentlyScrapedIds but gates on enriched_at
- * — so listings where enrichment silently failed (null enriched_at) always
- * fall through and get re-tried on the next cycle, regardless of how
- * recently we sighted them on the list page.
+ * Return external IDs the scraper should SKIP on this pass. Two reasons:
+ *   1. detail enrichment succeeded within the last `hours` hours, or
+ *   2. enrichment has been attempted for `giveUpAfterDays` days without ever
+ *      succeeding (enriched_at still null, created_at older than the cutoff).
+ *
+ * The give-up clause is what stops us retrying listings whose detail page
+ * is genuinely empty on the portal (no description, seller, params, one
+ * image — wasEnriched() returns false forever) from being enqueued on
+ * every watcher cycle.
+ *
+ * Pass `giveUpAfterDays = 0` (or omit) to disable the give-up clause.
  */
 export async function findRecentlyEnrichedIds(
   db: Db,
   externalIds: string[],
   hours: number,
+  giveUpAfterDays = 0,
 ): Promise<Set<string>> {
-  if (externalIds.length === 0 || hours <= 0) return new Set();
-  const cutoff = new Date(Date.now() - hours * 3600_000).toISOString();
+  if (externalIds.length === 0) return new Set();
+  if (hours <= 0 && giveUpAfterDays <= 0) return new Set();
+
+  const clauses: SQL[] = [];
+  if (hours > 0) {
+    const cutoff = new Date(Date.now() - hours * 3600_000).toISOString();
+    clauses.push(gte(listings.enriched_at, cutoff)!);
+  }
+  if (giveUpAfterDays > 0) {
+    const giveUpCutoff = new Date(
+      Date.now() - giveUpAfterDays * 86400_000,
+    ).toISOString();
+    clauses.push(
+      and(
+        isNull(listings.enriched_at),
+        lte(listings.created_at, giveUpCutoff),
+      )!,
+    );
+  }
+
   const rows = await db
     .select({ external_id: listings.external_id })
     .from(listings)
     .where(
       and(
         inArray(listings.external_id, externalIds),
-        gte(listings.enriched_at, cutoff),
+        clauses.length === 1 ? clauses[0] : or(...clauses)!,
+      ),
+    );
+  return new Set(rows.map((r) => r.external_id));
+}
+
+/**
+ * Return external IDs that are "done" from the scraper's perspective in
+ * watch mode — either ever successfully enriched (enriched_at IS NOT NULL)
+ * or given up on (enriched_at null, created_at older than the cutoff).
+ *
+ * Unlike findRecentlyEnrichedIds this does NOT care how recent the
+ * enrichment is — once we have detail data for a watch-mode listing, we
+ * keep it. The point of this query is to leave the caller with "truly new"
+ * plus "still-within-retry-window" listings to process.
+ */
+export async function findEnrichmentDoneIds(
+  db: Db,
+  externalIds: string[],
+  opts: { giveUpAfterDays: number },
+): Promise<Set<string>> {
+  if (externalIds.length === 0) return new Set();
+  const giveUpCutoff = new Date(
+    Date.now() - opts.giveUpAfterDays * 86400_000,
+  ).toISOString();
+
+  const rows = await db
+    .select({ external_id: listings.external_id })
+    .from(listings)
+    .where(
+      and(
+        inArray(listings.external_id, externalIds),
+        or(
+          isNotNull(listings.enriched_at),
+          and(
+            isNull(listings.enriched_at),
+            lte(listings.created_at, giveUpCutoff),
+          ),
+        ),
       ),
     );
   return new Set(rows.map((r) => r.external_id));

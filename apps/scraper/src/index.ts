@@ -21,6 +21,7 @@ import { getEnv } from "@flat-finder/config";
 import {
   createDb,
   upsertListing,
+  findEnrichmentDoneIds,
   findExistingExternalIds,
   findRecentlyEnrichedIds,
   createScraperRun,
@@ -343,6 +344,11 @@ function createScraper(source: SourceName, watchMode = false): BaseScraper {
 // Convert ScraperResult -> NewListing (handle jsonb field differences)
 // ---------------------------------------------------------------------------
 
+// Abandon enrichment retries for listings whose detail page has been
+// returning nothing enrichable for this many days. See stampEnrichedAt /
+// findEnrichmentDoneIds for the full contract.
+const ENRICHMENT_GIVE_UP_DAYS = 3;
+
 // SCR-04: Non-Czech city blacklist
 const CITY_BLACKLIST = new Set([
   "spanelsko", "spain", "espana",
@@ -455,15 +461,16 @@ function toNewListing(result: ScraperResult): NewListing {
  * Stamp `enriched_at = now` on each listing in the batch whose detail-page
  * enrichment actually populated something. Listings whose per-item enrich
  * silently failed (scrapers catch the error, leaving every detail field
- * null) stay with enriched_at = null — so findRecentlyEnrichedIds won't
- * match them on the next watch cycle, and they're automatically re-tried.
+ * null) stay with enriched_at = null — so findEnrichmentDoneIds (watch)
+ * and findRecentlyEnrichedIds (incremental) won't match them on the next
+ * cycle, and they're automatically re-tried — up to ENRICHMENT_GIVE_UP_DAYS,
+ * after which both queries treat them as done to stop pointless retries.
  *
  * Heuristic: "enrichment succeeded" = at least one of the detail-only
  * fields is non-null / non-empty. A listing with a genuinely empty detail
  * page on the portal (no description, no seller, no params, one image) will
- * fail this check forever; that's an accepted trade-off — retries are cheap
- * at incremental/watch volumes, and false positives on the OTHER side (marking
- * a failed enrich as done) are what we're trying to fix.
+ * fail this check forever; the give-up clause capped at ENRICHMENT_GIVE_UP_DAYS
+ * handles that case.
  */
 function stampEnrichedAt(batch: ScraperResult[]): void {
   const now = new Date().toISOString();
@@ -577,33 +584,45 @@ async function runSource(
           continue;
         }
 
-        // Check which listings are already known
+        // A listing is "done" when it's already in the DB AND either
+        //  (a) enriched_at has ever been set, or
+        //  (b) it's been null for >ENRICHMENT_GIVE_UP_DAYS — i.e. we've
+        //      had multiple cycles to enrich and still got nothing (empty
+        //      detail page on the portal). Either way, don't re-process.
+        // Everything else — brand-new listings, plus known-but-still-
+        // retrying ones — goes into toProcess for enrichment + upsert.
         const externalIds = page.listings.map((l) => l.external_id);
-        const existing = await findExistingExternalIds(db, externalIds);
-        const newListings = page.listings.filter((l) => !existing.has(l.external_id));
+        const doneIds = await findEnrichmentDoneIds(db, externalIds, {
+          giveUpAfterDays: ENRICHMENT_GIVE_UP_DAYS,
+        });
+        const toProcess = page.listings.filter(
+          (l) => !doneIds.has(l.external_id),
+        );
 
-        // All known on this page -> skip rest of this category
-        if (newListings.length === 0) {
-          log(`  ${page.category} page ${page.page}: all known, skipping rest`);
+        // All done on this page -> we've paged back into fully-processed
+        // territory; stop paginating this category.
+        if (toProcess.length === 0) {
+          log(`  ${page.category} page ${page.page}: all done, skipping rest`);
           skippedCategories.add(page.category);
           scraper.skipCategory(page.category);
           continue;
         }
 
-        log(`  ${page.category} page ${page.page}: ${newListings.length} new / ${page.listings.length} total`);
+        log(`  ${page.category} page ${page.page}: ${toProcess.length} to process / ${page.listings.length} total`);
 
-        // Enrich only new listings inline
-        if (scraper.hasDetailPhase && newListings.length > 0) {
+        // Enrich the to-process set (new + retries) inline
+        if (scraper.hasDetailPhase && toProcess.length > 0) {
           if (dashboard) dashboard.setStatus(source, "enriching");
-          await scraper.enrichListings(newListings, {
+          await scraper.enrichListings(toProcess, {
             concurrency: opts.watcherDetailConcurrency,
           });
-          stampEnrichedAt(newListings);
+          stampEnrichedAt(toProcess);
           if (dashboard) dashboard.setStatus(source, "scanning");
         }
 
-        // Upsert only new listings (watch mode skips known ones)
-        const stats = await upsertBatch(db, newListings, log);
+        // Upsert to-process. Retries are INSERT … ON CONFLICT DO UPDATE,
+        // which also refreshes scraped_at on the existing row.
+        const stats = await upsertBatch(db, toProcess, log);
         newCount += stats.newCount;
         updatedCount += stats.updatedCount;
         errorCount += stats.errorCount;
@@ -638,13 +657,21 @@ async function runSource(
           let toEnrich = page.listings;
 
           const skipHours = (scraper as any).skipEnrichmentHours;
-          if (skipHours && skipHours > 0) {
+          // Apply give-up even when skipHours is 0 — abandoning stale
+          // failures should hold regardless of the per-source refresh
+          // cadence.
+          if ((skipHours && skipHours > 0) || ENRICHMENT_GIVE_UP_DAYS > 0) {
             const externalIds = page.listings.map((l) => l.external_id);
-            const recentlyEnriched = await findRecentlyEnrichedIds(db, externalIds, skipHours);
-            if (recentlyEnriched.size > 0) {
-              toEnrich = page.listings.filter((l) => !recentlyEnriched.has(l.external_id));
+            const toSkip = await findRecentlyEnrichedIds(
+              db,
+              externalIds,
+              skipHours ?? 0,
+              ENRICHMENT_GIVE_UP_DAYS,
+            );
+            if (toSkip.size > 0) {
+              toEnrich = page.listings.filter((l) => !toSkip.has(l.external_id));
               if (toEnrich.length < page.listings.length) {
-                log(`  Skipping enrichment for ${page.listings.length - toEnrich.length} recently-enriched listings`);
+                log(`  Skipping enrichment for ${page.listings.length - toEnrich.length} listings (recently-enriched or given up)`);
               }
             }
           }
