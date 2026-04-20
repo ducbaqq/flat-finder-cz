@@ -5,6 +5,28 @@ const app = new Hono();
 
 const MAX_DESCRIPTION = 5000;
 const MAX_SIGNATURE = 200;
+const MAX_IMAGES = 5;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB per image
+const MAX_TOTAL_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB combined (Brevo ceiling)
+const ALLOWED_MIME = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/heic",
+  "image/heif",
+]);
+const ALLOWED_EXT = /\.(png|jpe?g|heic|heif)$/i;
+
+interface IncomingImage {
+  name: string;
+  type: string;
+  data_base64: string;
+}
+
+interface BrevoAttachment {
+  name: string;
+  content: string;
+}
 
 function escapeHtml(s: string): string {
   return s
@@ -23,10 +45,11 @@ app.post("/", async (c) => {
     return c.json({ error: "Invalid JSON" }, 400);
   }
 
-  const { description, signature, page_url } = (body ?? {}) as {
+  const { description, signature, page_url, images } = (body ?? {}) as {
     description?: unknown;
     signature?: unknown;
     page_url?: unknown;
+    images?: unknown;
   };
 
   if (typeof description !== "string" || !description.trim()) {
@@ -45,6 +68,56 @@ app.post("/", async (c) => {
     c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
     c.req.header("x-real-ip") ||
     "unknown";
+
+  // Images (optional): validate, decode, and stage as Brevo attachments.
+  const attachments: BrevoAttachment[] = [];
+  let totalBytes = 0;
+  if (images !== undefined) {
+    if (!Array.isArray(images)) {
+      return c.json({ error: "Images must be an array." }, 400);
+    }
+    if (images.length > MAX_IMAGES) {
+      return c.json({ error: `Maximálně ${MAX_IMAGES} obrázků.` }, 400);
+    }
+    for (const raw of images as unknown[]) {
+      if (!raw || typeof raw !== "object") {
+        return c.json({ error: "Invalid image entry." }, 400);
+      }
+      const img = raw as Partial<IncomingImage>;
+      if (
+        typeof img.name !== "string" ||
+        typeof img.type !== "string" ||
+        typeof img.data_base64 !== "string"
+      ) {
+        return c.json({ error: "Invalid image entry." }, 400);
+      }
+      if (!ALLOWED_MIME.has(img.type.toLowerCase()) && !ALLOWED_EXT.test(img.name)) {
+        return c.json(
+          { error: "Povolené formáty: PNG, JPEG, JPG, HEIC." },
+          400,
+        );
+      }
+      // Rough decoded size: base64 is 4 chars per 3 bytes.
+      const decodedSize = Math.floor((img.data_base64.length * 3) / 4);
+      if (decodedSize > MAX_IMAGE_BYTES) {
+        return c.json(
+          { error: `Obrázek "${img.name}" přesahuje 5 MB.` },
+          400,
+        );
+      }
+      totalBytes += decodedSize;
+      if (totalBytes > MAX_TOTAL_IMAGE_BYTES) {
+        return c.json(
+          { error: "Celková velikost obrázků přesahuje 10 MB." },
+          400,
+        );
+      }
+      attachments.push({
+        name: img.name.slice(0, 200),
+        content: img.data_base64,
+      });
+    }
+  }
 
   const env = getEnv();
   if (!env.BREVO_API_KEY) {
@@ -87,6 +160,9 @@ app.post("/", async (c) => {
     htmlContent,
     textContent,
   };
+  if (attachments.length > 0) {
+    payload.attachment = attachments;
+  }
 
   // If the signature looks like an email, let the recipient hit Reply-To
   // to contact the reporter directly.

@@ -93,7 +93,9 @@ app.use("*", logger());
 
 // ── API-09: Body size limit for POST routes ──
 app.use("/api/watchdogs", bodyLimit({ maxSize: 50 * 1024 })); // 50KB
-app.use("/api/report-problem", bodyLimit({ maxSize: 20 * 1024 })); // 20KB
+// 15MB — images are base64-encoded in-payload (≈33% overhead on top of the
+// 10MB combined image cap enforced inside the route).
+app.use("/api/report-problem", bodyLimit({ maxSize: 15 * 1024 * 1024 }));
 
 // Error handler
 app.onError(errorHandler);
