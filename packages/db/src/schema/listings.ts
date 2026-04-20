@@ -55,6 +55,13 @@ export const listings = pgTable(
     additional_params: jsonb("additional_params").$type<Record<string, unknown>>(),
     cluster_id: text("cluster_id"),
     is_canonical: boolean("is_canonical").default(true),
+    // NOTE: in production this is `text GENERATED ALWAYS AS (md5(...)) STORED`
+    // (see packages/db/drizzle/0004_add_match_hash.sql). Declared here as plain
+    // text so Drizzle's schema-drift detection doesn't try to drop the column
+    // on a future `drizzle-kit push`. The formula is equal to
+    // runClusteringOps's cluster_hash expression; inline dedup reads this
+    // column directly instead of recomputing md5 per candidate.
+    match_hash: text("match_hash"),
   },
   (table) => [
     // Index selection is data-driven. Production usage stats + EXPLAIN
@@ -133,6 +140,11 @@ export const listings = pgTable(
     // ── Deduplication indexes ──
     index("idx_listings_cluster_id").on(table.cluster_id),
     index("idx_listings_canonical").on(table.is_active, table.is_canonical),
+    // Partial in production (WHERE match_hash IS NOT NULL) — Drizzle's
+    // declarative index syntax doesn't carry the WHERE clause, so the actual
+    // partial index is created by the raw SQL migration. This declaration
+    // matches by name so drizzle-kit push does not try to drop or recreate it.
+    index("idx_listings_match_hash").on(table.match_hash),
   ],
 );
 

@@ -24,16 +24,16 @@ function makeMockDb(executeResults: unknown[][]) {
   return { db: db as unknown as Db, calls };
 }
 
-// Inside the transaction, clusterNewListings issues 3 execute() calls:
-//   [0] SET LOCAL statement_timeout
-//   [1] SET LOCAL work_mem
-//   [2] the pipeline UPDATE ... RETURNING
-const PRELUDE_LENGTH = 2;
+// Inside the transaction, clusterNewListings issues 2 execute() calls:
+//   [0] SET LOCAL work_mem
+//   [1] the pipeline UPDATE ... RETURNING
+// (statement_timeout was dropped when the pipeline moved to the match_hash
+// index — the probe is sub-second and doesn't need a safety net.)
+const PRELUDE_LENGTH = 1;
 
 test.describe("clusterNewListings", () => {
   test("returns zero counts when no candidates match", async () => {
     const { db, calls } = makeMockDb([
-      [], // SET LOCAL statement_timeout
       [], // SET LOCAL work_mem
       [], // pipeline UPDATE RETURNING — no rows assigned
     ]);
@@ -56,7 +56,6 @@ test.describe("clusterNewListings", () => {
     ];
 
     const { db, calls } = makeMockDb([
-      [], // SET LOCAL statement_timeout
       [], // SET LOCAL work_mem
       returningRows,
     ]);
@@ -78,7 +77,6 @@ test.describe("clusterNewListings", () => {
     ];
 
     const { db, calls } = makeMockDb([
-      [], // SET LOCAL statement_timeout
       [], // SET LOCAL work_mem
       returningRows,
     ]);

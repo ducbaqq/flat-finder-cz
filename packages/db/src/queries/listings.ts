@@ -486,12 +486,13 @@ export async function clusterNewListings(
 async function runIncrementalClusteringOps(
   executor: Db,
 ): Promise<{ clustered: number; clusters: number; joined_existing: number }> {
-  // 90s safety net — the watch loop sleeps for ~300s; we never want this
-  // pass to hold locks past that. If the candidate pool ever grows large
-  // enough to exceed 90s, that's the signal to introduce match_hash.
-  await executor.execute(sql`SET LOCAL statement_timeout = '90s'`);
-  // Match clusterListings for sort-in-memory headroom; the candidate pool
-  // can reach six figures between daily full rebuilds.
+  // Candidate rows read match_hash directly from the STORED generated
+  // column (populated automatically by Postgres on every insert/update).
+  // The per-candidate md5 computation + idx_listings_cluster_id probe
+  // has been replaced by a partial index lookup on idx_listings_match_hash,
+  // which is O(log N) per candidate and sub-second even on 100K+ candidates.
+  // No statement_timeout needed — the query is fast enough that the 300s
+  // watch-loop safety margin is no longer relevant.
   await executor.execute(sql`SET LOCAL work_mem = '256MB'`);
 
   const rows = (await executor.execute<{
@@ -500,39 +501,31 @@ async function runIncrementalClusteringOps(
     is_canonical: boolean;
     existing_cluster: boolean;
   }>(sql`
-    WITH candidate_hashes AS (
-      SELECT
-        id,
-        md5(
-          'geo|' || transaction_type || '|' ||
-          ROUND(latitude::numeric, 4)::text || '|' ||
-          ROUND(longitude::numeric, 4)::text || '|' ||
-          ROUND(size_m2::numeric, 2)::text || '|' ||
-          ROUND(price::numeric, 0)::text
-        ) AS prospective_hash
+    WITH candidates AS (
+      SELECT id, match_hash
       FROM listings
       WHERE is_active = true
         AND cluster_id IS NULL
-        AND latitude IS NOT NULL AND longitude IS NOT NULL
-        AND size_m2 IS NOT NULL AND price IS NOT NULL
+        AND match_hash IS NOT NULL
     ),
     resolved AS (
       SELECT
-        ch.id,
-        ch.prospective_hash,
+        c.id,
+        c.match_hash,
         EXISTS (
           SELECT 1 FROM listings l
-          WHERE l.cluster_id = ch.prospective_hash
+          WHERE l.match_hash = c.match_hash
+            AND l.cluster_id IS NOT NULL
             AND l.is_active = true
         ) AS existing_cluster,
-        COUNT(*) OVER (PARTITION BY ch.prospective_hash) AS hash_peers,
-        MIN(ch.id) OVER (PARTITION BY ch.prospective_hash) AS new_canonical_id
-      FROM candidate_hashes ch
+        COUNT(*) OVER (PARTITION BY c.match_hash) AS hash_peers,
+        MIN(c.id) OVER (PARTITION BY c.match_hash) AS new_canonical_id
+      FROM candidates c
     ),
     assignments AS (
       SELECT
         id,
-        prospective_hash,
+        match_hash,
         existing_cluster,
         CASE
           WHEN existing_cluster THEN false
@@ -543,7 +536,7 @@ async function runIncrementalClusteringOps(
     )
     UPDATE listings l
     SET
-      cluster_id   = a.prospective_hash,
+      cluster_id   = a.match_hash,
       is_canonical = a.new_is_canonical
     FROM assignments a
     WHERE l.id = a.id
