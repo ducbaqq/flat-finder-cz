@@ -269,7 +269,7 @@ export default function ReportProblemModal() {
                 maxLength={5000}
                 placeholder="Co se stalo? Na které stránce? Co jste zkoušeli?"
                 aria-invalid={!!error}
-                aria-describedby={error ? "reportProblemDescriptionError" : undefined}
+                aria-describedby={error ? "reportProblemFormError" : undefined}
                 className={cn(
                   "w-full min-w-0 resize-y rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none transition-[color,box-shadow] selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground md:text-sm dark:bg-input/30",
                   "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
@@ -277,15 +277,6 @@ export default function ReportProblemModal() {
                   "disabled:cursor-not-allowed disabled:opacity-50",
                 )}
               />
-              {error && (
-                <p
-                  id="reportProblemDescriptionError"
-                  className="text-sm text-destructive"
-                  data-testid="report-problem-description-error"
-                >
-                  {error}
-                </p>
-              )}
             </div>
 
             <div className="space-y-2">
@@ -455,6 +446,17 @@ export default function ReportProblemModal() {
                 </ul>
               )}
             </div>
+
+            {error && (
+              <div
+                id="reportProblemFormError"
+                role="alert"
+                data-testid="report-problem-error"
+                className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                <span>{error}</span>
+              </div>
+            )}
 
             <Button
               className="w-full"
