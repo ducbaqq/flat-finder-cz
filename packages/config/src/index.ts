@@ -16,8 +16,8 @@ const envSchema = z.object({
 
   BREVO_API_KEY: z.string().default(""),
   BREVO_TEMPLATE_ID: z.coerce.number().default(1),
-  BREVO_SENDER_EMAIL: z.string().default("hlidac@flatfinder.cz"),
-  BREVO_SENDER_NAME: z.string().default("Flat Finder CZ"),
+  BREVO_SENDER_EMAIL: z.string().default("hlidac@bytomat.com"),
+  BREVO_SENDER_NAME: z.string().default("Bytomat"),
   REPORT_PROBLEM_EMAIL: z.string().default("ducbaqq@gmail.com"),
   APP_BASE_URL: z.string().default("https://flatfinder.cz"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
