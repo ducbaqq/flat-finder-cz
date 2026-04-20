@@ -453,6 +453,15 @@ export class ERealityScraper extends BaseScraper {
     // rows that have no description, price, geo, etc.
     if (href.includes("/podobne-nabidky/")) return null;
 
+    // Ereality is partly an aggregator: many list-page tiles link to
+    // /presmeruj/<source>/<hash> redirector URLs that bounce to the
+    // canonical listing on sreality / ulovdomov / etc. — sources we
+    // already scrape directly. The redirector has no GPS, no specs,
+    // and our other scrapers cover the same listing with full data.
+    // Skip to avoid 38% duplicate-pollution observed in 2026-04-21
+    // audit (168 redirects to sreality, 115 to ulovdomov-cz-s-r-o-).
+    if (href.includes("/presmeruj/")) return null;
+
     // Extract the ID from the onclick handler: kliknuto('ID', 1)
     const onclickAttr = linkEl.getAttribute("onclick") ?? "";
     const idMatch = onclickAttr.match(/kliknuto\('([a-f0-9]+)'/);
