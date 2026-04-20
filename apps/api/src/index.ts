@@ -13,6 +13,7 @@ import markersRoutes, { startMarkerRefresh, stopMarkerRefresh } from "./routes/m
 import statsRoutes, { startStatsRefresh, stopStatsRefresh } from "./routes/stats.js";
 import watchdogsRoutes from "./routes/watchdogs.js";
 import suggestRoutes from "./routes/suggest.js";
+import reportProblemRoutes from "./routes/report-problem.js";
 
 const app = new Hono();
 
@@ -92,6 +93,7 @@ app.use("*", logger());
 
 // ── API-09: Body size limit for POST routes ──
 app.use("/api/watchdogs", bodyLimit({ maxSize: 50 * 1024 })); // 50KB
+app.use("/api/report-problem", bodyLimit({ maxSize: 20 * 1024 })); // 20KB
 
 // Error handler
 app.onError(errorHandler);
@@ -102,6 +104,7 @@ app.route("/api/markers", markersRoutes);
 app.route("/api/stats", statsRoutes);
 app.route("/api/watchdogs", watchdogsRoutes);
 app.route("/api/suggest", suggestRoutes);
+app.route("/api/report-problem", reportProblemRoutes);
 
 // ── API-02: Lightweight health check with simple SELECT 1 ──
 app.get("/api/health", async (c) => {
