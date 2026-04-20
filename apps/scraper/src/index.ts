@@ -446,6 +446,7 @@ function toNewListing(result: ScraperResult): NewListing {
     enriched_at: result.enriched_at ?? null,
     is_active: result.is_active,
     deactivated_at: result.deactivated_at,
+    deactivation_reason: result.deactivation_reason ?? null,
     seller_name: result.seller_name,
     seller_phone: result.seller_phone,
     seller_email: result.seller_email,

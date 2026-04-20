@@ -41,6 +41,13 @@ export interface ScraperResult {
   enriched_at?: string | null;
   is_active: boolean;
   deactivated_at: string | null;
+  /**
+   * Optional audit trail for why the scraper marked is_active=false at
+   * insertion. Currently used by sreality when the detail API returns
+   * 410/404 even though the list API still served the hash_id
+   * ('delisted_at_capture_410' etc.).
+   */
+  deactivation_reason?: string | null;
   seller_name: string | null;
   seller_phone: string | null;
   seller_email: string | null;

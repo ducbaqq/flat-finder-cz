@@ -236,16 +236,29 @@ export class SrealityScraper extends BaseScraper {
       const detailPromises = batch.map((listing) => {
         const hashId = listing.external_id.replace("sreality_", "");
         return limit(async () => {
-          const detail = await this.fetchDetail(Number(hashId));
-          return { listing, detail };
+          const result = await this.fetchDetail(Number(hashId));
+          return { listing, result };
         });
       });
 
       const results = await Promise.all(detailPromises);
-      for (const { listing, detail } of results) {
-        if (detail) {
-          this.enrichFromDetail(listing, detail);
+      for (const { listing, result } of results) {
+        if (result.status === "ok") {
+          this.enrichFromDetail(listing, result.data);
+        } else if (result.status === "gone") {
+          // Sreality's list API serves recently-delisted estates for a
+          // short window after they're pulled — the detail API returns
+          // 410/404 for those same hash_ids. Without this branch, the
+          // listing was upserted with title-only data, is_active=true,
+          // and a URL that 404s — pure pollution. Mark it dead at the
+          // upsert so it never appears in search results.
+          listing.is_active = false;
+          listing.deactivated_at = new Date().toISOString();
+          listing.deactivation_reason = `delisted_at_capture_${result.code}`;
         }
+        // status === 'error': transient (timeout / 429 / 5xx). Leave the
+        // listing active without enrichment — the next watch cycle's
+        // findEnrichmentDoneIds gate will pick it up for retry.
       }
     }
   }
@@ -276,15 +289,31 @@ export class SrealityScraper extends BaseScraper {
   // Detail fetching
   // ------------------------------------------------------------------
 
-  private async fetchDetail(hashId: number): Promise<SrealityDetailResponse | null> {
+  private async fetchDetail(
+    hashId: number,
+  ): Promise<
+    | { status: "ok"; data: SrealityDetailResponse }
+    | { status: "gone"; code: number }
+    | { status: "error" }
+  > {
     const url = `${BASE_URL}/estates/${hashId}`;
     try {
-      return await this.http.get<SrealityDetailResponse>(url, {
+      const data = await this.http.get<SrealityDetailResponse>(url, {
         Referer: `https://www.sreality.cz/detail/prodej/byt/${hashId}`,
       });
+      return { status: "ok", data };
     } catch (err) {
+      // HttpClient throws HttpError with .status on non-2xx. Distinguish
+      // permanent gone (404/410 — listing pulled or removed) from
+      // transient (429 / 5xx / network) so the caller can mark the
+      // listing dead vs leave it for retry.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const status = (err as any)?.status;
+      if (status === 404 || status === 410) {
+        return { status: "gone", code: status };
+      }
       this.log(`Detail fetch failed for hash_id=${hashId}: ${err}`);
-      return null;
+      return { status: "error" };
     }
   }
 
