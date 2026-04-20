@@ -468,9 +468,23 @@ export class EurobydleniScraper extends BaseScraper {
         if (val) listing.construction = val;
       }
 
-      // Size (override if more specific)
+      // Size (override if more specific). Eurobydleni uses several Czech
+      // wordings interchangeably — "plocha", "výměra", "rozloha", and
+      // "velikost" all appear in detail pages for the same concept. Earlier
+      // versions only matched the first two and left size_m2 unpopulated on
+      // ~94% of listings (2026-04-20 audit against a fresh scrape).
       const detailSizeMatch = text.match(/(\d+)\s*m[²2]/);
-      if (detailSizeMatch && (text.includes("plocha") || text.includes("výměra") || text.includes("vymera"))) {
+      if (
+        detailSizeMatch &&
+        (text.includes("plocha") ||
+          text.includes("plochou") ||
+          text.includes("výměr") ||
+          text.includes("vymer") ||
+          text.includes("rozloha") ||
+          text.includes("rozlohou") ||
+          text.includes("velikost") ||
+          text.includes("velikosti"))
+      ) {
         listing.size_m2 = parseInt(detailSizeMatch[1], 10);
       }
 

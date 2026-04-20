@@ -446,6 +446,13 @@ export class ERealityScraper extends BaseScraper {
 
     const href = linkEl.getAttribute("href") ?? "";
 
+    // Ereality decorates list pages with "similar offers" widget tiles that
+    // reuse the property-tile class but link to /detail/podobne-nabidky/<hash>
+    // aggregator pages rather than real listings. Skip them — treating those
+    // pages as detail pages pollutes the DB with title="Podobné nabídky"
+    // rows that have no description, price, geo, etc.
+    if (href.includes("/podobne-nabidky/")) return null;
+
     // Extract the ID from the onclick handler: kliknuto('ID', 1)
     const onclickAttr = linkEl.getAttribute("onclick") ?? "";
     const idMatch = onclickAttr.match(/kliknuto\('([a-f0-9]+)'/);
