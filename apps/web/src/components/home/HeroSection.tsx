@@ -50,7 +50,7 @@ export function HeroSection({ children }: { children: React.ReactNode }) {
               <span className="font-medium text-foreground tabular-nums">
                 {sourcesCount}
               </span>{" "}
-              těchto serverů.
+              serverů.
             </>
           )}
         </p>

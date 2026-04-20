@@ -8,29 +8,38 @@ import { buildSourceUrl, formatPrice } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 
 interface Props {
-  listingId: number;
+  listing: Listing;
 }
 
-export default function ClusterSiblings({ listingId }: Props) {
-  const [siblings, setSiblings] = useState<ClusterSibling[] | null>(null);
+export default function ClusterSiblings({ listing }: Props) {
+  // When this listing has no cluster_id we skip the fetch entirely and
+  // synthesize a single "sibling" row from the listing itself. Same UI,
+  // different data source.
+  const [fetched, setFetched] = useState<ClusterSibling[] | null>(
+    listing.cluster_id ? null : [],
+  );
 
   useEffect(() => {
+    if (!listing.cluster_id) return;
     let cancelled = false;
-    apiGet<ClusterSiblingsResponse>(`/listings/${listingId}/cluster-siblings`)
+    apiGet<ClusterSiblingsResponse>(`/listings/${listing.id}/cluster-siblings`)
       .then((data) => {
-        if (!cancelled) setSiblings(data.siblings);
+        if (!cancelled) setFetched(data.siblings);
       })
       .catch(() => {
-        if (!cancelled) setSiblings([]);
+        if (!cancelled) setFetched([]);
       });
     return () => {
       cancelled = true;
     };
-  }, [listingId]);
+  }, [listing.id, listing.cluster_id]);
 
-  // Nothing rendered until we have real data — and we only render when this
-  // listing has actual cross-source siblings (>1 member in the cluster).
-  if (!siblings || siblings.length <= 1) return null;
+  // Wait for the fetch to settle; then fall back to the listing itself when
+  // the cluster turned out to be a singleton (siblings deactivated, or
+  // listing was never clustered to begin with).
+  if (fetched === null) return null;
+  const siblings: ClusterSibling[] =
+    fetched.length > 0 ? fetched : [listingToSibling(listing)];
 
   // Only highlight "nejlevnější" when prices actually vary across portals.
   // When all siblings share the same price (e.g. a cluster of identical
@@ -47,7 +56,7 @@ export default function ClusterSiblings({ listingId }: Props) {
       <Separator className="bg-divider" />
       <div data-testid="cluster-siblings">
         <h3 className="mb-2 text-sm font-semibold">
-          Dostupné na {siblings.length} portálech
+          Dostupné na {siblings.length} {siblings.length === 1 ? "portálu" : "portálech"}
         </h3>
         <ul className="space-y-1.5">
           {siblings.map((s) => {
@@ -108,4 +117,19 @@ function urlFor(s: ClusterSibling): string | null {
     layout: s.layout,
   } as unknown as Listing;
   return buildSourceUrl(asListing);
+}
+
+function listingToSibling(l: Listing): ClusterSibling {
+  return {
+    id: l.id,
+    source: l.source,
+    external_id: l.external_id,
+    source_url: l.source_url,
+    property_type: l.property_type,
+    transaction_type: l.transaction_type,
+    layout: l.layout,
+    price: l.price,
+    currency: l.currency,
+    is_canonical: l.is_canonical,
+  };
 }

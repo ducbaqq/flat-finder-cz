@@ -125,16 +125,25 @@ export default function DetailModal() {
                       {listing.title || "\u2014"}
                     </h2>
                     <div className="mt-2 flex items-baseline gap-2" data-testid="listing-detail-price">
-                      <span className="text-2xl font-bold text-primary sm:text-3xl">
-                        {formatPrice(listing.price, listing.currency)}
-                      </span>
-                      {listing.transaction_type === "rent" && (
-                        <span className="text-muted-foreground">/měs.</span>
-                      )}
-                      {listing.price_note && (
-                        <span className="text-sm text-muted-foreground">
-                          {listing.price_note}
+                      {listing.price == null ? (
+                        <span className="text-2xl font-bold sm:text-3xl">
+                          <span className="text-foreground">Cena </span>
+                          <span className="text-primary">Na dotaz</span>
                         </span>
+                      ) : (
+                        <>
+                          <span className="text-2xl font-bold text-primary sm:text-3xl">
+                            {formatPrice(listing.price, listing.currency)}
+                          </span>
+                          {listing.transaction_type === "rent" && (
+                            <span className="text-muted-foreground">/měs.</span>
+                          )}
+                          {listing.price_note && (
+                            <span className="text-sm text-muted-foreground">
+                              {listing.price_note}
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                     {(listing.address || listing.city) && (
@@ -165,10 +174,8 @@ export default function DetailModal() {
                     </>
                   )}
 
-                  {/* Cross-source cluster siblings — only renders if >1 portal has this listing */}
-                  {listing.cluster_id && (
-                    <ClusterSiblings listingId={listing.id} />
-                  )}
+                  {/* Cross-source cluster siblings — renders even for solo listings */}
+                  <ClusterSiblings listing={listing} />
 
                   {/* Mini map */}
                   {listing.latitude != null && listing.longitude != null && (
