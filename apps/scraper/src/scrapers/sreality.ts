@@ -115,12 +115,29 @@ export class SrealityScraper extends BaseScraper {
     if (res.status === 404 || res.status === 410) return "dead";
     if (res.status === 301 || res.status === 302) {
       const loc = res.location.toLowerCase();
-      // 301 to another /detail/ URL is the locality-slug redirect → alive.
-      if (loc.includes("/detail/")) return "alive";
+      // 301/302 to another /detail/ URL is the locality-slug redirect → alive.
+      if (loc.includes("sreality.cz/detail/")) return "alive";
+      // Seznam SSO auto-login hop: 302 -> login.szn.cz/api/v1/autologin?...&return_url=<urlencoded detail URL>.
+      // If the return_url still points at an sreality /detail/ URL, the
+      // listing is alive — the redirect is purely a session-cookie bounce.
+      if (loc.includes("login.szn.cz/") && loc.includes("return_url=")) {
+        try {
+          const u = new URL(res.location);
+          const returnUrl = u.searchParams.get("return_url") ?? "";
+          if (returnUrl.toLowerCase().includes("sreality.cz/detail/")) {
+            return "alive";
+          }
+          // Return URL exists but doesn't land on a detail page → dead.
+          return "dead";
+        } catch {
+          return "unknown";
+        }
+      }
       // 301 back to the landing page or a search URL means delisted.
       if (
         loc === "https://www.sreality.cz/" ||
         loc.endsWith("sreality.cz") ||
+        loc.endsWith("sreality.cz/") ||
         loc.includes("/hledani/") ||
         loc.includes("/vyhledavani/")
       ) {

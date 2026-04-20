@@ -69,6 +69,30 @@ test.describe("classifyLiveness — sreality", () => {
     ).toBe("dead");
   });
 
+  test("302 to login.szn.cz autologin with sreality detail return_url → alive", () => {
+    expect(
+      sreality.classifyLiveness(
+        res({
+          status: 302,
+          location:
+            "https://login.szn.cz/api/v1/autologin?service=sreality&return_url=https%3A%2F%2Fwww.sreality.cz%2Fdetail%2Fprodej%2Fbyt%2F3%2Bkk%2Fx%2F1799246668%3Fnoredirect%3D1",
+        }),
+      ),
+    ).toBe("alive");
+  });
+
+  test("302 to login.szn.cz autologin with non-detail return_url → dead", () => {
+    expect(
+      sreality.classifyLiveness(
+        res({
+          status: 302,
+          location:
+            "https://login.szn.cz/api/v1/autologin?service=sreality&return_url=https%3A%2F%2Fwww.sreality.cz%2Fhledani%2Fprodej%2Fbyty",
+        }),
+      ),
+    ).toBe("dead");
+  });
+
   test("500 → unknown (don't deactivate on transient errors)", () => {
     expect(sreality.classifyLiveness(res({ status: 500 }))).toBe("unknown");
   });
