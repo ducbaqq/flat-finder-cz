@@ -36,7 +36,7 @@ export function SearchHeader({
             data-testid="search-results-count"
           >
             <strong className="font-semibold text-foreground tabular-nums">
-              {total.toLocaleString("cs-CZ")}
+              {total >= 10000 ? "10 000 a více" : total.toLocaleString("cs-CZ")}
             </strong>{" "}
             nabídek
           </span>

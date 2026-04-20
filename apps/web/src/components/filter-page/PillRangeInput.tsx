@@ -28,8 +28,9 @@ export function PillRangeInput({
         <div className="relative flex-1">
           <input
             type="number"
+            min={0}
             value={minValue}
-            onChange={(e) => onMinChange(e.target.value)}
+            onChange={(e) => onMinChange(e.target.value.replace(/-/g, ""))}
             placeholder={minPlaceholder}
             className="w-full rounded-full border border-divider bg-card px-4 py-2.5 pr-12 text-sm text-foreground outline-none transition-all duration-200 placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
@@ -41,8 +42,9 @@ export function PillRangeInput({
         <div className="relative flex-1">
           <input
             type="number"
+            min={0}
             value={maxValue}
-            onChange={(e) => onMaxChange(e.target.value)}
+            onChange={(e) => onMaxChange(e.target.value.replace(/-/g, ""))}
             placeholder={maxPlaceholder}
             className="w-full rounded-full border border-divider bg-card px-4 py-2.5 pr-12 text-sm text-foreground outline-none transition-all duration-200 placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
           />

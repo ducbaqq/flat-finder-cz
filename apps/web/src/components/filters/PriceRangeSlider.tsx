@@ -22,9 +22,10 @@ export function PriceRangeSlider({
         <Label className="text-xs text-muted-foreground">Od (Kč)</Label>
         <Input
           type="number"
+          min={0}
           placeholder="Min"
           value={minValue}
-          onChange={(e) => onMinChange(e.target.value)}
+          onChange={(e) => onMinChange(e.target.value.replace(/-/g, ""))}
           className="mt-1"
           data-testid="filter-price-min"
         />
@@ -33,9 +34,10 @@ export function PriceRangeSlider({
         <Label className="text-xs text-muted-foreground">Do (Kč)</Label>
         <Input
           type="number"
+          min={0}
           placeholder="Max"
           value={maxValue}
-          onChange={(e) => onMaxChange(e.target.value)}
+          onChange={(e) => onMaxChange(e.target.value.replace(/-/g, ""))}
           className="mt-1"
           data-testid="filter-price-max"
         />

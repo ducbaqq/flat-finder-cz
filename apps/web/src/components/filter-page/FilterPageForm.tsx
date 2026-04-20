@@ -84,8 +84,8 @@ const OWNERSHIP_TYPES = [
 ] as const;
 
 const FURNISHING_OPTIONS = [
-  { value: "furnished", label: "Vybaveno" },
-  { value: "unfurnished", label: "Nevybaveno" },
+  { value: "furnished", label: "Zařízené" },
+  { value: "unfurnished", label: "Nezařízené" },
   { value: "partially", label: "Částečně" },
 ] as const;
 
@@ -110,7 +110,11 @@ const AMENITIES = [
   { value: "parking", label: "Parkování" },
   { value: "garage", label: "Garáž" },
   { value: "elevator", label: "Výtah" },
-  { value: "wheelchair", label: "Bezbariérový" },
+  { value: "barrier_free", label: "Bezbariérový" },
+  { value: "pool", label: "Bazén" },
+  { value: "air_conditioning", label: "Klimatizace" },
+  { value: "dishwasher", label: "Myčka" },
+  { value: "washing_machine", label: "Pračka" },
 ] as const;
 
 const ENERGY_CLASSES = [
@@ -121,6 +125,19 @@ const ENERGY_CLASSES = [
   { value: "E", label: "E", color: "#F9A825" },
   { value: "F", label: "F", color: "#EF6C00" },
   { value: "G", label: "G", color: "#D32F2F" },
+] as const;
+
+const SOURCES = [
+  { value: "sreality", label: "sreality.cz" },
+  { value: "bezrealitky", label: "bezrealitky.cz" },
+  { value: "ulovdomov", label: "ulovdomov.cz" },
+  { value: "bazos", label: "bazos.cz" },
+  { value: "idnes", label: "idnes.cz" },
+  { value: "ceskereality", label: "ceskereality.cz" },
+  { value: "realitymix", label: "realitymix.cz" },
+  { value: "ereality", label: "ereality.cz" },
+  { value: "eurobydleni", label: "eurobydleni.cz" },
+  { value: "realingo", label: "realingo.cz" },
 ] as const;
 
 /* ------------------------------------------------------------------ */
@@ -180,6 +197,7 @@ export function FilterPageForm({
   const [buildingTypes, setBuildingTypes] = useState<string[]>([]);
   const [amenities, setAmenities] = useState<string[]>([]);
   const [energyClasses, setEnergyClasses] = useState<string[]>([]);
+  const [sources, setSources] = useState<string[]>([]);
 
   // --- handlers -------------------------------------------------------
   const handleSubmit = useCallback(() => {
@@ -204,6 +222,7 @@ export function FilterPageForm({
       params.set("amenities", amenities.join(","));
     if (energyClasses.length)
       params.set("energy_rating", energyClasses.join(","));
+    if (sources.length) params.set("source", sources.join(","));
 
     saveSearchPreferences({
       property_type: propertyTypes.length ? propertyTypes.join(",") : undefined,
@@ -228,6 +247,7 @@ export function FilterPageForm({
     amenities,
     furnishing,
     energyClasses,
+    sources,
     router,
   ]);
 
@@ -373,7 +393,7 @@ export function FilterPageForm({
 
       {/* 10. Vybavenost (amenities) */}
       <motion.div custom={9} variants={sectionVariants} initial="hidden" animate="visible">
-        <FilterSection title="Vybavenost">
+        <FilterSection title="Vybavení">
           <div className="flex flex-wrap gap-2">
             {AMENITIES.map(({ value, label }) => (
               <PillToggle
@@ -389,7 +409,7 @@ export function FilterPageForm({
 
       {/* 11. Vybavení (furnishing) */}
       <motion.div custom={10} variants={sectionVariants} initial="hidden" animate="visible">
-        <FilterSection title="Vybavení">
+        <FilterSection title="Vybavenost">
           <div className="flex flex-wrap gap-2">
             {FURNISHING_OPTIONS.map(({ value, label }) => (
               <PillToggle
@@ -433,10 +453,26 @@ export function FilterPageForm({
         </FilterSection>
       </motion.div>
 
+      {/* 13. Zdroj inzerátu */}
+      <motion.div custom={12} variants={sectionVariants} initial="hidden" animate="visible">
+        <FilterSection title="Zdroj inzerátu">
+          <div className="flex flex-wrap gap-2">
+            {SOURCES.map(({ value, label }) => (
+              <PillToggle
+                key={value}
+                label={label}
+                selected={sources.includes(value)}
+                onClick={() => setSources((s) => toggle(s, value))}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      </motion.div>
+
       {/* Submit */}
       <motion.div
         className="pt-4"
-        custom={12}
+        custom={13}
         variants={sectionVariants}
         initial="hidden"
         animate="visible"
