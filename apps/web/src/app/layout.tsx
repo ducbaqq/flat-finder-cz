@@ -23,40 +23,16 @@ export const metadata: Metadata = {
     default: "Bytomat.cz — Najděte svůj nový domov",
     template: "%s | Bytomat.cz",
   },
-  description:
-    "Hledáte byt nebo dům v Česku? Bytomat.cz prohledává všechny největší realitní portály na jednom místě — sreality.cz, bezrealitky.cz, ulovdomov.cz a další.",
-  keywords: [
-    "byty",
-    "domy",
-    "pronájem",
-    "prodej",
-    "nemovitosti",
-    "Česko",
-    "Praha",
-    "Brno",
-    "sreality",
-    "bezrealitky",
-  ],
-  authors: [{ name: "Bytomat.cz" }],
   metadataBase: new URL("https://bytomat.cz"),
-  openGraph: {
-    type: "website",
-    locale: "cs_CZ",
-    url: "https://bytomat.cz",
-    siteName: "Bytomat.cz",
-    title: "Bytomat.cz — Najděte svůj nový domov",
-    description:
-      "Prohledávejte všechny největší české realitní portály na jednom místě. Byty, domy, pronájem i prodej.",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Bytomat.cz — Najděte svůj nový domov",
-    description:
-      "Prohledávejte všechny největší české realitní portály na jednom místě.",
-  },
   robots: {
-    index: true,
-    follow: true,
+    index: false,
+    follow: false,
+    nocache: true,
+    googleBot: {
+      index: false,
+      follow: false,
+      noimageindex: true,
+    },
   },
 };
 
