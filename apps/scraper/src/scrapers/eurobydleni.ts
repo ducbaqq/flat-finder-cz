@@ -486,74 +486,88 @@ export class EurobydleniScraper extends BaseScraper {
       if (!listing.thumbnail_url) listing.thumbnail_url = images[0];
     }
 
-    // Property specs from table rows or definition lists
-    const specItems = root.querySelectorAll(
-      ".property-detail__params li, .property-detail__params tr, .property-detail__params dt",
-    );
-    for (const item of specItems) {
-      const text = item.text.trim().toLowerCase();
+    // Property specs are in .box-params as individual <dl><dt>label:</dt>
+    // <dd>value</dd></dl> pairs (one dl per attribute). Previous implementation
+    // queried a .property-detail__params class that doesn't exist on eurobydleni
+    // pages — that silently returned zero matches and left size/floor/energy/
+    // furnishing/ownership/condition unpopulated.
+    //
+    // Observed labels (2026-04-21):
+    //   Evidenční číslo, Typ, Adresa, Cena, Poznámka k ceně, Vlastnictví,
+    //   Stav, Umístění, Typ budovy, Konstrukce, Plocha užitná, Plocha sklepa,
+    //   Plocha terasy, Patro/podlaží, Typ objektu, Energetická náročnost,
+    //   Vybavení, Podlaží v budově, …
+    const paramPairs = root.querySelectorAll(".box-params dl");
+    for (const pair of paramPairs) {
+      const dt = pair.querySelector("dt");
+      const dd = pair.querySelector("dd");
+      if (!dt || !dd) continue;
+      const label = dt.text.trim().toLowerCase().replace(/:$/, "").trim();
+      const rawValue = dd.text.trim();
+      const value = rawValue.toLowerCase();
+      if (!label || !rawValue) continue;
 
-      // Energy rating: "PENB: C" or "energetická: C"
-      if (text.includes("penb") || text.includes("energetick")) {
-        const match = text.match(/[:\s]([A-G])\b/i);
-        if (match) listing.energy_rating = match[1].toUpperCase();
-      }
-
-      // Total floors
-      if (text.includes("podlaží v budově") || text.includes("počet podlaží") || text.includes("celkem podlaží")) {
-        const match = text.match(/(\d+)/);
-        if (match) listing.total_floors = parseInt(match[1], 10);
-      }
-
-      // Furnishing
-      if (text.includes("vybaven")) {
-        if (text.includes("ano") || text.includes("plně") || text.includes("částečně")) {
-          listing.furnishing = text.replace(/.*vybaven[íé]?\s*:?\s*/i, "").trim() || "ano";
+      // Size: only "Plocha užitná" is the apartment's usable area.
+      // "Plocha sklepa" (cellar) and "Plocha terasy" (terrace) are
+      // auxiliary and must NOT populate size_m2.
+      if (label.startsWith("plocha užitná") || label.startsWith("plocha uzitna")) {
+        const m = rawValue.match(/(\d+[.,]?\d*)\s*m/i);
+        if (m) {
+          const parsed = parseFloat(m[1].replace(",", "."));
+          if (parsed >= 5 && parsed <= 5000) listing.size_m2 = parsed;
         }
+        continue;
       }
 
-      // Construction (override if more specific from detail)
-      if (text.includes("konstrukce") || text.includes("stavba")) {
-        const val = text.replace(/.*(?:konstrukce|stavba)\s*:?\s*/i, "").trim();
-        if (val) listing.construction = val;
+      // Floor (e.g. "1. podlaží"). "Patro, podlaží" is the label.
+      if (label.startsWith("patro") || label === "podlaží") {
+        const m = rawValue.match(/(\d+)/);
+        if (m) listing.floor = parseInt(m[1], 10);
+        continue;
       }
 
-      // Size (override if more specific). Eurobydleni uses several Czech
-      // wordings interchangeably — "plocha", "výměra", "rozloha", and
-      // "velikost" all appear in detail pages for the same concept. Earlier
-      // versions only matched the first two and left size_m2 unpopulated on
-      // ~94% of listings (2026-04-20 audit against a fresh scrape).
-      const detailSizeMatch = text.match(/(\d+)\s*m(?:[²2])?(?=\b|[\s,.])/);
+      // Total floors in building.
       if (
-        detailSizeMatch &&
-        (text.includes("plocha") ||
-          text.includes("plochou") ||
-          text.includes("výměr") ||
-          text.includes("vymer") ||
-          text.includes("rozloha") ||
-          text.includes("rozlohou") ||
-          text.includes("velikost") ||
-          text.includes("velikosti"))
+        label.startsWith("podlaží v budově") ||
+        label.startsWith("počet podlaží") ||
+        label.startsWith("celkem podlaží")
       ) {
-        listing.size_m2 = parseInt(detailSizeMatch[1], 10);
+        const m = rawValue.match(/(\d+)/);
+        if (m) listing.total_floors = parseInt(m[1], 10);
+        continue;
       }
 
-      // Floor
-      if (text.includes("podlaží") && !text.includes("v budově") && !text.includes("počet") && !text.includes("celkem")) {
-        const match = text.match(/(\d+)/);
-        if (match && !listing.floor) listing.floor = parseInt(match[1], 10);
+      // Energy class: dd contains "C - Úsporná", "A - Velmi úsporná", …
+      if (label.startsWith("třída en") || label.includes("energetick")) {
+        const m = rawValue.match(/^([A-G])\b/i);
+        if (m) listing.energy_rating = m[1].toUpperCase();
+        continue;
       }
 
-      // Ownership
-      if (text.includes("vlastnictví") || text.includes("vlastnict")) {
-        const val = text.replace(/.*vlastnict\w*\s*:?\s*/i, "").trim();
-        if (val) listing.ownership = val;
+      // Ownership ("Osobní", "Družstevní", …).
+      if (label.startsWith("vlastnictví") || label.startsWith("vlastnict")) {
+        listing.ownership = rawValue;
+        continue;
       }
 
-      // Condition
-      if (text.includes("stav objektu") || text.includes("stav nemovitosti")) {
-        const val = text.replace(/.*stav\s+\w+\s*:?\s*/i, "").trim();
-        if (val) listing.condition = val;
+      // Construction material ("Cihlová", "Panelová", …).
+      if (label.startsWith("konstrukce")) {
+        listing.construction = rawValue;
+        continue;
+      }
+
+      // Condition ("Novostavba", "Po rekonstrukci", …).
+      if (label === "stav" || label.startsWith("stav objektu") || label.startsWith("stav nemovitosti")) {
+        listing.condition = rawValue;
+        continue;
+      }
+
+      // Furnishing ("Ano" / "Částečně" / "Ne").
+      if (label.startsWith("vybaven")) {
+        if (value === "ano" || value.startsWith("plně")) listing.furnishing = "furnished";
+        else if (value.startsWith("částečně") || value.startsWith("castecne")) listing.furnishing = "partially";
+        else if (value === "ne" || value === "nezařízeno") listing.furnishing = "unfurnished";
+        continue;
       }
     }
 
