@@ -111,7 +111,7 @@ export default function ReportProblemModal() {
 
       for (const f of incoming) {
         if (images.length + accepted.length >= MAX_IMAGES) {
-          setError(`Maximálně ${MAX_IMAGES} obrázků.`);
+          setError(`Maximálně ${MAX_IMAGES} snímků obrazovky.`);
           break;
         }
         const typeOk =
@@ -121,11 +121,11 @@ export default function ReportProblemModal() {
           continue;
         }
         if (f.size > MAX_IMAGE_BYTES) {
-          setError(`Obrázek "${f.name}" přesahuje 5 MB.`);
+          setError(`Snímek "${f.name}" přesahuje 5 MB.`);
           continue;
         }
         if (runningTotal + f.size > MAX_TOTAL_IMAGE_BYTES) {
-          setError("Celková velikost obrázků přesahuje 10 MB.");
+          setError("Celková velikost snímků obrazovky přesahuje 10 MB.");
           break;
         }
         runningTotal += f.size;
@@ -312,7 +312,7 @@ export default function ReportProblemModal() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="reportProblemImages">Obrázky (volitelné)</Label>
+              <Label htmlFor="reportProblemImages">Snímky obrazovky (volitelné)</Label>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -327,7 +327,7 @@ export default function ReportProblemModal() {
               <div
                 role="button"
                 tabIndex={submitting || images.length >= MAX_IMAGES ? -1 : 0}
-                aria-label="Přetáhněte obrázky nebo klikněte pro výběr"
+                aria-label="Přetáhněte snímky obrazovky nebo klikněte pro výběr"
                 onClick={() => {
                   if (submitting || images.length >= MAX_IMAGES) return;
                   fileInputRef.current?.click();
@@ -345,7 +345,7 @@ export default function ReportProblemModal() {
                 onDrop={onDrop}
                 data-testid="report-problem-dropzone"
                 className={cn(
-                  "relative flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all duration-200 outline-none",
+                  "relative flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed px-5 py-4 text-center transition-all duration-200 outline-none",
                   "focus-visible:ring-2 focus-visible:ring-primary/40",
                   isDragging
                     ? "border-primary bg-primary/10 scale-[1.01]"
@@ -358,62 +358,62 @@ export default function ReportProblemModal() {
                 <div className="relative">
                   {/* Decorative sparkles/pluses */}
                   <Sparkles
-                    className="absolute -left-7 -top-2 h-3 w-3 text-primary/50"
+                    className="absolute -left-6 -top-1 h-2.5 w-2.5 text-primary/50"
                     aria-hidden
                   />
                   <Plus
-                    className="absolute -right-8 top-0 h-3 w-3 text-primary/50"
+                    className="absolute -right-6 top-0 h-2.5 w-2.5 text-primary/50"
                     aria-hidden
                   />
                   <Sparkles
-                    className="absolute -right-6 -bottom-1 h-2.5 w-2.5 text-primary/40"
+                    className="absolute -right-5 -bottom-0.5 h-2 w-2 text-primary/40"
                     aria-hidden
                   />
                   <Plus
-                    className="absolute -left-6 bottom-1 h-2.5 w-2.5 text-primary/40"
+                    className="absolute -left-5 bottom-0 h-2 w-2 text-primary/40"
                     aria-hidden
                   />
 
-                  <div className="relative flex items-end gap-2">
+                  <div className="relative flex items-end gap-1.5">
                     <FileImage
-                      className="h-8 w-8 -rotate-6 text-primary/60"
+                      className="h-5 w-5 -rotate-6 text-primary/60"
                       strokeWidth={1.6}
                       aria-hidden
                     />
                     <ImageIcon
-                      className="h-9 w-9 text-primary/70"
+                      className="h-6 w-6 text-primary/70"
                       strokeWidth={1.6}
                       aria-hidden
                     />
                     {/* Center: cloud with upward arrow */}
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-background shadow-sm ring-2 ring-primary/20">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-background shadow-sm ring-2 ring-primary/20">
                       <CloudUpload
-                        className="h-7 w-7 text-primary"
+                        className="h-5 w-5 text-primary"
                         strokeWidth={1.8}
                         aria-hidden
                       />
                     </div>
                     <Mountain
-                      className="h-9 w-9 text-primary/70"
+                      className="h-6 w-6 text-primary/70"
                       strokeWidth={1.6}
                       aria-hidden
                     />
                     <Camera
-                      className="h-8 w-8 rotate-6 text-primary/60"
+                      className="h-5 w-5 rotate-6 text-primary/60"
                       strokeWidth={1.6}
                       aria-hidden
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <p className="text-sm font-medium text-foreground">
                     {isDragging
-                      ? "Pusťte obrázky sem"
-                      : "Přetáhněte obrázky sem"}
+                      ? "Pusťte snímky obrazovky sem"
+                      : "Přetáhněte snímky obrazovky sem"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    nebo klikněte pro výběr · PNG, JPEG, HEIC · max 5 MB/obrázek
+                    PNG, JPEG, HEIC · max 5 MB/snímek · {images.length}/{MAX_IMAGES}
                   </p>
                 </div>
 
@@ -428,13 +428,10 @@ export default function ReportProblemModal() {
                     fileInputRef.current?.click();
                   }}
                   data-testid="report-problem-images-button"
+                  className="h-7 px-3 text-xs"
                 >
-                  Vybrat obrázky
+                  Vybrat snímky
                 </Button>
-
-                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  {images.length}/{MAX_IMAGES}
-                </span>
               </div>
               {images.length > 0 && (
                 <ul
