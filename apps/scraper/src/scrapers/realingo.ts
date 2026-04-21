@@ -12,6 +12,47 @@ const GRAPHQL_URL = `${BASE_URL}/graphql`;
 const IMAGE_BASE = "https://realingo.cz/static/images";
 const ITEMS_PER_PAGE = 100;
 
+/**
+ * Realingo is a meta-aggregator: most of its listings point at other Czech
+ * real-estate portals. When the externalUrl host matches a portal we already
+ * scrape directly, the realingo row is a duplicate of what we already have
+ * — with worse data coverage because realingo's own detail API doesn't
+ * consistently populate size_m2 / ownership / etc. for aggregated listings.
+ *
+ * 2026-04-21 audit: ~40K of realingo's 63K active rows hit these hosts
+ * (20K bazos, 20K ceskereality subdomains). Skipping them removes pure
+ * duplicates; we keep the ~15K realingo-native rows + ~7K unique
+ * moravskereality rows (which no other scraper covers).
+ *
+ * Match-by-substring so subdomains (reality.bazos.cz, stredo.ceskereality.cz,
+ * severo.ceskereality.cz, etc.) all match the base host.
+ */
+const EXTERNALLY_COVERED_HOSTS = [
+  "sreality.cz",
+  "bezrealitky.cz",
+  "ulovdomov.cz",
+  "bazos.cz",
+  "ereality.cz",
+  "eurobydleni.cz",
+  "ceskereality.cz",
+  "realitymix.cz",
+  "realitymix.com",
+  "idnes.cz",
+] as const;
+
+function isExternallyCoveredUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return EXTERNALLY_COVERED_HOSTS.some(
+    (host) => hostname === host || hostname.endsWith(`.${host}`),
+  );
+}
+
 const SEARCH_CONFIGS: { purpose: string; transactionType: TransactionType }[] = [
   { purpose: "SELL", transactionType: "sale" },
   { purpose: "RENT", transactionType: "rent" },
@@ -435,17 +476,35 @@ export class ReaLingoScraper extends BaseScraper {
     this.log(`Enriching ${listings.length} new listings...`);
     const limit = opts?.concurrency ? pLimit(opts.concurrency) : this.limiter;
 
+    // external_ids to drop from the batch because their externalUrl points
+    // at a portal we already scrape directly (see EXTERNALLY_COVERED_HOSTS).
+    const skipIds = new Set<string>();
+
     await Promise.all(
       listings.map((listing) =>
         limit(async () => {
           try {
-            await this.enrichOne(listing);
+            const shouldSkip = await this.enrichOne(listing);
+            if (shouldSkip) skipIds.add(listing.external_id);
           } catch (err) {
             this.log(`Failed to enrich ${listing.external_id}: ${err}`);
           }
         }),
       ),
     );
+
+    // In-place drop of duplicates so the caller's upsertBatch never sees them.
+    if (skipIds.size > 0) {
+      this.log(
+        `Dropping ${skipIds.size}/${listings.length} duplicate listings that ` +
+          `redirect to portals we scrape directly (bazos / ceskereality / etc.)`,
+      );
+      const kept = listings.filter((l) => !skipIds.has(l.external_id));
+      listings.length = 0;
+      listings.push(...kept);
+    }
+
+    if (listings.length === 0) return;
 
     const withDesc = listings.filter((l) => l.description !== null).length;
     const withExtUrl = listings.filter((l) => {
@@ -468,7 +527,17 @@ export class ReaLingoScraper extends BaseScraper {
     );
   }
 
-  private async enrichOne(listing: ScraperResult): Promise<void> {
+  /**
+   * Returns `true` when this listing should be dropped from the batch because
+   * its detail externalUrl points at a portal we already scrape directly.
+   * Caller (enrichListings) filters the input array after Promise.all.
+   *
+   * Note: we still burn the one detail-API request per duplicate to learn
+   * the externalUrl — realingo's list-phase GraphQL doesn't expose it. The
+   * RPS cost is bounded by realingo's own rate limit and outweighed by not
+   * writing ~40K duplicate rows into the DB.
+   */
+  private async enrichOne(listing: ScraperResult): Promise<boolean> {
     // Extract raw ID: "realingo_24523638" -> "24523638"
     const rawId = listing.external_id.replace(/^realingo_/, "");
 
@@ -482,13 +551,21 @@ export class ReaLingoScraper extends BaseScraper {
       });
     } catch (err) {
       this.log(`  Detail query failed for ${listing.external_id}: ${err}`);
-      return;
+      return false;
     }
 
     const data = response?.data?.offer;
-    if (!data) return;
+    if (!data) return false;
 
     const { offer, detail } = data;
+
+    // Duplicate guard: skip any listing whose externalUrl points at one of
+    // our directly-scraped portals. Realingo's own data for these tends to
+    // be worse (size/ownership/etc. often missing) and we already have the
+    // canonical row via the direct scrape.
+    if (isExternallyCoveredUrl(detail?.externalUrl)) {
+      return true;
+    }
 
     // Parse existing additional_params
     let additionalParams: Record<string, unknown> = {};
@@ -564,6 +641,7 @@ export class ReaLingoScraper extends BaseScraper {
     }
 
     listing.additional_params = JSON.stringify(additionalParams);
+    return false;
   }
 
   // ─── Parsing helpers ───────────────────────────────────────────────
