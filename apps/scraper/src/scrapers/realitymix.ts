@@ -172,15 +172,27 @@ export class RealitymixScraper extends BaseScraper {
   }
 
   private enrichGps(listing: ScraperResult, doc: HTMLElement): void {
-    const mapEl = doc.querySelector("#map") ?? doc.querySelector("#print-map");
+    // Realitymix detail pages render TWO map-container elements:
+    //   <div id="map"        data-gps-lat=""        data-gps-lon="">
+    //   <div id="print-map"  data-gps-lat="49.024..." data-gps-lon="17.645...">
+    // The #map one has EMPTY attributes; #print-map has the real coords.
+    // Older code (`#map ?? #print-map`) always picked #map, then the empty-
+    // string check bailed out — all detail-page geo was silently dropped
+    // (2026-04-21 audit: realitymix geo coverage 50%, vs 99.7% on enriched
+    // ceskereality where the same-shape parser works). Prefer the element
+    // with populated data-gps-* attributes.
+    const candidates = [
+      doc.querySelector("#print-map"),
+      doc.querySelector("#map"),
+    ];
+    const mapEl = candidates.find(
+      (el) => el && el.getAttribute("data-gps-lat") && el.getAttribute("data-gps-lon"),
+    );
     if (!mapEl) return;
 
-    const latStr = mapEl.getAttribute("data-gps-lat");
-    const lonStr = mapEl.getAttribute("data-gps-lon");
-    if (!latStr || !lonStr) return;
-
-    const lat = parseFloat(latStr);
-    const lon = parseFloat(lonStr);
+    const lat = parseFloat(mapEl.getAttribute("data-gps-lat") ?? "");
+    const lon = parseFloat(mapEl.getAttribute("data-gps-lon") ?? "");
+    if (Number.isNaN(lat) || Number.isNaN(lon)) return;
 
     // Validate Czech bounding box
     if (lat >= 48 && lat <= 52 && lon >= 12 && lon <= 19) {
