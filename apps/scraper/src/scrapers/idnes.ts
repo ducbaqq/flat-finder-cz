@@ -13,6 +13,45 @@ import { normalizeAmenities } from "../amenity-normalizer.js";
 
 const ITEMS_PER_PAGE = 30;
 
+/**
+ * Parse `{ layout, sizeM2 }` from an idnes list-page title.
+ *
+ * Exported as a pure function so tests can exercise it directly.
+ *
+ * Historical bug (fixed 2026-04-21): the original regex
+ *   `title.match(/(\d[\d\s]*)\s*m[²2]/i)`
+ * scanned the full title and — for layouts ending in a digit like "4+1"
+ * or "3+1" — would capture the layout's trailing digit + the size as a
+ * single thousands-separated number, e.g. "prodej bytu 4+1 118 m²"
+ * produced sizeM2=1118 instead of 118. 747 prod flats were affected at
+ * detection time. Fix: slice the title at the layout match and parse
+ * size only from the portion AFTER the layout. Czech-thousand-separated
+ * sizes (rare: mansions, warehouses) are handled by the fact that the
+ * "after-layout" slice preserves the full "1 118" when that's genuine.
+ */
+export function parseIdnesTitleDetails(
+  title: string | null,
+): { layout: string | null; sizeM2: number | null } {
+  if (!title) return { layout: null, sizeM2: null };
+
+  const layoutMatch = title.match(/(\d\+(?:kk|1|\d))/i);
+  const layout = layoutMatch ? layoutMatch[1] : null;
+
+  const searchIn = layoutMatch
+    ? title.slice(title.indexOf(layoutMatch[0]) + layoutMatch[0].length)
+    : title;
+
+  const sizeMatch = searchIn.match(/(\d[\d\s]*)\s*m[²2]/i);
+  let sizeM2: number | null = null;
+  if (sizeMatch) {
+    const numStr = sizeMatch[1].replace(/\s/g, "");
+    sizeM2 = parseFloat(numStr);
+    if (isNaN(sizeM2)) sizeM2 = null;
+  }
+
+  return { layout, sizeM2 };
+}
+
 interface Category {
   transactionSlug: string;
   transactionType: TransactionType;
@@ -598,20 +637,7 @@ export class IdnesScraper extends BaseScraper {
   }
 
   private parseTitleDetails(title: string | null): { layout: string | null; sizeM2: number | null } {
-    if (!title) return { layout: null, sizeM2: null };
-
-    const layoutMatch = title.match(/(\d\+(?:kk|1|\d))/i);
-    const layout = layoutMatch ? layoutMatch[1] : null;
-
-    const sizeMatch = title.match(/(\d[\d\s]*)\s*m[²2]/i);
-    let sizeM2: number | null = null;
-    if (sizeMatch) {
-      const numStr = sizeMatch[1].replace(/\s/g, "");
-      sizeM2 = parseFloat(numStr);
-      if (isNaN(sizeM2)) sizeM2 = null;
-    }
-
-    return { layout, sizeM2 };
+    return parseIdnesTitleDetails(title);
   }
 
   private parseCity(address: string | null): string | null {

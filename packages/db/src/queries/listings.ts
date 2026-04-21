@@ -526,6 +526,138 @@ export async function reactivateIfLivenessDeactivated(
   return result.length > 0;
 }
 
+// -----------------------------------------------------------------------
+// Image-refresh sweep helpers (Phase 2 — used by runImageRefreshSweep)
+// -----------------------------------------------------------------------
+
+/**
+ * Rows the image sweep HEAD-checks. Thumbnail URL is mandatory because
+ * there's nothing to check otherwise — rows without a thumbnail are
+ * skipped via the partial index (see 0005_add_last_image_checked_at.sql).
+ */
+export interface ImageCheckCandidate {
+  id: number;
+  external_id: string;
+  source: string;
+  source_url: string | null;
+  thumbnail_url: string;
+  enriched_at: string | null;
+  last_image_checked_at: string | null;
+}
+
+/**
+ * Pick the next batch of rows to HEAD-check for thumbnail rot.
+ * Order: oldest `last_image_checked_at` first (NULLS FIRST = never
+ * checked), tiebreak on id. Skips rows without a thumbnail, rows on
+ * other sources, and inactive rows — all enforced by the partial index.
+ */
+export async function pickStaleForImageCheck(
+  db: Db,
+  source: string,
+  limit: number,
+): Promise<ImageCheckCandidate[]> {
+  if (limit <= 0) return [];
+  const rows = await db
+    .select({
+      id: listings.id,
+      external_id: listings.external_id,
+      source: listings.source,
+      source_url: listings.source_url,
+      thumbnail_url: listings.thumbnail_url,
+      enriched_at: listings.enriched_at,
+      last_image_checked_at: listings.last_image_checked_at,
+    })
+    .from(listings)
+    .where(
+      and(
+        eq(listings.is_active, true),
+        eq(listings.source, source),
+        isNotNull(listings.thumbnail_url),
+      ),
+    )
+    .orderBy(asc(listings.last_image_checked_at), asc(listings.id))
+    .limit(limit);
+  return rows as ImageCheckCandidate[];
+}
+
+/**
+ * Pick rows where detail data is stale enough to re-enrich prophylactically,
+ * regardless of whether the thumbnail currently resolves. Acts as a 7-day
+ * (configurable) ceiling on enrichment age so rot we never HEAD-catch still
+ * gets refreshed eventually, and so description/price/specs stay current.
+ *
+ * enriched_at NULL is excluded: those rows either haven't been enriched yet
+ * (the main runCycle path will get to them) or belong to no-detail-phase
+ * sources like bezrealitky where enriched_at stays null forever.
+ */
+export async function pickStaleForImageReenrich(
+  db: Db,
+  source: string,
+  limit: number,
+  thresholdDays: number,
+): Promise<ImageCheckCandidate[]> {
+  if (limit <= 0) return [];
+  const cutoff = new Date(
+    Date.now() - thresholdDays * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const rows = await db
+    .select({
+      id: listings.id,
+      external_id: listings.external_id,
+      source: listings.source,
+      source_url: listings.source_url,
+      thumbnail_url: listings.thumbnail_url,
+      enriched_at: listings.enriched_at,
+      last_image_checked_at: listings.last_image_checked_at,
+    })
+    .from(listings)
+    .where(
+      and(
+        eq(listings.is_active, true),
+        eq(listings.source, source),
+        isNotNull(listings.source_url),
+        isNotNull(listings.enriched_at),
+        lte(listings.enriched_at, cutoff),
+      ),
+    )
+    .orderBy(asc(listings.enriched_at), asc(listings.id))
+    .limit(limit);
+  return rows as ImageCheckCandidate[];
+}
+
+/**
+ * Stamp `last_image_checked_at = now` in a batch. Called after every
+ * HEAD check regardless of result so the queue advances even when a row
+ * turns out to be alive.
+ */
+export async function stampImageCheckedBatch(
+  db: Db,
+  ids: number[],
+): Promise<void> {
+  if (ids.length === 0) return;
+  await db
+    .update(listings)
+    .set({ last_image_checked_at: new Date().toISOString() })
+    .where(inArray(listings.id, ids));
+}
+
+/**
+ * Fetch the full DB rows for a set of ids. Used by the image-refresh
+ * engine to reconstruct a ScraperResult-shaped stub before calling
+ * `scraper.enrichListings([...])`.
+ */
+export async function getListingsByIds(
+  db: Db,
+  ids: number[],
+): Promise<Array<typeof listings.$inferSelect>> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(listings)
+    .where(inArray(listings.id, ids));
+  return rows;
+}
+
 /**
  * Cluster duplicate listings across sources.
  *
@@ -601,33 +733,28 @@ async function runClusteringOps(
     WHERE cluster_id IS NOT NULL
   `);
 
-  // Group active listings by the rounded match key; any group with ≥2
-  // members is a cluster. `GROUP BY ... HAVING COUNT(*) > 1` lets Postgres
-  // use HashAggregate and discard non-duplicate groups early — much faster
-  // than a window function, which would have to sort the full active row
-  // set. md5 includes a 'geo|' namespace prefix so future additional phases
-  // (if any) can coexist without hash collisions.
+  // Group active listings by either the primary match_hash (geo + size +
+  // price + transaction_type, prefix 'geo|') or the secondary no-price
+  // hash (geo + size + transaction_type, prefix 'geo-np|'; fires only
+  // when price IS NULL). Any group with ≥2 members is a cluster.
+  //
+  // We COALESCE over the two STORED columns instead of recomputing md5
+  // inline — identical semantics to the 0004/0006 migrations and ~halves
+  // the SQL we have to keep byte-compatible across files.
+  //
+  // Prefixes guarantee disjoint hash spaces: a primary hash can never
+  // equal a secondary hash, so COALESCE gives the correct key regardless
+  // of which column populated.
   const result = await executor.execute<{ id: number; cluster_id: string }>(sql`
     WITH duplicate_groups AS (
       SELECT
-        md5(
-          'geo|' || transaction_type || '|' ||
-          ROUND(latitude::numeric, 4)::text || '|' ||
-          ROUND(longitude::numeric, 4)::text || '|' ||
-          ROUND(size_m2::numeric, 2)::text || '|' ||
-          ROUND(price::numeric, 0)::text
-        ) AS cluster_hash,
+        COALESCE(match_hash, match_hash_no_price) AS cluster_hash,
         MIN(id) AS canonical_id,
         array_agg(id) AS member_ids
       FROM listings
       WHERE is_active = true
-        AND latitude IS NOT NULL AND longitude IS NOT NULL
-        AND size_m2 IS NOT NULL
-        AND price IS NOT NULL
-      GROUP BY
-        transaction_type,
-        ROUND(latitude::numeric, 4), ROUND(longitude::numeric, 4),
-        ROUND(size_m2::numeric, 2), ROUND(price::numeric, 0)
+        AND (match_hash IS NOT NULL OR match_hash_no_price IS NOT NULL)
+      GROUP BY COALESCE(match_hash, match_hash_no_price)
       HAVING COUNT(*) > 1
     )
     UPDATE listings l
@@ -710,7 +837,10 @@ async function runIncrementalClusteringOps(
   }>(sql`
     WITH hash_groups AS (
       SELECT
-        match_hash,
+        -- Either the primary hash (price-present) or the secondary
+        -- no-price hash (price-on-request). Prefixes 'geo|' / 'geo-np|'
+        -- keep them in disjoint spaces so COALESCE is unambiguous.
+        COALESCE(match_hash, match_hash_no_price) AS effective_hash,
         -- Existing-cluster groups: any row in the group already has a
         -- cluster_id set. New members inherit that cluster_id and stay
         -- is_canonical = false.
@@ -722,8 +852,8 @@ async function runIncrementalClusteringOps(
         count(*) FILTER (WHERE cluster_id IS NULL) AS candidate_count
       FROM listings
       WHERE is_active = true
-        AND match_hash IS NOT NULL
-      GROUP BY match_hash
+        AND (match_hash IS NOT NULL OR match_hash_no_price IS NOT NULL)
+      GROUP BY COALESCE(match_hash, match_hash_no_price)
       HAVING
         -- Need at least one candidate to UPDATE.
         count(*) FILTER (WHERE cluster_id IS NULL) > 0
@@ -737,7 +867,7 @@ async function runIncrementalClusteringOps(
     )
     UPDATE listings l
     SET
-      cluster_id   = hg.match_hash,
+      cluster_id   = hg.effective_hash,
       is_canonical = (NOT hg.existing_cluster AND l.id = hg.new_canonical_id)
     FROM hash_groups hg
     WHERE l.id = ANY(hg.candidate_ids)

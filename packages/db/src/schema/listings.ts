@@ -46,6 +46,7 @@ export const listings = pgTable(
     scraped_at: timestamp("scraped_at", { mode: "string" }).defaultNow(),
     enriched_at: timestamp("enriched_at", { mode: "string" }),
     last_checked_at: timestamp("last_checked_at", { mode: "string" }),
+    last_image_checked_at: timestamp("last_image_checked_at", { mode: "string" }),
     created_at: timestamp("created_at", { mode: "string" }).defaultNow(),
     is_active: boolean("is_active").default(true),
     deactivated_at: timestamp("deactivated_at", { mode: "string" }),
@@ -64,6 +65,12 @@ export const listings = pgTable(
     // runClusteringOps's cluster_hash expression; inline dedup reads this
     // column directly instead of recomputing md5 per candidate.
     match_hash: text("match_hash"),
+    // Secondary hash for price-on-request listings — fires only when
+    // price IS NULL AND geo + size + transaction present. Primary and
+    // secondary are mutually exclusive by design (price NULL gate), and
+    // md5 prefix 'geo-np|' vs 'geo|' keeps their hash spaces disjoint.
+    // See packages/db/drizzle/0006_add_match_hash_no_price.sql.
+    match_hash_no_price: text("match_hash_no_price"),
   },
   (table) => [
     // Index selection is data-driven. Production usage stats + EXPLAIN
@@ -147,6 +154,8 @@ export const listings = pgTable(
     // partial index is created by the raw SQL migration. This declaration
     // matches by name so drizzle-kit push does not try to drop or recreate it.
     index("idx_listings_match_hash").on(table.match_hash),
+    // Secondary hash index, same partial-in-production caveat as above.
+    index("idx_listings_match_hash_no_price").on(table.match_hash_no_price),
   ],
 );
 

@@ -111,7 +111,7 @@ export function LatestListings() {
   });
 
   const title = hasPreferences
-    ? "Vaše poslední hledání"
+    ? "Doporučeno pro vás"
     : "Nejnovější nabídky";
 
   const subtitle = hasPreferences

@@ -20,14 +20,12 @@
 import { getEnv } from "@flat-finder/config";
 import {
   createDb,
-  upsertListing,
   findEnrichmentDoneIds,
   findExistingExternalIds,
   findRecentlyEnrichedIds,
   createScraperRun,
   finishScraperRun,
   type Db,
-  type NewListing,
 } from "@flat-finder/db";
 import type { ScraperResult } from "@flat-finder/types";
 import type postgres from "postgres";
@@ -44,8 +42,8 @@ import { RealitymixScraper } from "./scrapers/realitymix.js";
 import { IdnesScraper } from "./scrapers/idnes.js";
 import { ReaLingoScraper } from "./scrapers/realingo.js";
 import { deactivateStale, deactivateByTtl, clusterDuplicates, clusterNewDuplicates } from "./deactivator.js";
-import { runFreshnessSweep } from "./refresh.js";
-import { normalizeListingFields } from "./normalizer.js";
+import { runFreshnessSweep, runImageRefreshSweep } from "./refresh.js";
+import { toNewListing, wasEnriched, stampEnrichedAt, upsertBatch } from "./upsert.js";
 import { Dashboard } from "./dashboard.js";
 
 // ---------------------------------------------------------------------------
@@ -342,185 +340,15 @@ function createScraper(source: SourceName, watchMode = false): BaseScraper {
 }
 
 // ---------------------------------------------------------------------------
-// Convert ScraperResult -> NewListing (handle jsonb field differences)
+// Upsert pipeline: toNewListing / wasEnriched / stampEnrichedAt / upsertBatch
+// live in ./upsert.ts so apps/scraper/src/refresh.ts can reuse them for the
+// Phase 2 image-refresh sweep without importing from this CLI entrypoint.
 // ---------------------------------------------------------------------------
 
 // Abandon enrichment retries for listings whose detail page has been
-// returning nothing enrichable for this many days. See stampEnrichedAt /
-// findEnrichmentDoneIds for the full contract.
+// returning nothing enrichable for this many days. See upsert.ts:wasEnriched
+// and findEnrichmentDoneIds for the full contract.
 const ENRICHMENT_GIVE_UP_DAYS = 3;
-
-// SCR-04: Non-Czech city blacklist
-const CITY_BLACKLIST = new Set([
-  "spanelsko", "spain", "espana",
-  "nemecko", "germany", "deutschland",
-  "rakousko", "austria",
-  "polsko", "poland",
-  "slovensko", "slovakia",
-  "francie", "france",
-  "italie", "italy",
-]);
-
-function toNewListing(result: ScraperResult): NewListing {
-  // SCR-01: Apply cross-source normalization to all string-enum fields
-  normalizeListingFields(result);
-
-  // image_urls comes as a JSON string from the scraper; DB schema expects string[]
-  let imageUrls: string[] = [];
-  try {
-    const parsed = JSON.parse(result.image_urls);
-    if (Array.isArray(parsed)) imageUrls = parsed;
-  } catch {
-    imageUrls = [];
-  }
-
-  // additional_params comes as a JSON string; DB schema expects Record<string, unknown> | null
-  let additionalParams: Record<string, unknown> | null = null;
-  if (result.additional_params) {
-    try {
-      additionalParams = JSON.parse(result.additional_params);
-    } catch {
-      additionalParams = null;
-    }
-  }
-
-  // --- SCR-10: Data validation before DB insert ---
-
-  // Null out negative prices
-  let price = result.price;
-  if (price !== null && price < 0) price = null;
-
-  // Validate coordinates are within Czech Republic bounds (lat 48.5-51.1, lng 12.0-18.9)
-  let latitude = result.latitude;
-  let longitude = result.longitude;
-  if (latitude !== null && longitude !== null) {
-    if (latitude < 48.5 || latitude > 51.1 || longitude < 12.0 || longitude > 18.9) {
-      latitude = null;
-      longitude = null;
-    }
-  } else {
-    // If only one is present, null both
-    if (latitude !== null || longitude !== null) {
-      latitude = null;
-      longitude = null;
-    }
-  }
-
-  // SCR-04: Filter out non-Czech cities
-  let city = result.city;
-  if (city && CITY_BLACKLIST.has(city.toLowerCase().trim())) {
-    city = null;
-  }
-
-  return {
-    external_id: result.external_id,
-    source: result.source,
-    property_type: result.property_type,
-    transaction_type: result.transaction_type,
-    title: result.title,
-    description: result.description,
-    price,
-    currency: result.currency,
-    price_note: result.price_note,
-    address: result.address,
-    city,
-    district: result.district,
-    region: result.region,
-    latitude,
-    longitude,
-    size_m2: result.size_m2,
-    layout: result.layout,
-    floor: result.floor,
-    total_floors: result.total_floors,
-    condition: result.condition,
-    construction: result.construction,
-    ownership: result.ownership,
-    furnishing: result.furnishing,
-    energy_rating: result.energy_rating,
-    amenities: result.amenities,
-    image_urls: imageUrls,
-    thumbnail_url: result.thumbnail_url,
-    source_url: result.source_url,
-    listed_at: result.listed_at,
-    scraped_at: result.scraped_at,
-    enriched_at: result.enriched_at ?? null,
-    is_active: result.is_active,
-    deactivated_at: result.deactivated_at,
-    deactivation_reason: result.deactivation_reason ?? null,
-    seller_name: result.seller_name,
-    seller_phone: result.seller_phone,
-    seller_email: result.seller_email,
-    seller_company: result.seller_company,
-    additional_params: additionalParams,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Upsert helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Stamp `enriched_at = now` on each listing in the batch whose detail-page
- * enrichment actually populated something. Listings whose per-item enrich
- * silently failed (scrapers catch the error, leaving every detail field
- * null) stay with enriched_at = null — so findEnrichmentDoneIds (watch)
- * and findRecentlyEnrichedIds (incremental) won't match them on the next
- * cycle, and they're automatically re-tried — up to ENRICHMENT_GIVE_UP_DAYS,
- * after which both queries treat them as done to stop pointless retries.
- *
- * Heuristic: "enrichment succeeded" = at least one of the detail-only
- * fields is non-null / non-empty. A listing with a genuinely empty detail
- * page on the portal (no description, no seller, no params, one image) will
- * fail this check forever; the give-up clause capped at ENRICHMENT_GIVE_UP_DAYS
- * handles that case.
- */
-function stampEnrichedAt(batch: ScraperResult[]): void {
-  const now = new Date().toISOString();
-  for (const l of batch) {
-    if (wasEnriched(l)) l.enriched_at = now;
-  }
-}
-
-function wasEnriched(l: ScraperResult): boolean {
-  if (l.description) return true;
-  if (l.seller_name || l.seller_phone || l.seller_email) return true;
-  if (l.floor !== null) return true;
-  if (l.energy_rating) return true;
-  if (l.condition || l.construction || l.furnishing || l.ownership) return true;
-  if (l.additional_params && l.additional_params !== "{}" && l.additional_params !== "null") return true;
-  try {
-    if (Array.isArray(JSON.parse(l.image_urls)) && JSON.parse(l.image_urls).length > 1) return true;
-  } catch { /* ignore */ }
-  return false;
-}
-
-async function upsertBatch(
-  db: Db,
-  listings: ScraperResult[],
-  log: (msg: string) => void,
-): Promise<{ newCount: number; updatedCount: number; errorCount: number }> {
-  let newCount = 0;
-  let updatedCount = 0;
-  let errorCount = 0;
-
-  for (const result of listings) {
-    try {
-      const newListing = toNewListing(result);
-      const { isNew } = await upsertListing(db, newListing);
-      if (isNew) newCount++;
-      else updatedCount++;
-    } catch (err) {
-      errorCount++;
-      if (errorCount <= 5) {
-        log(`Error upserting ${result.external_id}: ${err}`);
-      } else if (errorCount === 6) {
-        log("(suppressing further upsert error logs)");
-      }
-    }
-  }
-
-  return { newCount, updatedCount, errorCount };
-}
 
 // ---------------------------------------------------------------------------
 // Run a single source
@@ -1189,8 +1017,17 @@ async function main(): Promise<void> {
           await runFreshnessSweep(conn.db, sweepScrapers, {
             deadlineMs: cycleDeadlineMs,
           });
+
+          // Image-refresh sweep (Phase 2) — HEAD thumbnails for rot and
+          // re-enrich rotted / long-stale rows. Runs with the SAME
+          // scraper instances (token buckets + init already primed) but
+          // skips no-detail-phase sources internally. Same hard deadline
+          // so the watch loop keeps its 5-min cadence.
+          await runImageRefreshSweep(conn.db, sweepScrapers, {
+            deadlineMs: cycleDeadlineMs,
+          });
         } catch (err) {
-          console.error(`${ts()} [runner] Freshness sweep failed, continuing:`, err);
+          console.error(`${ts()} [runner] Freshness / image-refresh sweep failed, continuing:`, err);
         } finally {
           try {
             await conn.sql.end();
