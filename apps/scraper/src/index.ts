@@ -586,17 +586,22 @@ async function runSource(
           continue;
         }
 
-        // A listing is "done" when it's already in the DB AND either
-        //  (a) enriched_at has ever been set, or
-        //  (b) it's been null for >ENRICHMENT_GIVE_UP_DAYS — i.e. we've
-        //      had multiple cycles to enrich and still got nothing (empty
-        //      detail page on the portal). Either way, don't re-process.
-        // Everything else — brand-new listings, plus known-but-still-
-        // retrying ones — goes into toProcess for enrichment + upsert.
+        // A listing is "done" when:
+        //   - Scraper has a detail phase: enriched_at has ever been set,
+        //     OR enriched_at is null AND created_at is older than
+        //     ENRICHMENT_GIVE_UP_DAYS (failed enrichment cap).
+        //   - Scraper has NO detail phase (e.g. bezrealitky — all data
+        //     comes from the list page, enrichListings is a no-op):
+        //     "known" = done. Because enriched_at is never set for these
+        //     sources, the enriched_at-based gate would keep re-processing
+        //     every listing on every page every cycle — effectively
+        //     running a full scrape each 5 min.
         const externalIds = page.listings.map((l) => l.external_id);
-        const doneIds = await findEnrichmentDoneIds(db, externalIds, {
-          giveUpAfterDays: ENRICHMENT_GIVE_UP_DAYS,
-        });
+        const doneIds = scraper.hasDetailPhase
+          ? await findEnrichmentDoneIds(db, externalIds, {
+              giveUpAfterDays: ENRICHMENT_GIVE_UP_DAYS,
+            })
+          : await findExistingExternalIds(db, externalIds);
         const toProcess = page.listings.filter(
           (l) => !doneIds.has(l.external_id),
         );
