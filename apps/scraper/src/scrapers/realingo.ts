@@ -476,16 +476,16 @@ export class ReaLingoScraper extends BaseScraper {
     this.log(`Enriching ${listings.length} new listings...`);
     const limit = opts?.concurrency ? pLimit(opts.concurrency) : this.limiter;
 
-    // external_ids to drop from the batch because their externalUrl points
-    // at a portal we already scrape directly (see EXTERNALLY_COVERED_HOSTS).
-    const skipIds = new Set<string>();
+    // external_ids turned into tombstones because their externalUrl points at
+    // a portal we already scrape directly (see EXTERNALLY_COVERED_HOSTS).
+    const tombstoneIds = new Set<string>();
 
     await Promise.all(
       listings.map((listing) =>
         limit(async () => {
           try {
-            const shouldSkip = await this.enrichOne(listing);
-            if (shouldSkip) skipIds.add(listing.external_id);
+            const isTombstone = await this.enrichOne(listing);
+            if (isTombstone) tombstoneIds.add(listing.external_id);
           } catch (err) {
             this.log(`Failed to enrich ${listing.external_id}: ${err}`);
           }
@@ -493,21 +493,21 @@ export class ReaLingoScraper extends BaseScraper {
       ),
     );
 
-    // In-place drop of duplicates so the caller's upsertBatch never sees them.
-    if (skipIds.size > 0) {
+    // Tombstones flow through upsertBatch as inactive rows so the next watch
+    // cycle's findEnrichmentDoneIds gate excludes them — without this, every
+    // cycle re-detail-fetches the same ~40K aggregator duplicates forever.
+    if (tombstoneIds.size > 0) {
       this.log(
-        `Dropping ${skipIds.size}/${listings.length} duplicate listings that ` +
-          `redirect to portals we scrape directly (bazos / ceskereality / etc.)`,
+        `Tombstoning ${tombstoneIds.size}/${listings.length} aggregator-duplicate listings ` +
+          `(redirect to bazos / ceskereality / etc.)`,
       );
-      const kept = listings.filter((l) => !skipIds.has(l.external_id));
-      listings.length = 0;
-      listings.push(...kept);
     }
 
-    if (listings.length === 0) return;
+    const kept = listings.filter((l) => !tombstoneIds.has(l.external_id));
+    if (kept.length === 0) return;
 
-    const withDesc = listings.filter((l) => l.description !== null).length;
-    const withExtUrl = listings.filter((l) => {
+    const withDesc = kept.filter((l) => l.description !== null).length;
+    const withExtUrl = kept.filter((l) => {
       try {
         const p = l.additional_params ? JSON.parse(l.additional_params) : null;
         return p?.realingo_url != null;
@@ -515,7 +515,7 @@ export class ReaLingoScraper extends BaseScraper {
         return false;
       }
     }).length;
-    const withGallery = listings.filter((l) => {
+    const withGallery = kept.filter((l) => {
       try {
         return JSON.parse(l.image_urls).length > 1;
       } catch {
@@ -523,19 +523,20 @@ export class ReaLingoScraper extends BaseScraper {
       }
     }).length;
     this.log(
-      `Enrichment: ${withDesc}/${listings.length} description, ${withExtUrl}/${listings.length} external URL, ${withGallery}/${listings.length} gallery`,
+      `Enrichment: ${withDesc}/${kept.length} description, ${withExtUrl}/${kept.length} external URL, ${withGallery}/${kept.length} gallery`,
     );
   }
 
   /**
-   * Returns `true` when this listing should be dropped from the batch because
-   * its detail externalUrl points at a portal we already scrape directly.
-   * Caller (enrichListings) filters the input array after Promise.all.
+   * Returns `true` when this listing has been turned into a tombstone because
+   * its detail externalUrl points at a portal we already scrape directly. The
+   * listing is mutated in place (is_active=false, enriched_at=now) so the
+   * caller's upsertBatch inserts it as a dead row. Next cycle's
+   * findEnrichmentDoneIds gate then excludes it — we pay the detail-API cost
+   * exactly once per aggregator duplicate, not every 5 minutes forever.
    *
    * Note: we still burn the one detail-API request per duplicate to learn
-   * the externalUrl — realingo's list-phase GraphQL doesn't expose it. The
-   * RPS cost is bounded by realingo's own rate limit and outweighed by not
-   * writing ~40K duplicate rows into the DB.
+   * the externalUrl — realingo's list-phase GraphQL doesn't expose it.
    */
   private async enrichOne(listing: ScraperResult): Promise<boolean> {
     // Extract raw ID: "realingo_24523638" -> "24523638"
@@ -559,11 +560,28 @@ export class ReaLingoScraper extends BaseScraper {
 
     const { offer, detail } = data;
 
-    // Duplicate guard: skip any listing whose externalUrl points at one of
-    // our directly-scraped portals. Realingo's own data for these tends to
-    // be worse (size/ownership/etc. often missing) and we already have the
-    // canonical row via the direct scrape.
+    // Duplicate guard: turn any listing whose externalUrl points at one of
+    // our directly-scraped portals into a tombstone. We already have the
+    // canonical row via the direct scrape; realingo's data for these tends
+    // to be worse anyway. Writing an inactive row (vs dropping) is what
+    // stops next cycle from re-discovering and re-detail-fetching it.
     if (isExternallyCoveredUrl(detail?.externalUrl)) {
+      const now = new Date().toISOString();
+      let additionalParams: Record<string, unknown> = {};
+      try {
+        additionalParams = listing.additional_params
+          ? JSON.parse(listing.additional_params)
+          : {};
+      } catch {
+        additionalParams = {};
+      }
+      additionalParams.realingo_url = listing.source_url;
+      listing.source_url = detail!.externalUrl!;
+      listing.additional_params = JSON.stringify(additionalParams);
+      listing.is_active = false;
+      listing.deactivated_at = now;
+      listing.deactivation_reason = "realingo_external_duplicate";
+      listing.enriched_at = now;
       return true;
     }
 
