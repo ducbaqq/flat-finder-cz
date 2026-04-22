@@ -2,8 +2,16 @@ import path from "node:path";
 import { config } from "dotenv";
 import { z } from "zod";
 
-// Resolve .env relative to this file (packages/config/src/) → monorepo root
-config({ path: path.resolve(import.meta.dirname, "../../../.env") });
+// Resolve .env relative to this file (packages/config/src/) → monorepo root.
+// `import.meta.dirname` is undefined when this module is bundled by Next.js's
+// webpack (the /sitemap-listings.xml route pulls the config package in via
+// the @flat-finder/db graph). Fall back to dotenv's default cwd resolution
+// in that case — on the server the process cwd is already the repo root.
+if (import.meta.dirname) {
+  config({ path: path.resolve(import.meta.dirname, "../../../.env") });
+} else {
+  config();
+}
 
 const envSchema = z.object({
   // Database connection (individual fields → assembled into a URL)
