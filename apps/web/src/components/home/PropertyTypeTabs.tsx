@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useStats } from "@/hooks/useStats";
 import { cn } from "@/lib/cn";
-import { useState } from "react";
 
 const PROPERTY_TYPES = [
   { key: "flat", label: "Byty" },
@@ -13,10 +11,14 @@ const PROPERTY_TYPES = [
   { key: "other", label: "Ostatní" },
 ] as const;
 
-export function PropertyTypeTabs() {
+interface PropertyTypeTabsProps {
+  selected: string[];
+  onToggle: (key: string) => void;
+}
+
+export function PropertyTypeTabs({ selected, onToggle }: PropertyTypeTabsProps) {
   const { data } = useStats();
   const byType = data?.by_type ?? {};
-  const [hoveredTab, setHoveredTab] = useState<string | null>(null);
 
   return (
     <nav
@@ -24,34 +26,46 @@ export function PropertyTypeTabs() {
       aria-label="Typ nemovitosti"
       data-testid="property-type-tabs"
     >
-      <div className="flex items-center justify-center gap-1 min-w-max">
+      <div
+        className="flex items-center justify-center gap-1.5 min-w-max"
+        role="group"
+        aria-label="Vyberte typ nemovitosti"
+      >
         {PROPERTY_TYPES.map((type) => {
           const count = byType[type.key] ?? 0;
+          const isActive = selected.includes(type.key);
 
           return (
-            <Link
+            <button
               key={type.key}
-              href={`/search?property_type=${type.key}`}
+              type="button"
+              role="checkbox"
+              aria-checked={isActive}
+              onClick={() => onToggle(type.key)}
               className={cn(
-                "relative flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors",
-                hoveredTab === type.key
-                  ? "bg-primary/8 text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                "group relative inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium",
+                "transition-[background-color,color,box-shadow] duration-200 ease-out",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-xs"
+                  : "text-muted-foreground hover:bg-primary/8 hover:text-foreground"
               )}
               data-testid={`property-tab-${type.key}`}
-              onMouseEnter={() => setHoveredTab(type.key)}
-              onMouseLeave={() => setHoveredTab(null)}
+              data-active={isActive}
             >
               <span>{type.label}</span>
               {count > 0 && (
                 <span
-                  className="text-xs tabular-nums opacity-60"
+                  className={cn(
+                    "text-xs tabular-nums transition-opacity",
+                    isActive ? "opacity-80" : "opacity-60"
+                  )}
                   data-testid={`property-tab-count-${type.key}`}
                 >
                   {count.toLocaleString("cs-CZ")}
                 </span>
               )}
-            </Link>
+            </button>
           );
         })}
       </div>
