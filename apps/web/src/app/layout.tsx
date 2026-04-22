@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     default: "Bytomat.cz — Najděte svůj nový domov",
     template: "%s | Bytomat.cz",
   },
-  metadataBase: new URL("https://bytomat.cz"),
+  metadataBase: new URL("https://bytomat.com"),
   // NOTE: robots defaults are now driven per-route. Listing detail pages
   // override via generateMetadata({robots}); pages that should stay out
   // of the index (e.g. /login, /filter) set it locally too. A site-wide

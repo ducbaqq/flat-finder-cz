@@ -17,7 +17,7 @@ import { propertyTypeLabels } from "@/lib/utils";
 const API_BASE = process.env.API_URL || "http://localhost:4000";
 
 /** Public URL used for canonical + OG tags. Defaults to the prod host. */
-export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://bytomat.cz";
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://bytomat.com";
 
 /**
  * Fetch a single listing on the server side. Returns null on 404 so the

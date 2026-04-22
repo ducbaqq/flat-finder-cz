@@ -15,8 +15,16 @@ const schema = { ...listingsSchema, ...watchdogsSchema, ...scraperRunsSchema, ..
 // SSL helpers
 // ---------------------------------------------------------------------------
 
-/** Resolve the CA cert path relative to the monorepo root (../../certs/). */
-function getCaCertPath(): string {
+/**
+ * Resolve the CA cert path relative to the monorepo root (../../certs/).
+ * Returns null when the caller's runtime doesn't expose `import.meta.dirname`
+ * — notably the Next.js web server after `serverExternalPackages` pulls this
+ * module into the per-request bundle. In that case we fall through to the
+ * no-CA-pinning SSL option instead of crashing with
+ *   TypeError: The "paths[0]" argument must be of type string. Received undefined
+ */
+function getCaCertPath(): string | null {
+  if (!import.meta.dirname) return null;
   return path.resolve(import.meta.dirname, "../../../../certs/ca-certificate.crt");
 }
 
@@ -25,7 +33,7 @@ function buildSslOption(): postgres.Options<Record<string, postgres.PostgresType
   if (env.DB_SSLMODE === "disable") return false;
 
   const caPath = getCaCertPath();
-  if (fs.existsSync(caPath)) {
+  if (caPath && fs.existsSync(caPath)) {
     return { ca: fs.readFileSync(caPath, "utf-8"), rejectUnauthorized: true };
   }
 
