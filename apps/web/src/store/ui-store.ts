@@ -10,8 +10,6 @@ export interface MapBounds {
 interface UiState {
   sidebarOpen: boolean;
   mapCollapsed: boolean;
-  selectedListingId: number | null;
-  detailModalOpen: boolean;
   watchdogModalOpen: boolean;
   reportProblemModalOpen: boolean;
   mapBounds: MapBounds | null;
@@ -24,19 +22,23 @@ interface UiState {
   setMapBounds: (bounds: MapBounds | null) => void;
   setMapZoom: (zoom: number) => void;
   setPendingBbox: (bbox: [number, number, number, number] | null) => void;
-  openDetail: (id: number) => void;
-  closeDetail: () => void;
   toggleWatchdogModal: () => void;
   closeWatchdogModal: () => void;
   openReportProblemModal: () => void;
   closeReportProblemModal: () => void;
 }
 
+/**
+ * Listing detail is no longer held in this store. Navigation to a listing
+ * is now driven by the URL — /listing/[id] — so callers push via
+ * useRouter() from next/navigation. The @modal parallel slot intercepts
+ * that navigation from internal pages and renders the detail as an
+ * overlay; direct visits (Googlebot, shared links) hit the full SEO
+ * page. See apps/web/src/app/@modal/(.)listing/[id]/page.tsx.
+ */
 export const useUiStore = create<UiState>((set) => ({
   sidebarOpen: false,
   mapCollapsed: false,
-  selectedListingId: null,
-  detailModalOpen: false,
   watchdogModalOpen: false,
   reportProblemModalOpen: false,
   mapBounds: null,
@@ -49,18 +51,6 @@ export const useUiStore = create<UiState>((set) => ({
   setMapBounds: (bounds) => set({ mapBounds: bounds }),
   setMapZoom: (zoom) => set({ mapZoom: zoom }),
   setPendingBbox: (bbox) => set({ pendingBbox: bbox }),
-  openDetail: (id) => {
-    set({ selectedListingId: id, detailModalOpen: true });
-    const url = new URL(window.location.href);
-    url.searchParams.set("listing", String(id));
-    window.history.pushState(null, "", url.toString());
-  },
-  closeDetail: () => {
-    set({ selectedListingId: null, detailModalOpen: false });
-    const url = new URL(window.location.href);
-    url.searchParams.delete("listing");
-    window.history.pushState(null, "", url.toString());
-  },
   toggleWatchdogModal: () =>
     set((s) => {
       const opening = !s.watchdogModalOpen;

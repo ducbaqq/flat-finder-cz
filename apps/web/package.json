@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@flat-finder/db": "*",
     "@flat-finder/types": "*",
     "@tailwindcss/postcss": "^4.2.1",
     "@tanstack/react-query": "^5.64.0",

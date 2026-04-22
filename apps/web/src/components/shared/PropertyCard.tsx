@@ -3,13 +3,13 @@
 import { useState } from "react";
 import { MapPin, Ruler, LayoutGrid } from "lucide-react";
 import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import type { Listing, ListingCardData } from "@flat-finder/types";
 import {
   formatPrice,
   relativeTime,
   amenityLabels,
 } from "@/lib/utils";
-import { useUiStore } from "@/store/ui-store";
 
 interface PropertyCardProps {
   listing: Listing | ListingCardData;
@@ -17,9 +17,15 @@ interface PropertyCardProps {
 }
 
 export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
-  const openDetail = useUiStore((s) => s.openDetail);
+  const router = useRouter();
   const [imgFailed, setImgFailed] = useState(!listing.thumbnail_url);
 
+  // Push the real canonical URL so the @modal parallel-slot route can
+  // intercept the navigation from /search and render the detail as an
+  // overlay. Direct visitors hit the full page; AnalyticsListener fires
+  // on the URL change for both paths. Meta-click / cmd-click falls
+  // through to the <a> inside so the real anchor is the control — this
+  // onClick is a shortcut for plain clicks.
   return (
     <motion.article
       initial={{ opacity: 0, y: 12 }}
@@ -30,7 +36,7 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
         ease: [0.16, 1, 0.3, 1],
       }}
       className="group cursor-pointer"
-      onClick={() => openDetail(listing.id)}
+      onClick={() => router.push(`/listing/${listing.id}`)}
       data-testid="listing-card"
     >
       {/* Image */}

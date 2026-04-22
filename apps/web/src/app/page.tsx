@@ -7,7 +7,6 @@ import { HeroSection } from "@/components/home/HeroSection";
 import { PropertyTypeTabs } from "@/components/home/PropertyTypeTabs";
 import { QuickActions } from "@/components/home/QuickActions";
 import { LatestListings } from "@/components/home/LatestListings";
-import DetailModal from "@/components/detail/DetailModal";
 import WatchdogModal from "@/components/watchdog/WatchdogModal";
 import ReportProblemModal from "@/components/report-problem/ReportProblemModal";
 
@@ -24,7 +23,8 @@ export default function HomePage() {
       </main>
       <Footer />
       <MobileBottomNav />
-      <DetailModal />
+      {/* Listing detail modal is served by the @modal parallel slot —
+          see app/@modal/(.)listing/[id]/page.tsx. */}
       <WatchdogModal />
       <ReportProblemModal />
     </>

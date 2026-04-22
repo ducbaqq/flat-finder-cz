@@ -12,6 +12,7 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import { useTheme } from "next-themes";
+import { useRouter } from "next/navigation";
 import { useUiStore } from "@/store/ui-store";
 import { useMarkers } from "@/hooks/useMarkers";
 import { apiGet } from "@/lib/api-client";
@@ -263,7 +264,11 @@ function MapEventsHandler() {
 
 function MarkerLayer({ filters }: { filters: Record<string, string> }) {
   const map = useMap();
-  const openDetail = useUiStore((s) => s.openDetail);
+  const router = useRouter();
+  // Pass router-push as the click handler so marker clicks hit the exact
+  // same URL path as list-view clicks — intercepted-route modal on /search,
+  // canonical page on direct visit.
+  const openDetail = (id: number) => router.push(`/listing/${id}`);
   const { data } = useMarkers(filters);
 
   const clusters = data?.clusters ?? [];
