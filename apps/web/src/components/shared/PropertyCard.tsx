@@ -26,6 +26,11 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
   // on the URL change for both paths. Meta-click / cmd-click falls
   // through to the <a> inside so the real anchor is the control — this
   // onClick is a shortcut for plain clicks.
+  //
+  // Preserve the current querystring on the push so /search (still mounted
+  // underneath the intercepted modal) keeps reading its nuqs-bound filter
+  // state from the URL. Dropping the querystring resets the filters behind
+  // the modal and the list re-runs without them.
   return (
     <motion.article
       initial={{ opacity: 0, y: 12 }}
@@ -36,7 +41,11 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
         ease: [0.16, 1, 0.3, 1],
       }}
       className="group cursor-pointer"
-      onClick={() => router.push(`/listing/${listing.id}`)}
+      onClick={() =>
+        router.push(
+          `/listing/${listing.id}${typeof window !== "undefined" ? window.location.search : ""}`,
+        )
+      }
       data-testid="listing-card"
     >
       {/* Image */}

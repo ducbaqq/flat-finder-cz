@@ -268,7 +268,14 @@ function MarkerLayer({ filters }: { filters: Record<string, string> }) {
   // Pass router-push as the click handler so marker clicks hit the exact
   // same URL path as list-view clicks — intercepted-route modal on /search,
   // canonical page on direct visit.
-  const openDetail = (id: number) => router.push(`/listing/${id}`);
+  //
+  // Preserve the current querystring on the push so the underlying /search
+  // page (still mounted under the intercepted modal) continues to read its
+  // filter state from URL search params via nuqs. Without this, clicking
+  // a pin drops the ?property_type=…&transaction_type=… params and the
+  // list under the modal silently resets to "no filters".
+  const openDetail = (id: number) =>
+    router.push(`/listing/${id}${window.location.search}`);
   const { data } = useMarkers(filters);
 
   const clusters = data?.clusters ?? [];
