@@ -223,13 +223,15 @@ export class ERealityScraper extends BaseScraper {
       listing.description = descEl.text.trim() || listing.description;
     }
 
-    // Full image gallery
+    // Full image gallery — on ereality, the detail-page gallery is sourced
+    // from the real underlying portal (idnes, sreality, etc.) via the
+    // aggregator bounce. Those URLs are more reliable than the list-tile
+    // thumbnail, which can be a placeholder or a foreign-host URL that
+    // rotates fast. Unconditionally prefer gallery[0] when we have one.
     const images = this.extractImages(html);
     if (images.length > 0) {
       listing.image_urls = JSON.stringify(images);
-      if (!listing.thumbnail_url) {
-        listing.thumbnail_url = images[0];
-      }
+      listing.thumbnail_url = images[0];
     }
 
     // Verify/update price from detail page
@@ -499,9 +501,20 @@ export class ERealityScraper extends BaseScraper {
     const priceText = priceEl?.text?.trim() ?? "";
     const { price, currency, priceNote } = this.parsePrice(priceText);
 
-    // Image
+    // Image — reject placeholders and relative/non-http URLs.
+    //
+    // Ereality is partly an aggregator and its list-tile <img src> is
+    // unreliable: sometimes it's a local placeholder ("/images/empty_byt_3.jpg"),
+    // sometimes a relative foto_nem URL, sometimes an absolute URL at a foreign
+    // CDN (eurobydleni) that rotates to 404 within hours. We keep only genuine
+    // absolute http URLs here; `enrichOne` unconditionally overwrites this
+    // with the first image from the real detail-page gallery anyway, so
+    // anything we trap here is additional safety for the short window before
+    // enrichment completes.
     const imgEl = tile.querySelector("img.ereality-property-photo");
-    const thumbnailUrl = imgEl?.getAttribute("src") ?? null;
+    const rawSrc = imgEl?.getAttribute("src") ?? null;
+    const thumbnailUrl =
+      rawSrc && /^https?:\/\//i.test(rawSrc) ? rawSrc : null;
     const imageUrls = thumbnailUrl ? JSON.stringify([thumbnailUrl]) : "[]";
 
     // Try to extract size and layout from title

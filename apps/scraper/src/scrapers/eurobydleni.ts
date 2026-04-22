@@ -278,13 +278,17 @@ export class EurobydleniScraper extends BaseScraper {
     const localityParts = locality?.split(",").map((s) => s.trim()) || [];
     const district = localityParts.length > 1 ? localityParts[1] : null;
 
-    // Images
+    // Images — only accept absolute http(s) URLs. Eurobydleni's list-tile
+    // <img src> is sometimes a relative placeholder path like
+    // "/mlift/images/missing.png"; keeping those poisons the thumbnail with
+    // a URL that 404s against our app host. `enrichOne` unconditionally
+    // replaces this with the first detail-page image anyway.
     const imageEls = el.querySelectorAll("figure.list-items__item__image img");
     const imageUrls: string[] = [];
     for (const img of imageEls) {
       let src = img.getAttribute("src") || "";
       if (src.startsWith("//")) src = `https:${src}`;
-      if (src) imageUrls.push(src);
+      if (src && /^https?:\/\//i.test(src)) imageUrls.push(src);
     }
     const thumbnailUrl = imageUrls.length > 0 ? imageUrls[0] : null;
 
@@ -483,7 +487,10 @@ export class EurobydleniScraper extends BaseScraper {
     }
     if (images.length > 0) {
       listing.image_urls = JSON.stringify(images);
-      if (!listing.thumbnail_url) listing.thumbnail_url = images[0];
+      // Unconditionally prefer the enriched detail-page gallery over the
+      // list-tile thumbnail — same reasoning as ereality: list tiles can
+      // carry placeholders or foreign-host URLs that rot quickly.
+      listing.thumbnail_url = images[0];
     }
 
     // Property specs are in .box-params as individual <dl><dt>label:</dt>
