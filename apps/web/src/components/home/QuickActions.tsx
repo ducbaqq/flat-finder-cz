@@ -18,7 +18,7 @@ export function QuickActions() {
       {/* Transaction type pills */}
       <div className="flex items-center gap-2 shrink-0">
         <Link
-          href="/filter?transaction_type=sale"
+          href="/search?transaction_type=sale"
           className={cn(
             "inline-flex items-center rounded-full px-4 py-2.5 text-sm font-medium transition-all",
             "bg-foreground text-background",
@@ -29,7 +29,7 @@ export function QuickActions() {
           Prodej
         </Link>
         <Link
-          href="/filter?transaction_type=rent"
+          href="/search?transaction_type=rent"
           className={cn(
             "inline-flex items-center rounded-full px-4 py-2.5 text-sm font-medium transition-all",
             "bg-transparent text-foreground ring-1 ring-border",

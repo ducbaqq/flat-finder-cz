@@ -19,7 +19,7 @@ export const config = {
     //   /listing/*      — canonical SEO detail pages (must be crawlable)
     //   favicon / robots / sitemap variants — crawler-facing assets
     //
-    // Keep the login gate over /, /search, /filter — the app UI is still
+    // Keep the login gate over /, /search — the app UI is still
     // preview-mode while scrape data matures. Only the SEO surface
     // (listing detail pages + sitemaps + robots) is publicly crawlable.
     "/((?!login|_next|api|listing|favicon\\.ico|robots\\.txt|sitemap\\.xml|sitemap-listings\\.xml|sitemap-pages\\.xml).*)",

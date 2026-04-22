@@ -7,8 +7,7 @@ Czech property listing aggregator — collects rentals and sales from **10 major
 - **400k+ real listings** from 10 Czech real estate portals
 - **Interactive map** with Supercluster-based clustering, geocoded location search, and drill-down zoom
 - **Sreality-style homepage** with property type tabs, transaction pills, and location search
-- **Full-page filter form** (`/filter`) with 14 filter sections — property type, disposition, location, price, area, condition, ownership, furnishing, building type, amenities, accessibility, energy class
-- **Comprehensive search** — URL-synced filters, paginated results, sidebar refinement
+- **Comprehensive search** (`/search`) with 14 filter dimensions — property type, disposition, location, price, area, condition, ownership, furnishing, building type, amenities, accessibility, energy class; URL-synced filters, paginated results, sidebar refinement
 - **Watchdog alerts** (Hlídací pes) — save filter criteria + email, get notified when new matching listings appear
 - **Listing deactivation** — listings removed from source sites are automatically marked inactive
 - **Dark mode** support

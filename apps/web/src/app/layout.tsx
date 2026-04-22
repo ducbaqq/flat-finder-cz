@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://bytomat.com"),
   // NOTE: robots defaults are now driven per-route. Listing detail pages
   // override via generateMetadata({robots}); pages that should stay out
-  // of the index (e.g. /login, /filter) set it locally too. A site-wide
+  // of the index (e.g. /login) set it locally too. A site-wide
   // noindex here would defeat the whole SEO surface that
   // /listing/[id] + /sitemap.xml exist to create.
 };

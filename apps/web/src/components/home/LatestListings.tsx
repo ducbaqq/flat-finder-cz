@@ -158,7 +158,7 @@ export function LatestListings() {
               Pro vaše hledání jsme nenašli žádné nabídky
             </p>
             <Button variant="outline" asChild className="mt-4">
-              <Link href="/filter">
+              <Link href="/search">
                 Zkusit jiné filtry
               </Link>
             </Button>
