@@ -25,7 +25,7 @@ function buildFilterHash(filters: ListingFilters): string {
   const keys: (keyof ListingFilters)[] = [
     "property_type", "transaction_type", "city", "region", "source", "layout",
     "condition", "construction", "ownership", "furnishing", "energy_rating",
-    "amenities", "location", "include_inactive",
+    "amenities", "location", "include_inactive", "has_thumbnail",
   ];
   for (const k of keys) {
     const v = filters[k];
@@ -103,6 +103,7 @@ app.get("/", async (c) => {
     ne_lat: parseNumericParam(q.ne_lat),
     ne_lng: parseNumericParam(q.ne_lng),
     include_inactive: q.include_inactive === "true" || q.include_inactive === "1",
+    has_thumbnail: q.has_thumbnail === "true" || q.has_thumbnail === "1",
   };
 
   // ── API-01: Cache filtered counts per filter-hash with 5-min TTL ──

@@ -9,6 +9,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  like,
   lte,
   or,
   type SQL,
@@ -96,6 +97,15 @@ export function buildWhereConditions(
         )!,
       );
     }
+  }
+
+  // Thumbnail filter — exclude NULL and relative-path placeholders
+  // (e.g. /images/empty_byt_3.jpg from aggregator portals). Doesn't
+  // catch live 404s — the home page also runs an <img onError> filter
+  // client-side to drop those at render time.
+  if (filters.has_thumbnail) {
+    conditions.push(isNotNull(listings.thumbnail_url));
+    conditions.push(like(listings.thumbnail_url, "http%"));
   }
 
   // Geographic bounds

@@ -443,9 +443,13 @@ export class EurobydleniScraper extends BaseScraper {
     if (data.pageTitle) listing.title = data.pageTitle;
     if (data.setUrl) listing.source_url = `${this.baseUrl}${data.setUrl}`;
 
-    // Thumbnail from metatags
+    // Thumbnail from metatags. Eurobydleni's og:image is often
+    // protocol-relative ("//www.eurobydleni.cz/..."), which renders fine
+    // under https but `LIKE 'http%'` checks reject it. Normalize.
     if (data.metatags?.["og:image"]) {
-      listing.thumbnail_url = data.metatags["og:image"];
+      let og = data.metatags["og:image"];
+      if (og.startsWith("//")) og = `https:${og}`;
+      listing.thumbnail_url = og;
     }
 
     // Parse the propertyBlock HTML for rich data

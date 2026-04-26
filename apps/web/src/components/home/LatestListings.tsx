@@ -53,6 +53,12 @@ function buildSubtitle(prefs: SearchPreferences): string {
   return parts.join(" · ");
 }
 
+// Render this many listings; over-fetch a buffer so live <img> 404s
+// (stale CDN links the eventually-consistent freshness sweep hasn't
+// caught yet) can be dropped client-side without leaving grid gaps.
+const TARGET_COUNT = 20;
+const OVERFETCH_COUNT = 28;
+
 export function LatestListings() {
   const { ref, inView } = useInView({ triggerOnce: true, threshold: 0.1 });
   const setPendingBbox = useUiStore((s) => s.setPendingBbox);
@@ -65,6 +71,18 @@ export function LatestListings() {
   useEffect(() => {
     setPreferences(getSearchPreferences());
   }, []);
+
+  // Listing IDs whose <img> 404'd at render time. Filtered out before
+  // slicing to TARGET_COUNT so the grid stays full of cards with images.
+  const [failedImageIds, setFailedImageIds] = useState<Set<number>>(new Set());
+  const handleImageError = (id: number) => {
+    setFailedImageIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
 
   // Only treat the saved record as "preferences" for UI purposes when it
   // contains at least one filter field. A saved view alone shouldn't flip
@@ -86,8 +104,9 @@ export function LatestListings() {
     queryFn: () => {
       const params: Record<string, string | number> = {
         sort: "newest",
-        per_page: 20,
+        per_page: OVERFETCH_COUNT,
         page: 1,
+        has_thumbnail: "true",
       };
 
       if (preferences?.property_type) {
@@ -111,6 +130,12 @@ export function LatestListings() {
       return apiGet<ListingsResponse>("/listings", params);
     },
   });
+
+  // Drop listings whose <img> 404'd at render time, then cap at the target
+  // count so the grid renders a stable 20 even when a few thumbnails rot.
+  const visibleListings = (data?.listings ?? [])
+    .filter((l) => !failedImageIds.has(l.id))
+    .slice(0, TARGET_COUNT);
 
   const title = hasPreferences
     ? "Doporučeno pro vás"
@@ -205,11 +230,16 @@ export function LatestListings() {
             data-testid="latest-listings-grid"
           >
             {isLoading
-              ? Array.from({ length: 20 }).map((_, i) => (
+              ? Array.from({ length: TARGET_COUNT }).map((_, i) => (
                   <PropertyCardSkeleton key={i} />
                 ))
-              : data?.listings.map((listing, i) => (
-                  <PropertyCard key={listing.id} listing={listing} index={i} />
+              : visibleListings.map((listing, i) => (
+                  <PropertyCard
+                    key={listing.id}
+                    listing={listing}
+                    index={i}
+                    onImageError={handleImageError}
+                  />
                 ))}
           </motion.div>
         )}

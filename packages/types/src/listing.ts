@@ -88,6 +88,7 @@ export interface ListingFilters {
   ne_lat?: number;
   ne_lng?: number;
   include_inactive?: boolean;
+  has_thumbnail?: boolean;
 }
 
 export interface ListingsResponse {

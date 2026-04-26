@@ -14,11 +14,30 @@ import {
 interface PropertyCardProps {
   listing: Listing | ListingCardData;
   index?: number;
+  onImageError?: (id: number) => void;
 }
 
-export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
+export function PropertyCard({ listing, index = 0, onImageError }: PropertyCardProps) {
   const router = useRouter();
-  const [imgFailed, setImgFailed] = useState(!listing.thumbnail_url);
+
+  // Build a fallback chain so a rotted thumbnail CDN URL doesn't kill
+  // the card when the gallery still has working images on the same CDN.
+  // image_urls is only on Listing (not ListingCardData / cluster cache).
+  const galleryUrls =
+    "image_urls" in listing && Array.isArray(listing.image_urls)
+      ? listing.image_urls.filter(
+          (u): u is string =>
+            !!u && typeof u === "string" && u !== listing.thumbnail_url,
+        )
+      : [];
+  const candidates = [listing.thumbnail_url, ...galleryUrls].filter(
+    (u): u is string => !!u,
+  );
+
+  // Index into `candidates`. When it reaches candidates.length, every
+  // URL has failed and we fall back to the "Bez fotky" placeholder.
+  const [srcIndex, setSrcIndex] = useState(0);
+  const imgFailed = candidates.length === 0 || srcIndex >= candidates.length;
 
   // Push the real canonical URL so the @modal parallel-slot route can
   // intercept the navigation from /search and render the detail as an
@@ -59,11 +78,20 @@ export function PropertyCard({ listing, index = 0 }: PropertyCardProps) {
           </div>
         ) : (
           <img
+            // Force a fresh load when we advance to the next candidate
+            // — the browser otherwise reuses the prior failed cache entry.
+            key={candidates[srcIndex]}
             className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]"
-            src={listing.thumbnail_url!}
+            src={candidates[srcIndex]}
             alt={listing.title || ""}
             loading="lazy"
-            onError={() => setImgFailed(true)}
+            onError={() => {
+              const nextIndex = srcIndex + 1;
+              if (nextIndex >= candidates.length) {
+                onImageError?.(listing.id);
+              }
+              setSrcIndex(nextIndex);
+            }}
           />
         )}
       </div>
