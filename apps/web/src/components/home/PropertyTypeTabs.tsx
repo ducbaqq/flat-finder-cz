@@ -8,7 +8,6 @@ const PROPERTY_TYPES = [
   { key: "house", label: "Domy" },
   { key: "land", label: "Pozemky" },
   { key: "commercial", label: "Komerční" },
-  { key: "other", label: "Ostatní" },
 ] as const;
 
 interface PropertyTypeTabsProps {
@@ -47,7 +46,7 @@ export function PropertyTypeTabs({ selected, onToggle }: PropertyTypeTabsProps) 
                 "transition-[background-color,color,box-shadow] duration-200 ease-out",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                 isActive
-                  ? "bg-primary text-primary-foreground shadow-xs"
+                  ? "bg-primary/8 text-foreground ring-2 ring-inset ring-foreground"
                   : "text-muted-foreground hover:bg-primary/8 hover:text-foreground"
               )}
               data-testid={`property-tab-${type.key}`}

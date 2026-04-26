@@ -2,15 +2,12 @@
 
 import { List, Map, LayoutGrid } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { SortSelect } from "@/components/filters/SortSelect";
 import { FilterSheet } from "./FilterSheet";
 
 interface SearchHeaderProps {
   total: number;
   view: string;
   onViewChange: (v: string) => void;
-  sort: string;
-  onSortChange: (v: string) => void;
   filters: Record<string, string>;
   setFilter: (key: string, value: string) => void;
 }
@@ -19,8 +16,6 @@ export function SearchHeader({
   total,
   view,
   onViewChange,
-  sort,
-  onSortChange,
   filters,
   setFilter,
 }: SearchHeaderProps) {
@@ -77,8 +72,6 @@ export function SearchHeader({
               <Map className="h-4 w-4" />
             </ToggleGroupItem>
           </ToggleGroup>
-
-          <SortSelect value={sort} onChange={onSortChange} />
         </div>
       </div>
     </div>

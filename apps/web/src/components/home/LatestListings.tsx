@@ -16,6 +16,7 @@ import {
   getSearchPreferences,
   type SearchPreferences,
 } from "@/hooks/useSearchPreferences";
+import { useUiStore } from "@/store/ui-store";
 
 const PROPERTY_TYPE_LABELS: Record<string, string> = {
   flat: "Byty",
@@ -54,6 +55,7 @@ function buildSubtitle(prefs: SearchPreferences): string {
 
 export function LatestListings() {
   const { ref, inView } = useInView({ triggerOnce: true, threshold: 0.1 });
+  const setPendingBbox = useUiStore((s) => s.setPendingBbox);
 
   // Read preferences after mount to avoid SSR/client hydration mismatch —
   // localStorage is only available on the client.
@@ -118,6 +120,37 @@ export function LatestListings() {
     ? buildSubtitle(preferences)
     : "Nemovitosti, které by vás mohly zajímat";
 
+  // Mirror the filters used by this section's query so clicking "Zobrazit vše"
+  // lands on /search with identical filters rather than relying on /search's
+  // own preference-restore defaults (which differ e.g. flat vs flat,house).
+  const viewAllHref = (() => {
+    if (!hasPreferences) return "/search";
+    const params = new URLSearchParams();
+    // Match this section's query: explicit property_type pref, else the
+    // flat,house fallback used above.
+    params.set(
+      "property_type",
+      preferences.property_type || "flat,house",
+    );
+    if (preferences.transaction_type) {
+      params.set("transaction_type", preferences.transaction_type);
+    }
+    if (preferences.location) {
+      params.set("location", preferences.location);
+    }
+    return `/search?${params.toString()}`;
+  })();
+
+  // Prime pendingBbox before navigating so MapView's LocationFlyTo can fly
+  // to the saved bounds on mount instead of falling back to slow, imprecise
+  // Nominatim geocoding of the raw location string (especially poor for
+  // street addresses).
+  const handleViewAllClick = () => {
+    if (preferences?.bbox) {
+      setPendingBbox(preferences.bbox);
+    }
+  };
+
   return (
     <section ref={ref} className="py-16 sm:py-20" data-testid="latest-listings-section">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -140,7 +173,7 @@ export function LatestListings() {
             </p>
           </div>
           <Button variant="ghost" asChild className="hidden sm:flex" data-testid="latest-listings-view-all">
-            <Link href="/search">
+            <Link href={viewAllHref} onClick={handleViewAllClick}>
               Zobrazit vše
               <ArrowRight className="ml-1 h-4 w-4" />
             </Link>
@@ -183,7 +216,7 @@ export function LatestListings() {
 
         <div className="mt-8 text-center sm:hidden" data-testid="latest-listings-view-all-mobile">
           <Button variant="outline" asChild>
-            <Link href="/search">
+            <Link href={viewAllHref} onClick={handleViewAllClick}>
               Zobrazit vše
               <ArrowRight className="ml-1 h-4 w-4" />
             </Link>

@@ -87,8 +87,8 @@ function TransactionPill({ label, active, onClick, testId }: TransactionPillProp
         "transition-[background-color,color,box-shadow] duration-200 ease-out",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         active
-          ? "bg-foreground text-background shadow-xs"
-          : "bg-transparent text-foreground ring-1 ring-inset ring-border hover:bg-foreground/5"
+          ? "bg-primary/8 text-foreground ring-2 ring-inset ring-foreground"
+          : "bg-transparent text-foreground ring-1 ring-inset ring-border hover:bg-primary/8"
       )}
     >
       {label}

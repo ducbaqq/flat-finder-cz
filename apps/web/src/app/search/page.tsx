@@ -15,6 +15,7 @@ import { SearchHeader } from "@/components/search/SearchHeader";
 import { ActiveFilterChips } from "@/components/search/ActiveFilterChips";
 import { FilterSidebar } from "@/components/search/FilterSidebar";
 import { ListingResults } from "@/components/search/ListingResults";
+import { SortSelect } from "@/components/filters/SortSelect";
 import WatchdogModal from "@/components/watchdog/WatchdogModal";
 import ReportProblemModal from "@/components/report-problem/ReportProblemModal";
 import { useSearchFilters } from "@/hooks/useSearchFilters";
@@ -129,8 +130,6 @@ function SearchPageContent() {
         total={total}
         view={view}
         onViewChange={(v) => setView(v || "hybrid")}
-        sort={filters.sort}
-        onSortChange={(v) => setFilter("sort", v)}
         filters={filters}
         setFilter={setFilter}
       />
@@ -166,9 +165,15 @@ function SearchPageContent() {
               }
               data-testid="listings-panel"
             >
+              <div className="flex items-center justify-end px-4 pt-3 pb-1">
+                <SortSelect
+                  value={filters.sort}
+                  onChange={(v) => setFilter("sort", v)}
+                />
+              </div>
               <div
                 ref={listingsScrollRef}
-                className="@container flex-1 overflow-y-auto p-4"
+                className="@container flex-1 overflow-y-auto px-4 pb-4 pt-2"
               >
                 <ListingResults
                   listings={listings}
