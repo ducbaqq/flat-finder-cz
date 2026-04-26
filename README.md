@@ -269,6 +269,52 @@ npm run notifier -- --dry-run                 # preview without sending
 
 Users can save search criteria with their email. When the scraper finds new listings matching those criteria, the notifier sends an email. Watchdogs can be paused/resumed/deleted via the API.
 
+## Deployment
+
+Production runs on a single DigitalOcean droplet (`167.172.176.70`, 4 GB Premium AMD + 2 GB swap) at **bytomat.com**. Cloudflare proxies → Nginx (443, self-signed cert, Full SSL) → Next.js on `:3000`. PM2 manages three processes: `api` (port 4000, `--max-old-space-size=2048`), `web` (port 3000), `scraper` (watch mode). DigitalOcean Managed PostgreSQL (25-connection limit). No CI — deployment is manual SSH + git pull + build + PM2 restart.
+
+The reference runbook lives in the Obsidian vault at `projects/personal/flat-finder-cz/droplet-deployment.md` (full session log, gotchas, infra decisions).
+
+### Full deploy (any change — workspace packages, API, web)
+
+```bash
+ssh root@167.172.176.70 "
+  cd /root/flat-finder-cz &&
+  git branch --show-current &&        # confirm 'main' before pulling
+  git pull --ff-only &&
+  rm -rf apps/web/.next &&             # webpack cache can ship stale workspace bundles
+  npm run build &&
+  pm2 restart api web
+"
+```
+
+### Fast deploy (web-only, no workspace package changes)
+
+Build locally and rsync the bundle — avoids the slow build on the droplet:
+
+```bash
+rm -rf apps/web/.next
+npm -w apps/web run build
+rsync -az --delete apps/web/.next/ root@167.172.176.70:/root/flat-finder-cz/apps/web/.next/
+ssh root@167.172.176.70 "pm2 restart web"
+```
+
+### Verify
+
+```bash
+ssh root@167.172.176.70 "pm2 list"
+curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://bytomat.com/   # 307 → password gate is healthy
+ssh root@167.172.176.70 "curl -s http://localhost:4000/api/health"   # {\"status\":\"ok\"}
+```
+
+### Gotchas
+
+- `git branch --show-current` before pulling — droplet has been caught on a stale feature branch where `git pull` reports "Already up to date".
+- Always `pm2 restart web` after `next build`. Without it, the server keeps serving HTML referencing old chunk hashes → `ChunkLoadError` on clients.
+- `pm2 restart` does **not** pick up changes to `node_args` in `ecosystem.config.cjs`. Use `pm2 delete <name> && pm2 start ecosystem.config.cjs --only <name>` for those.
+- `ecosystem.config.cjs` and `apps/web/.env` (symlink to root `.env`) live on the droplet only and are not in git.
+- API holds a Supercluster index in memory (~430 MB at 355K points, doubles briefly during the 15-min DB rebuild). If you scale point counts up, watch for OOM in `pm2 logs api`.
+
 ## License
 
 MIT
