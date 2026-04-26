@@ -59,7 +59,7 @@ export function PropertyCard({ listing, index = 0, onImageError }: PropertyCardP
         delay: index < 20 ? index * 0.04 : 0,
         ease: [0.16, 1, 0.3, 1],
       }}
-      className="group cursor-pointer"
+      className="group flex cursor-pointer flex-col"
       onClick={() =>
         router.push(
           `/listing/${listing.id}${typeof window !== "undefined" ? window.location.search : ""}`,
@@ -96,8 +96,10 @@ export function PropertyCard({ listing, index = 0, onImageError }: PropertyCardP
         )}
       </div>
 
-      {/* Body */}
-      <div className="px-0.5 pt-3" data-testid="listing-card-body">
+      {/* Body — flex column with the price pinned to the bottom via
+          mt-auto, so cards in the same grid row line up regardless of
+          whether the address / specs / amenities rows are present. */}
+      <div className="flex flex-1 flex-col px-0.5 pt-3" data-testid="listing-card-body">
         <div className="flex items-start justify-between gap-2">
           <h3
             className="line-clamp-1 font-display text-[15px] font-semibold leading-snug text-foreground"
@@ -153,7 +155,7 @@ export function PropertyCard({ listing, index = 0, onImageError }: PropertyCardP
             </div>
           )}
 
-        <div className="mt-2.5 flex items-baseline justify-between" data-testid="listing-card-meta">
+        <div className="mt-auto flex items-baseline justify-between pt-2.5" data-testid="listing-card-meta">
           <span data-testid="listing-card-price">
             {listing.price ? (
               <>
