@@ -452,10 +452,25 @@ export class CeskeRealityScraper extends BaseScraper {
       }
     }
 
-    // Extract JSON-LD from detail page for description, seller info, city
+    // Full description lives in the body, not JSON-LD. List-page extraction
+    // captures only a ~400-char preview from `.i-estate__description-text`,
+    // and the detail page's JSON-LD uses a non-standard `@type:
+    // individualProduct` that `extractDetailJsonLd` doesn't recognize, so
+    // both upstream paths leave description truncated. The body container
+    // `.s-estate-content__wrapper .entry-content` holds the full text.
+    const entryContent = root.querySelector(
+      ".s-estate-content__wrapper .entry-content",
+    );
+    if (entryContent) {
+      const text = entryContent.text.trim();
+      if (text) listing.description = truncate(text, 2000);
+    }
+
+    // Extract JSON-LD from detail page for seller info, city (and as a
+    // description fallback if `.entry-content` isn't present).
     const detailJsonLd = this.extractDetailJsonLd(html);
     if (detailJsonLd) {
-      if (detailJsonLd.description) {
+      if (!entryContent && detailJsonLd.description) {
         listing.description = truncate(decodeHtmlEntities(detailJsonLd.description), 2000);
       }
       if (detailJsonLd.offeredBy) {
