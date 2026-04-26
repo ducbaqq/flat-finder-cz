@@ -162,13 +162,13 @@ function renderCopy(outcome: Outcome): { headline: string; body: string } {
   switch (outcome.kind) {
     case "deleted":
       return {
-        headline: "Hlídač byl smazán.",
+        headline: "Hlídač byl vypnut.",
         body: "Už ti nebudeme posílat e-maily k tomuto hlídači. Pokud sis to rozmyslel, můžeš si kdykoli vytvořit nový.",
       };
     case "already_deleted":
       return {
-        headline: "Hlídač už byl smazán.",
-        body: "Tento hlídač jsme už dříve odstranili. Žádné další e-maily ti k němu chodit nebudou.",
+        headline: "Hlídač už byl vypnut.",
+        body: "Tento hlídač jsme už dříve vypnuli. Žádné další e-maily ti k němu chodit nebudou.",
       };
     case "paused":
       return {
