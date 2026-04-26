@@ -236,10 +236,17 @@ export class EurobydleniScraper extends BaseScraper {
     const detailHref = titleEl?.getAttribute("href") || itemId;
     const sourceUrl = detailHref ? `${this.baseUrl}${detailHref}` : null;
 
-    // Price from schema.org meta
+    // Price from schema.org meta. eurobydleni encodes "Info v RK" (price
+    // on request) as the sentinel 999999999 — treat that as null + note,
+    // not as a 999M CZK listing.
     const priceMeta = el.querySelector('meta[itemprop="price"]');
     const priceStr = priceMeta?.getAttribute("content") || null;
-    const price = priceStr ? parseFloat(priceStr) : null;
+    const priceRaw = priceStr ? parseFloat(priceStr) : null;
+    const isPriceOnRequest = priceRaw === 999_999_999;
+    const price = isPriceOnRequest || priceRaw == null || isNaN(priceRaw)
+      ? null
+      : priceRaw;
+    const priceNote = isPriceOnRequest ? "Info v RK" : null;
 
     // Currency
     const currencyMeta = el.querySelector('meta[itemprop="priceCurrency"]');
@@ -354,9 +361,9 @@ export class EurobydleniScraper extends BaseScraper {
       transaction_type: transactionType,
       title,
       description,
-      price: price && !isNaN(price) ? price : null,
+      price,
       currency,
-      price_note: null,
+      price_note: priceNote,
       address,
       city,
       district,
