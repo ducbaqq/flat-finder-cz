@@ -258,30 +258,22 @@ export class UlovDomovScraper extends BaseScraper {
     const offerId = offer.id;
     const externalId = `ulovdomov_${offerId}`;
 
-    // Layout
-    const dispositionRaw = offer.disposition ?? "other";
-    const layout = DISPOSITION_MAP[dispositionRaw] ?? null;
+    // Layout — only set when the API actually gives one. The previous
+    // fallback to "other" mapped non-flat listings (land, commercial,
+    // garage) to "atypický", which is misleading: those properties have
+    // no disposition at all.
+    const layout = offer.disposition
+      ? (DISPOSITION_MAP[offer.disposition] ?? null)
+      : null;
 
-    // Price
-    let price: number | null = null;
-    let currency = "CZK";
-    if (offerType === "rent") {
-      const rental = offer.rentalPrice ?? {};
-      price = rental.value ?? null;
-      currency = rental.currency ?? "CZK";
-    } else {
-      const selling = offer.sellingPrice ?? {};
-      price = selling.value ?? null;
-      currency = selling.currency ?? "CZK";
-    }
-    if (price != null) {
-      try {
-        price = Number(price);
-        if (isNaN(price)) price = null;
-      } catch {
-        price = null;
-      }
-    }
+    // Price. UlovDomov's API uses `rentalPrice` for BOTH rent and sale
+    // listings — there's no separate `sellingPrice` field on sales, so
+    // the previous offerType branch silently nulled every sale price.
+    const priceField = offer.rentalPrice ?? offer.sellingPrice ?? {};
+    let price: number | null =
+      priceField.value != null ? Number(priceField.value) : null;
+    if (price != null && isNaN(price)) price = null;
+    const currency = priceField.currency ?? "CZK";
 
     // Price note
     let priceNote = offer.priceNote ?? null;
@@ -315,9 +307,10 @@ export class UlovDomovScraper extends BaseScraper {
     const allAmenities = [...convenience, ...houseConv];
     const amenities = normalizeAmenities(allAmenities.length > 0 ? allAmenities.join(",") : null);
 
-    // Floor
+    // Floor. Skip for land — pozemky have no floor, and the API still
+    // returns 0 there which we'd otherwise display as "Patro 0".
     let floor: number | null = null;
-    if (offer.floorLevel != null) {
+    if (propertyType !== "land" && offer.floorLevel != null) {
       const parsed = parseInt(String(offer.floorLevel), 10);
       if (!isNaN(parsed)) floor = parsed;
     }
@@ -345,11 +338,12 @@ export class UlovDomovScraper extends BaseScraper {
     // Energy rating
     const energyRating = offer.energyEfficiencyRating ?? null;
 
-    // Size
+    // Size. The API sometimes returns 0 for "doesn't apply"; treat that
+    // as missing rather than displaying "0 m²".
     let sizeM2: number | null = null;
     if (offer.area != null) {
-      sizeM2 = Number(offer.area);
-      if (isNaN(sizeM2)) sizeM2 = null;
+      const n = Number(offer.area);
+      if (!isNaN(n) && n > 0) sizeM2 = n;
     }
 
     const now = new Date().toISOString();
