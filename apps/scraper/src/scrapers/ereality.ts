@@ -625,8 +625,13 @@ export class ERealityScraper extends BaseScraper {
   }
 
   private extractSize(title: string): number | null {
-    const match = title.match(/(\d+)\s*m[²2]/i);
-    return match ? parseInt(match[1], 10) : null;
+    // Allow decimal separator (Czech uses comma, e.g. "84,7 m2"; English
+    // titles may use a period). The previous integer-only regex captured
+    // just the digits after the comma — "84,7 m2" → 7.
+    const match = title.match(/(\d+(?:[.,]\d+)?)\s*m[²2]/i);
+    if (!match) return null;
+    const val = parseFloat(match[1].replace(",", "."));
+    return isNaN(val) ? null : val;
   }
 
   private extractLayout(title: string): string | null {

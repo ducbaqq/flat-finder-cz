@@ -622,9 +622,13 @@ function extractCityAndDistrict(locality: string): { city: string | null; distri
 
 function extractSizeFromName(name: string): number | null {
   if (!name) return null;
-  const m = name.match(/(\d+)\s*m[²2]/i);
-  if (m) return parseFloat(m[1]);
-  return null;
+  // Allow decimal separator (Czech uses comma, e.g. "84,7 m²"); the
+  // previous integer-only regex captured just the digits after the
+  // comma.
+  const m = name.match(/(\d+(?:[.,]\d+)?)\s*m[²2]/i);
+  if (!m) return null;
+  const val = parseFloat(m[1].replace(",", "."));
+  return isNaN(val) ? null : val;
 }
 
 // ---------------------------------------------------------------------------

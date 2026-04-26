@@ -41,10 +41,10 @@ export function parseIdnesTitleDetails(
     ? title.slice(title.indexOf(layoutMatch[0]) + layoutMatch[0].length)
     : title;
 
-  const sizeMatch = searchIn.match(/(\d[\d\s]*)\s*m[²2]/i);
+  const sizeMatch = searchIn.match(/(\d[\d\s]*(?:[.,]\d+)?)\s*m[²2]/i);
   let sizeM2: number | null = null;
   if (sizeMatch) {
-    const numStr = sizeMatch[1].replace(/\s/g, "");
+    const numStr = sizeMatch[1].replace(/\s/g, "").replace(",", ".");
     sizeM2 = parseFloat(numStr);
     if (isNaN(sizeM2)) sizeM2 = null;
   }
