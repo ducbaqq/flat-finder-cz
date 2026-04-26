@@ -78,6 +78,13 @@ interface ListingEmailEntry {
   thumbnail_url: string | null;
   detail_url: string;
   sources: Array<{ name: string; url: string }>;
+  /**
+   * The canonical source's display name pre-flattened. Brevo's Jinja
+   * variant chokes on `{{ listing.sources[0].name }}` (bracket-then-attr
+   * chaining) — having the value at top level lets the template just
+   * write `{{ listing.canonical_source_name }}`.
+   */
+  canonical_source_name: string;
   transaction_label: string;
 }
 
@@ -131,6 +138,7 @@ async function buildListingEmailEntry(
     thumbnail_url: listing.thumbnail_url,
     detail_url: detailUrl,
     sources,
+    canonical_source_name: sources[0]?.name ?? "",
     transaction_label: transactionLabel,
   };
 }

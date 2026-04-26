@@ -173,7 +173,7 @@
           <tr>
             <td class="gutter" style="padding:0 40px;">
               <p style="margin:0 0 10px 0;font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:#1C5848;">
-                {{ listing.transaction_label }}{% if listing.sources and listing.sources[0] %} <span style="color:#C9BFA8;">·</span> {{ listing.sources[0].name }}{% endif %}
+                {{ listing.transaction_label }}{% if listing.canonical_source_name %} <span style="color:#C9BFA8;">·</span> {{ listing.canonical_source_name }}{% endif %}
               </p>
               <a href="{{ listing.detail_url }}" target="_blank" style="text-decoration:none;color:#241F18;">
                 <h2 class="listing-title" style="margin:0 0 8px 0;font-family:'Bricolage Grotesque','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:22px;line-height:29px;font-weight:600;letter-spacing:-0.015em;color:#241F18;">
