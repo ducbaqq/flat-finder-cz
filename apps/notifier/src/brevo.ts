@@ -90,6 +90,13 @@ export async function sendBrevoEmail(
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
+      // TEMPORARY: dump the outgoing payload so we can compare what
+      // succeeds vs what fails when Brevo silently rejects with
+      // "template not exists" after a 201 response. Revert after
+      // diagnosing.
+      console.log(
+        `[DEBUG] Brevo payload for ${toEmail}: ${JSON.stringify(payload).slice(0, 4000)}`,
+      );
       const response = await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: {
