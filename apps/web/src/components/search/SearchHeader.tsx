@@ -30,10 +30,16 @@ export function SearchHeader({
             className="text-sm text-muted-foreground"
             data-testid="search-results-count"
           >
-            <strong className="font-semibold text-foreground tabular-nums">
-              {total >= 10000 ? "10 000 a více" : total.toLocaleString("cs-CZ")}
-            </strong>{" "}
-            nabídek
+            {total === 0 ? (
+              "Žádné nabídky"
+            ) : (
+              <>
+                <strong className="font-semibold text-foreground tabular-nums">
+                  {total >= 10000 ? "10 000 a více" : total.toLocaleString("cs-CZ")}
+                </strong>{" "}
+                {total === 1 ? "nabídka" : total >= 5 ? "nabídek" : "nabídky"}
+              </>
+            )}
           </span>
 
           <FilterSheet filters={filters} setFilter={setFilter} />
