@@ -133,7 +133,17 @@ export default function WatchdogModal() {
         open={watchdogModalOpen}
         onOpenChange={(open) => !open && closeWatchdogModal()}
       >
-        <DialogContent className="max-w-lg" data-testid="watchdog-modal">
+        {/*
+          Cap the modal at 90 % of the dynamic viewport height (`100dvh`
+          handles the iOS Safari URL-bar height correctly) and let the
+          content overflow-scroll inside. The close button is positioned
+          absolute on DialogContent so it stays pinned at top-right while
+          the inner content scrolls.
+        */}
+        <DialogContent
+          className="max-w-lg max-h-[90dvh] overflow-y-auto"
+          data-testid="watchdog-modal"
+        >
           <DialogHeader>
             <div className="flex items-center gap-2">
               <Dog className="h-6 w-6 text-primary" />
