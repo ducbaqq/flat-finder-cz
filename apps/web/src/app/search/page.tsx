@@ -16,8 +16,6 @@ import { ActiveFilterChips } from "@/components/search/ActiveFilterChips";
 import { FilterSidebar } from "@/components/search/FilterSidebar";
 import { ListingResults } from "@/components/search/ListingResults";
 import { SortSelect } from "@/components/filters/SortSelect";
-import WatchdogModal from "@/components/watchdog/WatchdogModal";
-import ReportProblemModal from "@/components/report-problem/ReportProblemModal";
 import { useSearchFilters } from "@/hooks/useSearchFilters";
 import { useListings } from "@/hooks/useListings";
 import { cn } from "@/lib/cn";
@@ -219,10 +217,8 @@ function SearchPageContent() {
       </div>
 
       <MobileBottomNav />
-      {/* Listing detail modal is served by the @modal parallel slot —
-          see app/@modal/(.)listing/[id]/page.tsx. */}
-      <WatchdogModal />
-      <ReportProblemModal />
+      {/* WatchdogModal + ReportProblemModal + the @modal parallel slot
+          (intercepted listing detail) are all mounted in app/layout.tsx. */}
     </div>
   );
 }

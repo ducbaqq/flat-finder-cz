@@ -6,9 +6,6 @@ import { MobileBottomNav } from "@/components/shared/MobileBottomNav";
 import { HeroSection } from "@/components/home/HeroSection";
 import { HomeFilterPanel } from "@/components/home/HomeFilterPanel";
 import { LatestListings } from "@/components/home/LatestListings";
-import WatchdogModal from "@/components/watchdog/WatchdogModal";
-import ReportProblemModal from "@/components/report-problem/ReportProblemModal";
-
 export default function HomePage() {
   return (
     <>
@@ -21,10 +18,8 @@ export default function HomePage() {
       </main>
       <Footer />
       <MobileBottomNav />
-      {/* Listing detail modal is served by the @modal parallel slot —
-          see app/@modal/(.)listing/[id]/page.tsx. */}
-      <WatchdogModal />
-      <ReportProblemModal />
+      {/* WatchdogModal + ReportProblemModal + the @modal parallel slot
+          (intercepted listing detail) are all mounted in app/layout.tsx. */}
     </>
   );
 }

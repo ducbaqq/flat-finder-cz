@@ -6,6 +6,8 @@ import { Suspense } from "react";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import AnalyticsListener from "@/components/analytics/AnalyticsListener";
+import WatchdogModal from "@/components/watchdog/WatchdogModal";
+import ReportProblemModal from "@/components/report-problem/ReportProblemModal";
 import { SEO_NOINDEX, NOINDEX_ROBOTS } from "@/lib/seo";
 import "./globals.css";
 
@@ -66,6 +68,14 @@ export default function RootLayout({
             <QueryProvider>
               {children}
               {modal}
+              {/* Global modals — mounted once at the root so the Navbar
+                  Bell/Flag buttons work on every page (incl. /listing/[id]
+                  and /watchdog/manage). Without this, clicks set a Zustand
+                  flag with no listener, then the modals would pop up
+                  stacked when the user later landed on a page that
+                  happened to mount them. */}
+              <WatchdogModal />
+              <ReportProblemModal />
             </QueryProvider>
           </ThemeProvider>
         </NuqsAdapter>
