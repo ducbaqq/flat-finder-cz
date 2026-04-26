@@ -428,7 +428,11 @@ export class BazosScraper extends BaseScraper {
 
   private extractSize(title: string, description: string | null): number | null {
     const combined = `${title} ${description ?? ""}`;
-    const match = combined.match(/(\d+[.,]?\d*)\s*m[²2]/i);
+    // Lookbehind blocks matches whose first digit is preceded by a digit
+    // or `+`, which fixes layout-leak cases where sellers write
+    // "2+1,56 m²" with no space after the comma — the old regex parsed
+    // that as 1.56 m² (decimal). Now the match starts at "56".
+    const match = combined.match(/(?<![\d+])(\d+[.,]?\d*)\s*m[²2]/i);
     if (match) {
       const num = parseFloat(match[1].replace(",", "."));
       if (num > 0 && num < 100000) return num;

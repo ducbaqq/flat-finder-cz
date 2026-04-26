@@ -628,12 +628,19 @@ function extractCityAndDistrict(locality: string): { city: string | null; distri
 
 function extractSizeFromName(name: string): number | null {
   if (!name) return null;
-  // Allow decimal separator (Czech uses comma, e.g. "84,7 m²"); the
-  // previous integer-only regex captured just the digits after the
-  // comma.
-  const m = name.match(/(\d+(?:[.,]\d+)?)\s*m[²2]/i);
+  // Sreality titles use non-breaking-space thousand separators (e.g.
+  // "Prodej památky 3\u00a0000\u00a0m², pozemek 18\u00a0363\u00a0m²")
+  // and Czech comma decimals ("84,7 m²"). The previous integer-only
+  // regex captured "000" from "3 000 m²" and stored size = 0.
+  //
+  // Allow optional thousand-separator groups (`\s\d{3}` repeated) and
+  // an optional decimal tail. Lookbehind blocks layout-leak cases like
+  // "2+1 130 m²" where the `1` belongs to the layout.
+  const m = name.match(
+    /(?<![\d+])(\d+(?:[\s\u00a0]\d{3})*(?:[.,]\d+)?)\s*m[²2]/i,
+  );
   if (!m) return null;
-  const val = parseFloat(m[1].replace(",", "."));
+  const val = parseFloat(m[1].replace(/[\s\u00a0]/g, "").replace(",", "."));
   return isNaN(val) ? null : val;
 }
 

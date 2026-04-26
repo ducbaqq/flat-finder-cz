@@ -366,13 +366,20 @@ export class BezrealitkyScraper extends BaseScraper {
       sourceUrl = `${BASE_URL}/nemovitosti-byty-domy/${advert.id}`;
     }
 
-    // Title
-    let title = "";
-    if (layout && sizeM2) {
-      const transCz: Record<string, string> = { rent: "Pronájem", sale: "Prodej", auction: "Aukce" };
-      const typeCz: Record<string, string> = { flat: "bytu", house: "domu", land: "pozemku", garage: "garáže", commercial: "prostoru" };
-      title = `${transCz[transactionType] ?? "Nabídka"} ${typeCz[propertyType] ?? ""} ${layout} ${Math.floor(sizeM2)} m²`.trim();
-    }
+    // Title — bezrealitky's GraphQL list response has no title field, so
+    // we synthesize one from structured fields. Layout and size are both
+    // optional (the API can return either as null) — include each piece
+    // only when we have it, so listings without a disposition still get
+    // a usable title like "Pronájem bytu 68 m²".
+    const transCz: Record<string, string> = { rent: "Pronájem", sale: "Prodej", auction: "Aukce" };
+    const typeCz: Record<string, string> = { flat: "bytu", house: "domu", land: "pozemku", garage: "garáže", commercial: "prostoru" };
+    const titleParts = [
+      transCz[transactionType] ?? "Nabídka",
+      typeCz[propertyType] ?? "",
+      layout ?? "",
+      sizeM2 ? `${Math.floor(sizeM2)} m²` : "",
+    ].filter(Boolean);
+    const title = titleParts.length > 1 ? titleParts.join(" ") : "";
 
     // Description
     const description = advert.descriptionByLocale ?? null;

@@ -20,6 +20,54 @@ function jtskToWgs84(x: number, y: number): { lat: number; lng: number } {
 }
 
 /**
+ * Cross-source skip — ereality is itself an aggregator, often re-broadcasting
+ * listings from portals we already scrape directly. When the detail page's
+ * gallery photos point at one of those portals' image hosts, the listing is
+ * a pure duplicate (with worse data fidelity than the direct scrape because
+ * we only see ereality's HTML, not the original API). Drop those before
+ * upsert; the dedicated source scraper already covers them.
+ *
+ * Mirrors the pattern in `realingo.ts` (see [[realingo-external-host-skip]]
+ * in the Obsidian vault).
+ */
+const EXTERNALLY_COVERED_HOSTS = [
+  "sreality.cz", "bezrealitky.cz", "ulovdomov.cz", "bazos.cz",
+  "eurobydleni.cz", "ceskereality.cz", "realitymix.cz",
+  "realitymix.com", "idnes.cz", "realingo.cz",
+  "1gr.cz",        // iDNES Group's image CDN — sta-reality1.1gr.cz, etc.
+] as const;
+
+function isExternallyCoveredHost(url: string): boolean {
+  let hostname: string;
+  try { hostname = new URL(url).hostname.toLowerCase(); }
+  catch { return false; }
+  return EXTERNALLY_COVERED_HOSTS.some(
+    (host) => hostname === host || hostname.endsWith(`.${host}`),
+  );
+}
+
+/**
+ * Scan an ereality detail page for gallery image URLs that point at one of
+ * the portals we scrape directly. Returns the matched hostname, or null.
+ *
+ * The gallery is loaded via `foto_done(N, 'URL')` JS calls — that's the
+ * canonical "this listing's photos" signal. Sidebar widgets and ads use
+ * different markup, so this is precise (no false positives from the
+ * "podobné nabídky" widget that already burned us once).
+ */
+function detectExternalSource(html: string): string | null {
+  const pattern = /foto_done\s*\(\s*\d+\s*,\s*['"]([^'"]+)['"]/g;
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(html)) !== null) {
+    if (isExternallyCoveredHost(m[1])) {
+      try { return new URL(m[1]).hostname; }
+      catch { return "unknown"; }
+    }
+  }
+  return null;
+}
+
+/**
  * All category paths to scrape: [urlPath, propertyType, transactionType]
  */
 const CATEGORIES: [string, PropertyType, TransactionType][] = [
@@ -177,11 +225,17 @@ export class ERealityScraper extends BaseScraper {
     this.log(`Enriching ${listings.length} new listings...`);
     const limit = opts?.concurrency ? pLimit(opts.concurrency) : this.limiter;
 
+    const skipIds = new Set<string>();
+    const skipHosts: Record<string, number> = {};
     await Promise.all(
       listings.map((listing) =>
         limit(async () => {
           try {
-            await this.enrichOne(listing);
+            const skipHost = await this.enrichOne(listing);
+            if (skipHost) {
+              skipIds.add(listing.external_id);
+              skipHosts[skipHost] = (skipHosts[skipHost] ?? 0) + 1;
+            }
           } catch (err) {
             this.log(`Failed to enrich ${listing.external_id}: ${err}`);
           }
@@ -189,7 +243,20 @@ export class ERealityScraper extends BaseScraper {
       ),
     );
 
-    // Keep stats logging
+    if (skipIds.size > 0) {
+      const breakdown = Object.entries(skipHosts)
+        .sort(([, a], [, b]) => b - a)
+        .map(([h, n]) => `${h}=${n}`)
+        .join(" ");
+      this.log(
+        `Dropping ${skipIds.size}/${listings.length} cross-listings from sources we scrape directly (${breakdown})`,
+      );
+      const kept = listings.filter((l) => !skipIds.has(l.external_id));
+      listings.length = 0;
+      listings.push(...kept);
+    }
+
+    // Stats — over the post-filter list, since the dropped rows aren't ours
     const withGps = listings.filter((l) => l.latitude !== null).length;
     const withDesc = listings.filter((l) => l.description !== null).length;
     const withGallery = listings.filter((l) => {
@@ -200,14 +267,27 @@ export class ERealityScraper extends BaseScraper {
     );
   }
 
-  private async enrichOne(listing: ScraperResult): Promise<void> {
-    if (!listing.source_url) return;
+  /**
+   * Enrich a single listing. Returns `null` if kept, or a hostname string
+   * (e.g. `"www.bezrealitky.cz"`) if the listing is a cross-listing from a
+   * portal we scrape directly and should be dropped before upsert.
+   */
+  private async enrichOne(listing: ScraperResult): Promise<string | null> {
+    if (!listing.source_url) return null;
 
     const url = listing.source_url.startsWith("http")
       ? listing.source_url
       : `${this.baseUrl}${listing.source_url}`;
 
     const html = await this.http.getHtml(url);
+
+    // Cross-source check: if the gallery photos point at a portal we
+    // already scrape, skip — the dedicated scraper covers it with full
+    // fidelity. Done BEFORE any other parsing so we don't waste cycles
+    // populating fields on a row we're going to drop.
+    const externalHost = detectExternalSource(html);
+    if (externalHost) return externalHost;
+
     const root = parseHtml(html);
 
     // GPS from OpenStreetMap iframe
@@ -287,6 +367,8 @@ export class ERealityScraper extends BaseScraper {
         break;
       }
     }
+
+    return null;
   }
 
   /**
@@ -429,11 +511,27 @@ export class ERealityScraper extends BaseScraper {
   }
 
   private extractImages(html: string): string[] {
-    // Extract image URLs from the detail page - look for reality image hosts
-    const imagePattern = /https?:\/\/sta-reality\d*\.1gr\.cz[^"'\s)]+\.(?:jpg|jpeg|png|webp)/gi;
-    const matches = html.match(imagePattern) ?? [];
-    // Deduplicate
-    return [...new Set(matches)];
+    // ereality is an aggregator — listings we keep (after the cross-source
+    // skip filter) have galleries hosted on whatever portal originally
+    // posted the listing: faraon.cz, remax.cz, agency CDNs, ereality's
+    // own static, etc. Don't anchor on any specific host. The canonical
+    // "this listing's photos" signal is the `foto_done(N, 'URL')` JS
+    // gallery loader that ereality calls per image — the same anchor
+    // `detectExternalSource` uses, just collecting URLs instead of
+    // matching them against the skip list.
+    //
+    // Why not scan all <img>/<a> in the page: the sidebar widget
+    // ("podobné nabídky") shows iDNES thumbnails of unrelated listings.
+    // Matching every image would mix those into the gallery (and that's
+    // exactly the bug that put a wrong thumbnail on listing 15394).
+    const pattern = /foto_done\s*\(\s*\d+\s*,\s*['"]([^'"]+)['"]/g;
+    const urls: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = pattern.exec(html)) !== null) {
+      urls.push(m[1]);
+    }
+    // Preserve gallery order; just dedupe in case a listing repeats a URL.
+    return [...new Set(urls)];
   }
 
   // ─── Tile Parsing (shared) ────────────────────────────────────────
