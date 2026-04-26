@@ -105,7 +105,13 @@ function extractLayout(text: string): string | null {
 
 function extractSize(text: string): number | null {
   if (!text) return null;
-  const m = text.match(/([\d\s\u00a0]+)\s*m[²2]/i);
+  // The Czech thousand separator is a space, so we still allow spaces
+  // inside the captured digits ("1 234 m²" → 1234). But guard against
+  // pulling a stray digit from the layout token ("4+1 130 m²" — the old
+  // regex captured "1 130" and produced 1130). The lookbehind blocks
+  // matches whose preceding character is itself a digit or a `+`, which
+  // is exactly what disambiguates "4+1 130" from "1 234".
+  const m = text.match(/(?<![\d+])(\d[\d\s\u00a0]*)\s*m[²2]/i);
   if (m) {
     const numStr = m[1].replace(/[\s\u00a0]/g, "");
     const val = parseFloat(numStr);
