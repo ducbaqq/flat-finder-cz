@@ -354,7 +354,9 @@ export class SrealityScraper extends BaseScraper {
     const name = estate.name ?? "";
     const layout = extractLayoutFromName(name);
 
-    // Price
+    // Price. Sreality uses `1` (CZK) as a sentinel for "Cena na vyžádání"
+    // (price on request) on sale/rent listings without an explicit price.
+    // Auctions can legitimately start at 1 Kč so we leave those alone.
     let price: number | null = null;
     const priceCzk = estate.price_czk;
     if (priceCzk) {
@@ -363,6 +365,10 @@ export class SrealityScraper extends BaseScraper {
     if (price == null) {
       price = estate.price ?? null;
     }
+    const isPriceOnRequest =
+      price === 1 && transactionType !== "auction";
+    const priceNote = isPriceOnRequest ? "Cena na dotaz" : null;
+    if (isPriceOnRequest) price = null;
 
     // GPS
     const gps = estate.gps ?? {};
@@ -404,7 +410,7 @@ export class SrealityScraper extends BaseScraper {
       description: null,
       price: price != null ? Number(price) : null,
       currency: "CZK",
-      price_note: null,
+      price_note: priceNote,
       address: locality || null,
       city,
       district,
