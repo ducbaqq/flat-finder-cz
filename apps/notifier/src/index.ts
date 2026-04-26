@@ -85,6 +85,13 @@ interface ListingEmailEntry {
    * write `{{ listing.canonical_source_name }}`.
    */
   canonical_source_name: string;
+  /**
+   * Editorial index label "01", "02", … pre-formatted for the template.
+   * Brevo's Jinja subset doesn't expose `loop.index`, so the previous
+   * `{% if loop.index < 10 %}0{% endif %}{{ loop.index }}` rendered "00"
+   * for every listing.
+   */
+  position_label: string;
   transaction_label: string;
 }
 
@@ -139,6 +146,7 @@ async function buildListingEmailEntry(
     detail_url: detailUrl,
     sources,
     canonical_source_name: sources[0]?.name ?? "",
+    position_label: "", // assigned by the caller using its loop index
     transaction_label: transactionLabel,
   };
 }
@@ -233,10 +241,16 @@ async function processWatchdog(
   const subject = composeSubject(displayedListings.length, filtersSummary);
 
   const listingEntries: ListingEmailEntry[] = [];
-  for (const listing of displayedListings) {
-    listingEntries.push(
-      await buildListingEmailEntry(db, listing, env.APP_BASE_URL),
+  for (let i = 0; i < displayedListings.length; i++) {
+    const entry = await buildListingEmailEntry(
+      db,
+      displayedListings[i],
+      env.APP_BASE_URL,
     );
+    // Pre-formatted "01" / "02" / … editorial index labels — Brevo Jinja
+    // doesn't expose loop.index, so we compute on the worker side.
+    entry.position_label = String(i + 1).padStart(2, "0");
+    listingEntries.push(entry);
   }
 
   const templateParams: Record<string, unknown> = {
