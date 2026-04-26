@@ -254,10 +254,24 @@
           </tr>
           <tr><td style="height:32px;line-height:32px;font-size:0;">&nbsp;</td></tr>
           <tr>
-            <td class="gutter" align="left" style="padding:0 40px;">
-              <a href="{{ params.more_url }}" target="_blank" style="display:inline-block;font-family:'Bricolage Grotesque','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:20px;font-weight:600;letter-spacing:-0.015em;color:#1C5848;text-decoration:none;border-bottom:2px solid #1C5848;padding-bottom:3px;">
-                {% if params.total_count - params.displayed_count == 1 %}A další 1 nabídka{% elif params.total_count - params.displayed_count >= 2 and params.total_count - params.displayed_count <= 4 %}A další {{ params.total_count - params.displayed_count }} nabídky{% else %}A další {{ params.total_count - params.displayed_count }} nabídek{% endif %}&nbsp;→
-              </a>
+            <td class="gutter" align="center" style="padding:0 40px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td>
+                    <!--[if mso]>
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ params.more_url }}" style="height:46px;v-text-anchor:middle;width:260px;" arcsize="0%" fillcolor="#1C5848" stroke="f">
+                      <w:anchorlock/>
+                      <center style="color:#FFFFFF;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;letter-spacing:0.02em;">Zobrazit na Bytomat.cz&nbsp;→</center>
+                    </v:roundrect>
+                    <![endif]-->
+                    <!--[if !mso]><!-- -->
+                    <a href="{{ params.more_url }}" target="_blank" style="display:inline-block;background:#1C5848;color:#FFFFFF;font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;letter-spacing:0.02em;padding:15px 30px;text-decoration:none;mso-padding-alt:0;">
+                      Zobrazit na Bytomat.cz&nbsp;→
+                    </a>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
           <tr><td style="height:48px;line-height:48px;font-size:0;">&nbsp;</td></tr>

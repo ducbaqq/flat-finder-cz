@@ -9,10 +9,10 @@ import type { ListingFilters } from "@flat-finder/types";
 import type { WatchdogRow } from "@flat-finder/db";
 
 export interface MatchResult {
-  /** Up to 20 listings, newest first. */
+  /** Up to 10 listings, newest first — what the email actually displays. */
   listings: ListingRow[];
-  /** True if the underlying LIMIT 21 query came back full (>20 candidates). */
-  hasMore: boolean;
+  /** Real total of distinct listings matching the watchdog (un-capped). */
+  totalCount: number;
 }
 
 /**
@@ -25,8 +25,13 @@ export interface MatchResult {
  *      correctness boundary — re-clustering and cross-portal duplicates
  *      collapse to the same key).
  *
- * Single round-trip with `LIMIT 21` so the worker can answer "are there
- * more than 20 matches?" without a separate COUNT query.
+ * Returns up to 10 listings for display PLUS the un-capped total count
+ * via a separate COUNT(*). The headline copy ("X nových nabídek
+ * odpovídá tvému hledání") needs the real total, not the displayed
+ * subset, and the "Zobrazit na Bytomat.cz" CTA threshold is total > 10.
+ *
+ * Two queries instead of one, but each smaller (LIMIT 10 vs LIMIT 21).
+ * COUNT can stop early via the planner anyway when the total is small.
  *
  * Wraps in a transaction with a 3s `statement_timeout` so a pathological
  * filter (regex on amenities, etc.) can't take down the whole cycle —
@@ -64,6 +69,7 @@ export async function findMatchingListings(
     // a hard rename — under `FROM "listings" l`, "listings"."col" is
     // out of scope and the query throws. Reference the table by its
     // unaliased name end-to-end.
+    // 1) Listings to display — capped at 10 for the email body.
     const result = await tx.execute<ListingRow>(sql`
       SELECT ${listings}.*
       FROM ${listings}
@@ -76,7 +82,7 @@ export async function findMatchingListings(
       WHERE ${whereExpr}
         AND wn.cluster_key IS NULL
       ORDER BY ${listings}.created_at DESC
-      LIMIT 21
+      LIMIT 10
     `);
 
     // postgres-js's tx.execute returns the rows array directly. Some
@@ -85,10 +91,31 @@ export async function findMatchingListings(
       ? (result as ListingRow[])
       : ((result as unknown as { rows?: ListingRow[] }).rows ?? []);
 
-    const hasMore = rows.length > 20;
-    return {
-      listings: hasMore ? rows.slice(0, 20) : rows,
-      hasMore,
-    };
+    // Short-circuit: if we got fewer than the LIMIT, that IS the total.
+    // No COUNT query needed — saves a round-trip on the common case
+    // where a watchdog has 0–9 new matches per cycle.
+    if (rows.length < 10) {
+      return { listings: rows, totalCount: rows.length };
+    }
+
+    // 2) We hit the LIMIT, so there might be more. Pull the real total.
+    const countResult = await tx.execute<{ count: number }>(sql`
+      SELECT COUNT(*)::int AS count
+      FROM ${listings}
+      LEFT JOIN watchdog_notifications wn
+        ON wn.email_canonical = ${watchdog.email_canonical}
+       AND wn.cluster_key = COALESCE(
+             'cluster:' || ${listings}.cluster_id,
+             'singleton:' || ${listings}.id::text
+           )
+      WHERE ${whereExpr}
+        AND wn.cluster_key IS NULL
+    `);
+    const countRows = Array.isArray(countResult)
+      ? (countResult as { count: number }[])
+      : ((countResult as unknown as { rows?: { count: number }[] }).rows ?? []);
+    const totalCount = Number(countRows[0]?.count ?? rows.length);
+
+    return { listings: rows, totalCount };
   });
 }

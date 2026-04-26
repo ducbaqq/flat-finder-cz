@@ -204,7 +204,7 @@ async function processWatchdog(
   const email = wdog.email;
   const filters: ListingFilters = (wdog.filters as ListingFilters | null) ?? {};
 
-  let matchResult: { listings: ListingRow[]; hasMore: boolean };
+  let matchResult: { listings: ListingRow[]; totalCount: number };
   try {
     matchResult = await findMatchingListings(db, wdog);
   } catch (error) {
@@ -224,7 +224,9 @@ async function processWatchdog(
     return;
   }
 
-  const { listings: matchedListings, hasMore } = matchResult;
+  const { listings: matchedListings, totalCount } = matchResult;
+  // `displayedListings` is already capped at 10 by the matcher; has_more
+  // is now strictly "is the total more than what we displayed".
 
   if (matchedListings.length === 0) {
     console.log(
@@ -233,9 +235,9 @@ async function processWatchdog(
     return;
   }
 
-  // Cap displayed at DISPLAYED_PER_EMAIL; the matcher already capped at 21.
+  // Matcher already returns max DISPLAYED_PER_EMAIL listings (= 10).
   const displayedListings = matchedListings.slice(0, DISPLAYED_PER_EMAIL);
-  const totalCount = matchedListings.length; // ≤ 21 — drives "and N more" copy
+  const hasMore = totalCount > displayedListings.length;
 
   const filtersSummary = composeFilterSummary(filters, null);
   const subject = composeSubject(displayedListings.length, filtersSummary);
