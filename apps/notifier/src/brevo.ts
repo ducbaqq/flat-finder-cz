@@ -102,8 +102,19 @@ export async function sendBrevoEmail(
       });
 
       if (response.ok) {
+        // Brevo returns `{messageId: "..."}` on 201. Log it so a failed
+        // delivery in their transactional dashboard can be correlated
+        // back to a specific notifier cycle.
+        const okBody = await response.text().catch(() => "");
+        let messageId: string | undefined;
+        try {
+          messageId = (JSON.parse(okBody) as { messageId?: string }).messageId;
+        } catch {
+          /* ignore */
+        }
         console.log(
           `[INFO] Brevo API responded ${response.status} for ${toEmail}` +
+            (messageId ? ` (messageId=${messageId})` : "") +
             (attempt > 0 ? ` (attempt ${attempt + 1})` : ""),
         );
         return;
