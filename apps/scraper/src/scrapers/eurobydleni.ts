@@ -461,8 +461,13 @@ export class EurobydleniScraper extends BaseScraper {
   private parsePropertyBlock(listing: ScraperResult, html: string): void {
     const root = parseHtml(html);
 
-    // Full description
-    const descEl = root.querySelector(".property-detail__description__text");
+    // Full description. Lives inside `<div class="box-desc box-desc-a-grey">
+    // <p temprop="description">...`. Note the site's typo: `temprop` instead
+    // of `itemprop`. Be defensive in case they ever fix it.
+    const descEl =
+      root.querySelector('.box-desc [temprop="description"]') ??
+      root.querySelector('.box-desc [itemprop="description"]') ??
+      root.querySelector(".box-desc p");
     if (descEl) {
       const text = descEl.text.trim();
       if (text) listing.description = text;
