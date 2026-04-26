@@ -303,13 +303,21 @@ async function processWatchdog(
   try {
     await db.transaction(async (tx) => {
       if (clusterKeys.length > 0) {
-        await tx.execute(sql`
-          INSERT INTO ${watchdogNotificationsTable}
-            (email_canonical, cluster_key, sent_at)
-          SELECT ${emailCanonical}, k.cluster_key, NOW()
-          FROM unnest(${clusterKeys}::text[]) AS k(cluster_key)
-          ON CONFLICT (email_canonical, cluster_key) DO NOTHING
-        `);
+        // Drizzle's `sql` template spreads JS arrays into a row constructor
+        // (`($1, $2)`) rather than a Postgres `text[]`, so the previous
+        // `unnest(${clusterKeys}::text[])` form was invalid SQL. Use the
+        // `.insert(...).values(rows).onConflictDoNothing()` builder instead
+        // — it batches into a single multi-row INSERT and gets the array
+        // binding right.
+        await tx
+          .insert(watchdogNotificationsTable)
+          .values(
+            clusterKeys.map((cluster_key) => ({
+              email_canonical: emailCanonical,
+              cluster_key,
+            })),
+          )
+          .onConflictDoNothing();
       }
       await tx.execute(sql`
         UPDATE ${watchdogsTable}
