@@ -13,6 +13,7 @@ export const watchdogs = pgTable(
   {
     id: serial("id").primaryKey(),
     email: text("email").notNull(),
+    email_canonical: text("email_canonical").notNull(),
     filters: jsonb("filters").$type<Record<string, unknown>>().notNull(),
     label: text("label"),
     active: boolean("active").default(true),

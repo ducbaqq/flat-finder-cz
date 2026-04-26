@@ -30,6 +30,11 @@ const envSchema = z.object({
   APP_BASE_URL: z.string().default("https://flatfinder.cz"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 
+  // HMAC-SHA256 secret used to sign watchdog action tokens (manage / pause /
+  // unsubscribe URLs in notification emails). Empty string means the
+  // notifier degrades to unsigned URLs and warns once on first use.
+  WATCHDOG_TOKEN_SECRET: z.string().default(""),
+
   // Scraper config — RPS/concurrency tuned via benchmark (2026-03-16)
   SREALITY_RPS: z.coerce.number().default(25),
   SREALITY_CONCURRENCY: z.coerce.number().default(50),

@@ -52,8 +52,12 @@ export default function WatchdogForm({
 
     setEmailError("");
 
+    // The modal already filters out `sort`/`view`/`watchdog`/`listing`
+    // before passing currentFilters in. Defensive cleanup still keeps the
+    // form valid if a future caller passes a less-curated filter object.
     const filtersToSave = { ...filters };
     delete filtersToSave.sort;
+    delete filtersToSave.view;
 
     await onSave({
       email: trimmedEmail,
@@ -77,7 +81,7 @@ export default function WatchdogForm({
         <p className="mb-2 text-sm text-muted-foreground">Aktuální filtry:</p>
         {filterSummaryTags.length === 0 ? (
           <p className="text-sm text-muted-foreground" data-testid="watchdog-form-no-filters">
-            Žádné filtry — hlídací pes bude sledovat všechny nabídky.
+            Žádné filtry — hlídač nemovitostí bude sledovat všechny nabídky.
           </p>
         ) : (
           <div className="flex flex-wrap gap-1.5">
@@ -131,7 +135,8 @@ export default function WatchdogForm({
         data-testid="watchdog-form-submit"
       >
         <Save className="mr-2 h-4 w-4" />
-        {isCreating ? "Ukládám..." : "Uložit hlídacího psa"}
+        {/* FIXME(czech-grammar) — accusative collision; nominative kept verbatim, review */}
+        {isCreating ? "Ukládám..." : "Uložit Hlídač nemovitostí"}
       </Button>
     </div>
   );

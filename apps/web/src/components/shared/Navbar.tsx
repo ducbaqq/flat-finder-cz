@@ -61,7 +61,7 @@ export function Navbar() {
                 {activeCount}
               </Badge>
             )}
-            <span className="sr-only">Hlídací pes</span>
+            <span className="sr-only">Hlídač nemovitostí</span>
           </Button>
 
         </div>

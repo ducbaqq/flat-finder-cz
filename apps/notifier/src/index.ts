@@ -1,28 +1,37 @@
 import { parseArgs } from "node:util";
+import { sql } from "drizzle-orm";
 import { getEnv } from "@flat-finder/config";
 import {
   getDb,
   closeDb,
   getActiveWatchdogs,
-  updateLastNotifiedAt,
+  getClusterSiblings,
+  watchdogs as watchdogsTable,
+  watchdogNotifications as watchdogNotificationsTable,
   type ListingRow,
   type WatchdogRow,
 } from "@flat-finder/db";
+import type { ListingFilters } from "@flat-finder/types";
 import { sendBrevoEmail } from "./brevo.js";
 import { findMatchingListings } from "./matcher.js";
+import { humanReadableSourceName } from "./sources.js";
+import { composeFilterSummary, composeMoreUrl } from "./summary.js";
+import { signTokenUrl } from "./tokens.js";
+import { composeSubject } from "./subject.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_LISTINGS_PER_EMAIL = 20;
+/** Cap rendered listings per email at 10 (matcher returns up to 21). */
+const DISPLAYED_PER_EMAIL = 10;
 
 // ---------------------------------------------------------------------------
 // Price formatting
 // ---------------------------------------------------------------------------
 
 /**
- * Format price Czech-style: "25 000 Kc" or "25 000 Kc/mes."
+ * Format price Czech-style: "25 000 Kč" or "25 000 Kč/měs."
  * Uses non-breaking spaces as thousands separator.
  */
 export function formatPrice(
@@ -31,51 +40,98 @@ export function formatPrice(
   transactionType?: string | null,
 ): string {
   if (price == null) {
-    return "Cena na vy\u017E\u00E1d\u00E1n\u00ED";
+    return "Cena na vyžádání";
   }
 
   const rounded = Math.round(price);
   // Format with commas then replace with non-breaking spaces
-  const formatted = rounded.toLocaleString("en-US").replace(/,/g, "\u00A0");
-  const suffix = transactionType === "rent" ? "K\u010D/m\u011Bs." : "K\u010D";
+  const formatted = rounded.toLocaleString("en-US").replace(/,/g, " ");
+  const suffix = transactionType === "rent" ? "Kč/měs." : "Kč";
   return `${formatted} ${suffix}`;
 }
 
 // ---------------------------------------------------------------------------
-// Listing -> email template params
+// Cluster_key computation
 // ---------------------------------------------------------------------------
 
-interface ListingEmailParams {
+/**
+ * Worker-side cluster_key derivation. Mirrors the SQL COALESCE the matcher
+ * uses, so the row we insert into watchdog_notifications is the same key
+ * the next cycle's anti-join will look up.
+ */
+function clusterKeyForListing(listing: ListingRow): string {
+  return listing.cluster_id
+    ? `cluster:${listing.cluster_id}`
+    : `singleton:${listing.id}`;
+}
+
+// ---------------------------------------------------------------------------
+// Listing → email entry
+// ---------------------------------------------------------------------------
+
+interface ListingEmailEntry {
   title: string;
   price_formatted: string;
-  city: string;
-  size_m2: number | string;
-  layout: string;
-  property_type: string;
-  transaction_type: string;
-  source: string;
-  thumbnail_url: string;
-  listing_url: string;
-  source_url: string;
+  size_m2: number | null;
+  layout: string | null;
+  address: string;
+  thumbnail_url: string | null;
+  detail_url: string;
+  sources: Array<{ name: string; url: string }>;
+  transaction_label: string;
 }
 
 /**
- * Convert a DB listing row to a dict suitable for Brevo template params.
+ * Build the per-listing dict the new template renders. `sources` lists
+ * every distinct portal the listing appeared on (canonical first, then
+ * the rest); when the listing has no cluster, just the row's own source.
  */
-export function listingToEmailParams(row: ListingRow): ListingEmailParams {
-  const listingUrl = row.source_url ?? "";
+async function buildListingEmailEntry(
+  db: ReturnType<typeof getDb>,
+  listing: ListingRow,
+  appBaseUrl: string,
+): Promise<ListingEmailEntry> {
+  const detailUrl = `${appBaseUrl.replace(/\/+$/, "")}/listing/${listing.id}`;
+  const transactionLabel =
+    listing.transaction_type === "rent" ? "Pronájem" : "Prodej";
+
+  const sources: Array<{ name: string; url: string }> = [];
+
+  if (listing.cluster_id) {
+    const siblings = await getClusterSiblings(db, listing.id);
+    // siblings are sorted by price asc; we want canonical first, then rest.
+    const canonical = siblings.filter((s) => s.is_canonical);
+    const rest = siblings.filter((s) => !s.is_canonical);
+    for (const s of [...canonical, ...rest]) {
+      if (!s.source_url) continue;
+      sources.push({
+        name: humanReadableSourceName(s.source),
+        url: s.source_url,
+      });
+    }
+  }
+
+  // Fallback (no cluster, or cluster query returned nothing usable): use
+  // the listing's own source row so the card can still render "Také na".
+  if (sources.length === 0) {
+    sources.push({
+      name: humanReadableSourceName(listing.source),
+      url: listing.source_url ?? "",
+    });
+  }
+
   return {
-    title: row.title ?? "Bez n\u00E1zvu",
-    price_formatted: formatPrice(row.price, row.currency ?? "CZK", row.transaction_type),
-    city: row.city ?? "",
-    size_m2: row.size_m2 ?? "",
-    layout: row.layout ?? "",
-    property_type: row.property_type ?? "",
-    transaction_type: row.transaction_type ?? "",
-    source: row.source ?? "",
-    thumbnail_url: row.thumbnail_url ?? "",
-    listing_url: listingUrl,
-    source_url: listingUrl,
+    title: listing.title ?? "Bez názvu",
+    price_formatted:
+      formatPrice(listing.price, listing.currency ?? "CZK", listing.transaction_type) ||
+      "Cena na dotaz",
+    size_m2: listing.size_m2 ?? null,
+    layout: listing.layout,
+    address: listing.address ?? listing.city ?? "",
+    thumbnail_url: listing.thumbnail_url,
+    detail_url: detailUrl,
+    sources,
+    transaction_label: transactionLabel,
   };
 }
 
@@ -115,81 +171,173 @@ async function runNotifier(dryRun: boolean): Promise<SummaryEntry[]> {
   console.log(`[INFO] Processing ${watchdogList.length} active watchdogs`);
 
   for (const wdog of watchdogList) {
-    const wdogId = wdog.id;
-    const email = wdog.email;
-    const label = wdog.label ?? `Hl\u00EDda\u010D #${wdogId}`;
-
-    // Find matching listings since last notification
-    const { total, listings: matchedListings } = await findMatchingListings(db, wdog);
-
-    if (total === 0) {
-      console.log(
-        `[DEBUG] Watchdog #${wdogId} (${email}): 0 new listings since ${wdog.last_notified_at ?? wdog.created_at}`,
-      );
-      continue;
-    }
-
-    const hasMore = total > MAX_LISTINGS_PER_EMAIL;
-    const listingsToSend = matchedListings.slice(0, MAX_LISTINGS_PER_EMAIL);
-    const extraCount = hasMore ? total - MAX_LISTINGS_PER_EMAIL : 0;
-
-    const listingParams = listingsToSend.map(listingToEmailParams);
-
-    const templateParams = {
-      watchdog_label: label,
-      listing_count: total,
-      has_more: hasMore,
-      extra_count: extraCount,
-      listings: listingParams,
-      app_url: env.APP_BASE_URL,
-    };
-
-    const entry: SummaryEntry = {
-      watchdog_id: wdogId,
-      email,
-      listing_count: total,
-      sent: false,
-      dry_run: dryRun,
-      timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
-    };
-
-    if (dryRun) {
-      console.log(
-        `[INFO] DRY RUN \u2014 Watchdog #${wdogId} (${email}): ${total} new listings (has_more=${hasMore}, extra=${extraCount})`,
-      );
-      entry.sent = true;
-    } else {
-      if (!env.BREVO_API_KEY) {
-        console.error(
-          "[ERROR] BREVO_API_KEY not set \u2014 cannot send email. Use --dry-run to test.",
-        );
-        entry.error = "BREVO_API_KEY not set";
-      } else {
-        const success = await sendBrevoEmail(
-          email,
-          env.BREVO_TEMPLATE_ID,
-          templateParams,
-        );
-        entry.sent = success;
-
-        if (success) {
-          const now = new Date().toISOString().replace("T", " ").slice(0, 19);
-          await updateLastNotifiedAt(db, wdogId, now);
-          console.log(
-            `[INFO] Watchdog #${wdogId} (${email}): sent ${total} listings, updated last_notified_at`,
-          );
-        } else {
-          console.warn(
-            `[WARN] Watchdog #${wdogId} (${email}): email send failed, skipping last_notified_at update`,
-          );
-        }
-      }
-    }
-
-    summary.push(entry);
+    await processWatchdog(wdog, dryRun, env, db, summary);
   }
 
   return summary;
+}
+
+async function processWatchdog(
+  wdog: WatchdogRow,
+  dryRun: boolean,
+  env: ReturnType<typeof getEnv>,
+  db: ReturnType<typeof getDb>,
+  summary: SummaryEntry[],
+): Promise<void> {
+  const wdogId = wdog.id;
+  const email = wdog.email;
+  const filters: ListingFilters = (wdog.filters as ListingFilters | null) ?? {};
+
+  let matchResult: { listings: ListingRow[]; hasMore: boolean };
+  try {
+    matchResult = await findMatchingListings(db, wdog);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[ERROR] Watchdog #${wdogId} (${email}): matcher failed — ${message}`,
+    );
+    summary.push({
+      watchdog_id: wdogId,
+      email,
+      listing_count: 0,
+      sent: false,
+      dry_run: dryRun,
+      timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
+      error: `matcher: ${message}`,
+    });
+    return;
+  }
+
+  const { listings: matchedListings, hasMore } = matchResult;
+
+  if (matchedListings.length === 0) {
+    console.log(
+      `[DEBUG] Watchdog #${wdogId} (${email}): 0 new listings since ${wdog.last_notified_at ?? wdog.created_at}`,
+    );
+    return;
+  }
+
+  // Cap displayed at DISPLAYED_PER_EMAIL; the matcher already capped at 21.
+  const displayedListings = matchedListings.slice(0, DISPLAYED_PER_EMAIL);
+  const totalCount = matchedListings.length; // ≤ 21 — drives "and N more" copy
+
+  const filtersSummary = composeFilterSummary(filters, null);
+  const subject = composeSubject(displayedListings.length, filtersSummary);
+
+  const listingEntries: ListingEmailEntry[] = [];
+  for (const listing of displayedListings) {
+    listingEntries.push(
+      await buildListingEmailEntry(db, listing, env.APP_BASE_URL),
+    );
+  }
+
+  const templateParams: Record<string, unknown> = {
+    watchdog_label: wdog.label || filtersSummary,
+    watchdog_filters_summary: filtersSummary,
+    total_count: totalCount,
+    displayed_count: displayedListings.length,
+    has_more: hasMore,
+    more_url: hasMore ? composeMoreUrl(env.APP_BASE_URL, filters) : "",
+    app_url: env.APP_BASE_URL,
+    unsubscribe_url: signTokenUrl(wdogId, "unsubscribe"),
+    pause_url: signTokenUrl(wdogId, "pause"),
+    manage_url: signTokenUrl(wdogId, "manage"),
+    recipient_email: email,
+    listings: listingEntries,
+  };
+
+  const entry: SummaryEntry = {
+    watchdog_id: wdogId,
+    email,
+    listing_count: totalCount,
+    sent: false,
+    dry_run: dryRun,
+    timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
+  };
+
+  if (dryRun) {
+    console.log(
+      `[INFO] DRY RUN — Watchdog #${wdogId} (${email}): ${displayedListings.length} listings (has_more=${hasMore})`,
+    );
+    entry.sent = true;
+    summary.push(entry);
+    return;
+  }
+
+  if (!env.BREVO_API_KEY) {
+    console.error(
+      "[ERROR] BREVO_API_KEY not set — cannot send email. Use --dry-run to test.",
+    );
+    entry.error = "BREVO_API_KEY not set";
+    summary.push(entry);
+    return;
+  }
+
+  try {
+    await sendBrevoEmail(email, env.BREVO_TEMPLATE_ID, templateParams, {
+      subject,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "brevo_send_failed",
+        watchdog_id: wdogId,
+        email,
+        error: message,
+      }),
+    );
+    entry.error = message;
+    summary.push(entry);
+    return;
+  }
+
+  // Brevo 2xx — atomic commit: insert audit rows + bump last_notified_at.
+  // Either the whole tx commits or neither side moves; cluster_key dedup
+  // guarantees the worst-case redo is a duplicate, never a silent miss.
+  const clusterKeys = displayedListings.map(clusterKeyForListing);
+  const emailCanonical = wdog.email_canonical;
+  const now = new Date().toISOString().replace("T", " ").slice(0, 19);
+
+  try {
+    await db.transaction(async (tx) => {
+      if (clusterKeys.length > 0) {
+        await tx.execute(sql`
+          INSERT INTO ${watchdogNotificationsTable}
+            (email_canonical, cluster_key, sent_at)
+          SELECT ${emailCanonical}, k.cluster_key, NOW()
+          FROM unnest(${clusterKeys}::text[]) AS k(cluster_key)
+          ON CONFLICT (email_canonical, cluster_key) DO NOTHING
+        `);
+      }
+      await tx.execute(sql`
+        UPDATE ${watchdogsTable}
+        SET last_notified_at = ${now}
+        WHERE id = ${wdogId}
+      `);
+    });
+  } catch (error) {
+    // Rare: send succeeded but DB write failed. The user will get one
+    // duplicate next cycle — preferable to a silent miss. Log loudly so
+    // it's noticed.
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "audit_commit_failed_after_send",
+        watchdog_id: wdogId,
+        email,
+        error: message,
+      }),
+    );
+  }
+
+  entry.sent = true;
+  console.log(
+    `[INFO] Watchdog #${wdogId} (${email}): sent ${displayedListings.length}/${totalCount} listings, audit + last_notified_at committed`,
+  );
+  summary.push(entry);
 }
 
 // ---------------------------------------------------------------------------

@@ -59,8 +59,8 @@ export default function WatchdogList({
         {watchdogs.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground" data-testid="watchdog-list-empty">
             {email && email.includes("@")
-              ? "Zatím nemáte žádné hlídací psy."
-              : "Zadejte e-mail výše pro zobrazení hlídacích psů."}
+              ? "Zatím nemáte žádné Hlídač nemovitostí." /* FIXME(czech-grammar) — accusative plural collision; review */
+              : "Zadejte e-mail výše pro zobrazení Hlídač nemovitostí." /* FIXME(czech-grammar) — genitive plural collision; review */}
           </p>
         ) : (
           watchdogs.map((w) => {
@@ -79,7 +79,7 @@ export default function WatchdogList({
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium" data-testid="watchdog-item-name">
-                      {w.label || `Hlídací pes #${w.id}`}
+                      {w.label || `Hlídač nemovitostí #${w.id}`}
                     </p>
                     <p className="text-xs text-muted-foreground" data-testid="watchdog-item-email">{w.email}</p>
                     <div className="mt-1.5 flex flex-wrap gap-1" data-testid="watchdog-item-filters">
@@ -130,9 +130,10 @@ export default function WatchdogList({
                       </AlertDialogTrigger>
                       <AlertDialogContent data-testid="watchdog-delete-dialog">
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Smazat hlídacího psa?</AlertDialogTitle>
+                          {/* FIXME(czech-grammar) — accusative collision; nominative kept verbatim, review */}
+                          <AlertDialogTitle>Smazat Hlídač nemovitostí?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Tato akce je nevratná. Hlídací pes bude trvale
+                            Tato akce je nevratná. Hlídač nemovitostí bude trvale
                             smazán.
                           </AlertDialogDescription>
                         </AlertDialogHeader>

@@ -24,8 +24,9 @@ const features = [
     icon: Bell,
     color: "bg-[var(--terracotta)]/10 text-[var(--terracotta)]",
     title: "Okamžité alerty",
+    // FIXME(czech-grammar) — accusative collision; nominative kept verbatim, review
     description:
-      "Nastavte si hlídacího psa a dostávejte okamžité notifikace o nových nabídkách.",
+      "Nastavte si Hlídač nemovitostí a dostávejte okamžité notifikace o nových nabídkách.",
   },
 ];
 

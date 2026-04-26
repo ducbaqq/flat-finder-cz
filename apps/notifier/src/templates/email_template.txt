@@ -1,0 +1,44 @@
+BYTOMAT.CZ — HLÍDAČ NEMOVITOSTÍ
+═══════════════════════════════════════
+
+{% if params.watchdog_label %}{{ params.watchdog_label }}
+{{ params.watchdog_filters_summary }}{% else %}{{ params.watchdog_filters_summary }}{% endif %}
+
+{% if params.total_count == 1 %}1 nová nabídka odpovídá tvému hledání.{% elif params.total_count >= 2 and params.total_count <= 4 %}{{ params.total_count }} nové nabídky odpovídají tvému hledání.{% else %}{{ params.total_count }} nových nabídek odpovídá tvému hledání.{% endif %}
+
+{% for listing in params.listings %}
+───────────────────────────────────────
+
+  {% if loop.index < 10 %}0{% endif %}{{ loop.index }}.
+
+  {{ listing.transaction_label }}{% if listing.sources and listing.sources[0] %} · {{ listing.sources[0].name }}{% endif %}
+
+  {{ listing.title }}
+  {{ listing.address }}
+
+  {% if listing.layout %}{{ listing.layout }} · {% endif %}{% if listing.size_m2 %}{{ listing.size_m2 }} m²{% else %}— m²{% endif %} · {{ listing.price_formatted }}
+
+  Zobrazit detail:
+  {{ listing.detail_url }}
+{% if listing.sources and listing.sources | length > 1 %}
+  Také na:{% for source in listing.sources %}{% if not loop.first %}
+  — {{ source.name }}: {{ source.url }}{% endif %}{% endfor %}
+{% endif %}
+{% endfor %}
+───────────────────────────────────────
+{% if params.has_more %}
+{% if params.total_count - params.displayed_count == 1 %}A další 1 nabídka{% elif params.total_count - params.displayed_count >= 2 and params.total_count - params.displayed_count <= 4 %}A další {{ params.total_count - params.displayed_count }} nabídky{% else %}A další {{ params.total_count - params.displayed_count }} nabídek{% endif %} →
+{{ params.more_url }}
+
+───────────────────────────────────────
+{% endif %}
+
+Spravovat hlídač:  {{ params.manage_url }}
+Pozastavit:        {{ params.pause_url }}
+Odhlásit:          {{ params.unsubscribe_url }}
+
+Tento e-mail jsi dostal, protože máš na bytomat.cz aktivního
+Hlídače pro adresu {{ params.recipient_email }}.
+
+Bytomat.cz · Praha, Česko
+{{ params.app_url }}

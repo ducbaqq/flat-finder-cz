@@ -1,4 +1,4 @@
-import { desc, eq, not } from "drizzle-orm";
+import { and, desc, eq, not } from "drizzle-orm";
 import { watchdogs, type NewWatchdog, type WatchdogRow } from "../schema/watchdogs.js";
 import type { Db } from "../client.js";
 
@@ -19,6 +19,43 @@ export async function getWatchdogsByEmail(
     .from(watchdogs)
     .where(eq(watchdogs.email, email))
     .orderBy(desc(watchdogs.created_at));
+}
+
+/**
+ * Lookup-by-canonical, the GET endpoint's preferred path: ensures
+ * `Foo@Gmail.com` and `foo@gmail.com` find the same row.
+ */
+export async function getWatchdogsByCanonicalEmail(
+  db: Db,
+  emailCanonical: string,
+): Promise<WatchdogRow[]> {
+  return db
+    .select()
+    .from(watchdogs)
+    .where(eq(watchdogs.email_canonical, emailCanonical))
+    .orderBy(desc(watchdogs.created_at));
+}
+
+/**
+ * Returns the active row for this canonical email, or null. Used by the
+ * POST handler to short-circuit before INSERT (the partial unique index is
+ * the ultimate guard for the TOCTOU window between this check and INSERT).
+ */
+export async function findActiveWatchdogByCanonical(
+  db: Db,
+  emailCanonical: string,
+): Promise<WatchdogRow | null> {
+  const rows = await db
+    .select()
+    .from(watchdogs)
+    .where(
+      and(
+        eq(watchdogs.email_canonical, emailCanonical),
+        eq(watchdogs.active, true),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function getActiveWatchdogs(db: Db): Promise<WatchdogRow[]> {
@@ -55,3 +92,19 @@ export async function updateLastNotifiedAt(
     .set({ last_notified_at: timestamp })
     .where(eq(watchdogs.id, id));
 }
+
+/**
+ * Postgres unique-violation code. Surfaced by drizzle/postgres-js as a
+ * `cause` carrying `{ code: '23505' }` — the API layer uses this to
+ * convert a TOCTOU race into a 409 instead of a 500.
+ */
+export const PG_UNIQUE_VIOLATION = "23505";
+
+/** Helper: detect a Postgres unique-violation regardless of how the
+ * driver wraps the error. */
+export function isUniqueViolation(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e.code === PG_UNIQUE_VIOLATION || e.cause?.code === PG_UNIQUE_VIOLATION;
+}
+

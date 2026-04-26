@@ -315,6 +315,15 @@ ssh root@167.172.176.70 "curl -s http://localhost:4000/api/health"   # {\"status
 - `ecosystem.config.cjs` and `apps/web/.env` (symlink to root `.env`) live on the droplet only and are not in git.
 - API holds a Supercluster index in memory (~430 MB at 355K points, doubles briefly during the 15-min DB rebuild). If you scale point counts up, watch for OOM in `pm2 logs api`.
 
+## Must-haves before public launch
+
+The watchdog ("Hlídač nemovitostí") backend ships in a v1 shape suitable for a private/closed beta. Before flipping email notifications on for the public, the following items MUST be in place — together they cover GDPR consent, anti-abuse hygiene, and inbox health:
+
+- **Double opt-in / GDPR consent**: gate `last_notified_at` updates on a `confirmed_at` column in `watchdogs`. New rows start unconfirmed; first email is a confirmation link; ongoing alerts only flow once the user clicks through. Required for ČR/EU GDPR + Brevo's transactional ToS.
+- **Self-service unsubscribe / pause / manage pages**: the notifier already emits signed `?token=` links to `/watchdog/manage` (HMAC-SHA256, see `apps/notifier/src/tokens.ts`). The landing page is currently a stub — wire up token verification, action handling (pause / resume / unsubscribe / delete), and a clean confirmation UI before going public.
+- **Brevo bounce webhook**: handle `hard_bounce` / `spam` / `unsubscribed` events from Brevo by auto-deactivating the corresponding watchdog. Without this we keep emailing dead addresses and our sender reputation rots.
+- **Dead-listing landing page**: when an email's "Zobrazit detail" CTA points at a `bytomat.com/listing/<id>` that has since gone inactive, render a graceful "tato nabídka už není aktivní + podobné nabídky" page instead of the current generic detail view. Improves user trust + reduces bounce-rate signal back to Brevo.
+
 ## License
 
 MIT

@@ -1,214 +1,301 @@
 <!DOCTYPE html>
-<html lang="cs" xmlns="http://www.w3.org/1999/xhtml">
+<html lang="cs" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>Nové nabídky – Flat Finder CZ</title>
-  <style type="text/css">
-    /* Reset */
-    body, table, td, p, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
-    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
-    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
-    body { margin: 0; padding: 0; width: 100% !important; }
+  <meta name="x-apple-disable-message-reformatting">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Nové nabídky · Bytomat.cz</title>
 
-    /* Mobile */
-    @media only screen and (max-width: 480px) {
-      .email-container { width: 100% !important; }
-      .card-table { width: 100% !important; }
-      .card-image-cell { display: block !important; width: 100% !important; text-align: center !important; }
-      .card-image-cell img { width: 100% !important; height: 160px !important; }
-      .card-content-cell { display: block !important; width: 100% !important; padding: 12px 16px !important; }
-      .mobile-hide { display: none !important; }
-      .mobile-full { width: 100% !important; }
+  <!--[if mso]>
+  <xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
+  <style type="text/css">
+    body, table, td, p, a, h1, h2, span { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif !important; }
+  </style>
+  <![endif]-->
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body, table, td, p, a, h1, h2 { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-collapse: collapse; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; display: block; }
+    body { margin: 0; padding: 0; width: 100% !important; background: #F9F4EA; }
+    a { text-decoration: none; }
+
+    @media only screen and (max-width: 620px) {
+      .container { width: 100% !important; }
+      .gutter { padding-left: 24px !important; padding-right: 24px !important; }
+      .h1 { font-size: 32px !important; line-height: 38px !important; }
+      .listing-title { font-size: 20px !important; line-height: 27px !important; }
+      .index-number { font-size: 44px !important; }
+      .meta-row { font-size: 15px !important; }
+      .image-fluid { width: 100% !important; max-width: 100% !important; height: auto !important; }
     }
   </style>
 </head>
-<body style="margin:0; padding:0; background-color:#F5F5F7; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;">
 
-  <!-- Outer wrapper -->
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F5F5F7;">
+<body style="margin:0;padding:0;background:#F9F4EA;font-family:'Figtree',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#241F18;">
+
+  <!-- Preheader: inbox preview text -->
+  <div style="display:none;font-size:1px;color:#F9F4EA;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">
+    {% if params.total_count == 1 %}1 nová nabídka{% elif params.total_count >= 2 and params.total_count <= 4 %}{{ params.total_count }} nové nabídky{% else %}{{ params.total_count }} nových nabídek{% endif %} pro {% if params.watchdog_label %}{{ params.watchdog_label }}{% else %}{{ params.watchdog_filters_summary }}{% endif %} — Bytomat.cz
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F9F4EA;">
     <tr>
-      <td align="center" style="padding:24px 12px;">
+      <td align="center" style="padding:32px 16px 48px 16px;">
 
-        <!-- Email container -->
-        <table role="presentation" class="email-container" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%;">
+        <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#FFFFFF;">
 
-          <!-- ============ HEADER ============ -->
+          <!-- ─────────────────────────────────────────── -->
+          <!-- WORDMARK                                    -->
+          <!-- ─────────────────────────────────────────── -->
           <tr>
-            <td style="background-color:#0D9488; padding:18px 24px; border-radius:12px 12px 0 0;">
+            <td class="gutter" style="padding:36px 40px 0 40px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td style="color:#FFFFFF; font-size:18px; font-weight:700; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;">
-                    Flat Finder CZ
+                  <td valign="middle" style="font-family:'Bricolage Grotesque','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:18px;font-weight:600;letter-spacing:-0.015em;color:#241F18;">
+                    bytomat<span style="color:#1C5848;">.cz</span>
                   </td>
-                  <td align="right" style="color:#FFFFFF; font-size:22px;">
-                    &#128062;
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- ============ ALERT SUMMARY ============ -->
-          <tr>
-            <td style="background-color:#FFFFFF; padding:28px 24px 20px 24px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="font-size:20px; font-weight:700; color:#1D1D1F; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif; padding-bottom:6px;">
-                    Nov&#233; nab&#237;dky pro v&#225;&#353; hl&#237;da&#269;
-                  </td>
-                </tr>
-                <tr>
-                  <td style="font-size:14px; color:#0D9488; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif; padding-bottom:16px;">
-                    {{params.watchdog_label}}
-                  </td>
-                </tr>
-                <tr>
-                  <td>
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                      <tr>
-                        <td style="background-color:#0D9488; color:#FFFFFF; font-size:13px; font-weight:600; padding:6px 14px; border-radius:20px; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;">
-                          {{params.listing_count}} nov&#253;ch nab&#237;dek
-                        </td>
-                      </tr>
-                    </table>
+                  <td align="right" valign="middle" style="font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:10px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:#6E6657;">
+                    Hlídač
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
 
-          <!-- Divider -->
-          <tr>
-            <td style="background-color:#FFFFFF; padding:0 24px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr><td style="border-top:1px solid #E5E5EA; font-size:1px; line-height:1px;">&nbsp;</td></tr>
-              </table>
-            </td>
-          </tr>
+          <tr><td style="height:56px;line-height:56px;font-size:0;">&nbsp;</td></tr>
 
-          <!-- ============ LISTING CARDS ============ -->
+          <!-- ─────────────────────────────────────────── -->
+          <!-- HERO: eyebrow + headline + filter summary   -->
+          <!-- ─────────────────────────────────────────── -->
           <tr>
-            <td style="background-color:#FFFFFF; padding:16px 24px 24px 24px;">
-
-              {% for listing in params.listings %}
-              <!-- Listing card -->
-              <table role="presentation" class="card-table" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:12px; border-radius:12px; overflow:hidden; border:1px solid #E5E5EA; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+            <td class="gutter" style="padding:0 40px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <!-- Thumbnail -->
-                  <td class="card-image-cell" valign="top" width="100" style="width:100px; position:relative;">
-                    <a href="{{listing.listing_url}}" target="_blank" style="text-decoration:none;">
-                      <img src="{{listing.thumbnail_url}}" alt="" width="100" height="80" style="display:block; width:100px; height:80px; object-fit:cover; border-radius:12px 0 0 12px;">
-                    </a>
-                    <!-- Source badge -->
-                    {% if listing.source == 'sreality' %}
-                    <div style="position:absolute; top:4px; left:4px; background-color:#E74C3C; color:#FFFFFF; font-size:9px; font-weight:700; text-transform:uppercase; padding:2px 6px; border-radius:4px; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;">Sreality</div>
-                    {% elif listing.source == 'bezrealitky' %}
-                    <div style="position:absolute; top:4px; left:4px; background-color:#3498DB; color:#FFFFFF; font-size:9px; font-weight:700; text-transform:uppercase; padding:2px 6px; border-radius:4px; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;">Bezrealitky</div>
-                    {% elif listing.source == 'ulovdomov' %}
-                    <div style="position:absolute; top:4px; left:4px; background-color:#F39C12; color:#FFFFFF; font-size:9px; font-weight:700; text-transform:uppercase; padding:2px 6px; border-radius:4px; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;">UlovDomov</div>
-                    {% endif %}
-                  </td>
-                  <!-- Content -->
-                  <td class="card-content-cell" valign="top" style="padding:10px 14px;">
-                    <a href="{{listing.listing_url}}" target="_blank" style="text-decoration:none; color:inherit;">
-                      <!-- Property type + transaction -->
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:4px;">
-                        <tr>
-                          {% if listing.property_type %}
-                          <td style="background-color:#E6F7F5; color:#0D9488; font-size:10px; font-weight:600; padding:2px 8px; border-radius:4px; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif; text-transform:capitalize;">
-                            {{listing.property_type}}
-                          </td>
-                          {% endif %}
-                          {% if listing.transaction_type %}
-                          <td style="font-size:10px; color:#8E8E93; padding-left:6px; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif; text-transform:capitalize;">
-                            {{listing.transaction_type}}
-                          </td>
-                          {% endif %}
-                        </tr>
-                      </table>
-                      <!-- Title -->
-                      <div style="font-size:14px; font-weight:600; color:#1D1D1F; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif; line-height:1.3; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:340px;">
-                        {{listing.title}}
-                      </div>
-                      <!-- Price -->
-                      <div style="font-size:16px; font-weight:700; color:#0D9488; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif; margin-bottom:6px;">
-                        {{listing.price_formatted}}
-                      </div>
-                      <!-- Metadata chips -->
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                        <tr>
-                          {% if listing.size_m2 %}
-                          <td style="background-color:#F5F5F7; color:#636366; font-size:11px; padding:2px 8px; border-radius:4px; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif; margin-right:4px;">
-                            {{listing.size_m2}} m&#178;
-                          </td>
-                          <td width="4"></td>
-                          {% endif %}
-                          {% if listing.layout %}
-                          <td style="background-color:#F5F5F7; color:#636366; font-size:11px; padding:2px 8px; border-radius:4px; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;">
-                            {{listing.layout}}
-                          </td>
-                          <td width="4"></td>
-                          {% endif %}
-                          {% if listing.city %}
-                          <td style="background-color:#F5F5F7; color:#636366; font-size:11px; padding:2px 8px; border-radius:4px; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;">
-                            {{listing.city}}
-                          </td>
-                          {% endif %}
-                        </tr>
-                      </table>
-                    </a>
+                  <td style="border-top:2px solid #1C5848;width:32px;font-size:1px;line-height:1px;">&nbsp;</td>
+                  <td style="width:14px;font-size:0;line-height:0;">&nbsp;</td>
+                  <td style="font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:#1C5848;">
+                    Hlídač nemovitostí
                   </td>
                 </tr>
               </table>
-              {% endfor %}
-
             </td>
           </tr>
 
-          <!-- ============ OVERFLOW NOTICE ============ -->
-          {% if params.has_more %}
+          <tr><td style="height:18px;line-height:18px;font-size:0;">&nbsp;</td></tr>
+
           <tr>
-            <td style="background-color:#FFFFFF; padding:0 24px 24px 24px; text-align:center;">
-              <p style="font-size:14px; color:#636366; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif; margin:0 0 16px 0;">
-                A dal&#353;&#237;ch <strong>{{params.extra_count}}</strong> nab&#237;dek&hellip;
+            <td class="gutter" style="padding:0 40px;">
+              <h1 class="h1" style="margin:0;font-family:'Bricolage Grotesque','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:40px;line-height:46px;font-weight:600;letter-spacing:-0.025em;color:#241F18;">
+                {% if params.watchdog_label %}{{ params.watchdog_label }}{% else %}{{ params.watchdog_filters_summary }}{% endif %}
+              </h1>
+            </td>
+          </tr>
+
+          {% if params.watchdog_label %}
+          <tr><td style="height:14px;line-height:14px;font-size:0;">&nbsp;</td></tr>
+          <tr>
+            <td class="gutter" style="padding:0 40px;">
+              <p style="margin:0;font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:14px;line-height:22px;color:#6E6657;">
+                {{ params.watchdog_filters_summary }}
               </p>
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
-                <tr>
-                  <td style="background-color:#0D9488; border-radius:8px;">
-                    <a href="{{params.app_url}}" target="_blank" style="display:inline-block; padding:12px 28px; color:#FFFFFF; font-size:14px; font-weight:600; text-decoration:none; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;">
-                      Zobrazit v&#353;e v aplikaci
-                    </a>
-                  </td>
-                </tr>
-              </table>
             </td>
           </tr>
           {% endif %}
 
-          <!-- ============ FOOTER ============ -->
+          <tr><td style="height:28px;line-height:28px;font-size:0;">&nbsp;</td></tr>
+
           <tr>
-            <td style="background-color:#F0F0F2; padding:20px 24px; border-radius:0 0 12px 12px; text-align:center;">
-              <p style="font-size:12px; color:#8E8E93; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif; margin:0 0 8px 0;">
-                Tento e-mail byl odesl&#225;n slu&#382;bou <strong>Flat Finder CZ</strong>
+            <td class="gutter" style="padding:0 40px;">
+              <p style="margin:0;font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:15px;line-height:22px;font-weight:600;color:#241F18;">
+                {% if params.total_count == 1 %}1 nová nabídka odpovídá tvému hledání{% elif params.total_count >= 2 and params.total_count <= 4 %}{{ params.total_count }} nové nabídky odpovídají tvému hledání{% else %}{{ params.total_count }} nových nabídek odpovídá tvému hledání{% endif %}
               </p>
-              <p style="font-size:12px; color:#8E8E93; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif; margin:0 0 8px 0;">
-                <a href="{{params.app_url}}" target="_blank" style="color:#0D9488; text-decoration:underline;">Spravovat hl&#237;da&#269;e</a>
+            </td>
+          </tr>
+
+          <tr><td style="height:48px;line-height:48px;font-size:0;">&nbsp;</td></tr>
+
+          <!-- ─────────────────────────────────────────── -->
+          <!-- LISTING CARDS                               -->
+          <!-- ─────────────────────────────────────────── -->
+
+          {% for listing in params.listings %}
+
+          <!-- hairline above each listing -->
+          <tr>
+            <td class="gutter" style="padding:0 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td style="border-top:1px solid #E8DDC9;height:1px;font-size:0;line-height:0;">&nbsp;</td></tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr><td style="height:28px;line-height:28px;font-size:0;">&nbsp;</td></tr>
+
+          <!-- editorial index marker -->
+          <tr>
+            <td class="gutter" style="padding:0 40px;">
+              <span class="index-number" style="display:inline-block;font-family:'Bricolage Grotesque','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:52px;line-height:52px;font-weight:500;color:#D17F5F;letter-spacing:-0.03em;font-feature-settings:'tnum' 1;">{% if loop.index < 10 %}0{% endif %}{{ loop.index }}</span>
+            </td>
+          </tr>
+
+          <tr><td style="height:22px;line-height:22px;font-size:0;">&nbsp;</td></tr>
+
+          <!-- image -->
+          <tr>
+            <td class="gutter" style="padding:0 40px;">
+              {% if listing.thumbnail_url %}
+              <a href="{{ listing.detail_url }}" target="_blank" style="display:block;line-height:0;font-size:0;">
+                <img class="image-fluid" src="{{ listing.thumbnail_url }}" width="520" height="320" alt="{{ listing.title }}" style="display:block;width:520px;max-width:100%;height:auto;background:#F0E8D7;">
+              </a>
+              {% else %}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F0E8D7;">
+                <tr>
+                  <td height="280" align="center" valign="middle" style="height:280px;font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:#A89B82;">
+                    Bez fotky
+                  </td>
+                </tr>
+              </table>
+              {% endif %}
+            </td>
+          </tr>
+
+          <tr><td style="height:22px;line-height:22px;font-size:0;">&nbsp;</td></tr>
+
+          <!-- eyebrow + title + address -->
+          <tr>
+            <td class="gutter" style="padding:0 40px;">
+              <p style="margin:0 0 10px 0;font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:#1C5848;">
+                {{ listing.transaction_label }}{% if listing.sources and listing.sources[0] %} <span style="color:#C9BFA8;">·</span> {{ listing.sources[0].name }}{% endif %}
               </p>
-              <p style="font-size:11px; color:#AEAEB2; font-family:-apple-system,'Helvetica Neue',Arial,sans-serif; margin:0;">
-                Pokud si nep&#345;ejete dost&#225;vat tato upozorn&#283;n&#237;, deaktivujte sv&#233;ho hl&#237;da&#269;e v aplikaci.
+              <a href="{{ listing.detail_url }}" target="_blank" style="text-decoration:none;color:#241F18;">
+                <h2 class="listing-title" style="margin:0 0 8px 0;font-family:'Bricolage Grotesque','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:22px;line-height:29px;font-weight:600;letter-spacing:-0.015em;color:#241F18;">
+                  {{ listing.title }}
+                </h2>
+              </a>
+              <p style="margin:0;font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:14px;line-height:22px;color:#6E6657;">
+                {{ listing.address }}
+              </p>
+            </td>
+          </tr>
+
+          <tr><td style="height:18px;line-height:18px;font-size:0;">&nbsp;</td></tr>
+
+          <!-- meta row: layout · size · price -->
+          <tr>
+            <td class="gutter" style="padding:0 40px;">
+              <p class="meta-row" style="margin:0;font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:16px;line-height:24px;color:#241F18;">
+                {% if listing.layout %}<span style="font-weight:600;">{{ listing.layout }}</span><span style="color:#C9BFA8;padding:0 10px;">·</span>{% endif %}
+                {% if listing.size_m2 %}<span style="font-weight:600;">{{ listing.size_m2 }}&nbsp;m²</span>{% else %}<span style="font-weight:600;color:#A89B82;">—&nbsp;m²</span>{% endif %}
+                <span style="color:#C9BFA8;padding:0 10px;">·</span>
+                <span style="font-weight:700;color:#1C5848;letter-spacing:-0.005em;">{{ listing.price_formatted }}</span>
+              </p>
+            </td>
+          </tr>
+
+          <tr><td style="height:24px;line-height:24px;font-size:0;">&nbsp;</td></tr>
+
+          <!-- CTA button (bulletproof for Outlook) -->
+          <tr>
+            <td class="gutter" style="padding:0 40px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td>
+                    <!--[if mso]>
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ listing.detail_url }}" style="height:46px;v-text-anchor:middle;width:200px;" arcsize="0%" fillcolor="#1C5848" stroke="f">
+                      <w:anchorlock/>
+                      <center style="color:#FFFFFF;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;letter-spacing:0.02em;">Zobrazit detail&nbsp;→</center>
+                    </v:roundrect>
+                    <![endif]-->
+                    <!--[if !mso]><!-- -->
+                    <a href="{{ listing.detail_url }}" target="_blank" style="display:inline-block;background:#1C5848;color:#FFFFFF;font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;letter-spacing:0.02em;padding:15px 30px;text-decoration:none;mso-padding-alt:0;">
+                      Zobrazit detail&nbsp;→
+                    </a>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          {% if listing.sources and listing.sources | length > 1 %}
+          <tr><td style="height:18px;line-height:18px;font-size:0;">&nbsp;</td></tr>
+          <tr>
+            <td class="gutter" style="padding:0 40px;">
+              <p style="margin:0;font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:13px;line-height:22px;color:#6E6657;">
+                <span style="color:#A89B82;font-weight:500;letter-spacing:0.04em;">Také na </span>
+                {% for source in listing.sources %}{% if not loop.first %}<a href="{{ source.url }}" target="_blank" style="color:#1C5848;text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px;font-weight:500;">{{ source.name }}</a>{% if not loop.last %}<span style="color:#C9BFA8;padding:0 6px;">·</span>{% endif %}{% endif %}{% endfor %}
+              </p>
+            </td>
+          </tr>
+          {% endif %}
+
+          <tr><td style="height:40px;line-height:40px;font-size:0;">&nbsp;</td></tr>
+
+          {% endfor %}
+
+          <!-- ─────────────────────────────────────────── -->
+          <!-- HAS-MORE OVERFLOW                           -->
+          <!-- ─────────────────────────────────────────── -->
+          {% if params.has_more %}
+          <tr>
+            <td class="gutter" style="padding:0 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td style="border-top:1px solid #E8DDC9;height:1px;font-size:0;line-height:0;">&nbsp;</td></tr>
+              </table>
+            </td>
+          </tr>
+          <tr><td style="height:32px;line-height:32px;font-size:0;">&nbsp;</td></tr>
+          <tr>
+            <td class="gutter" align="left" style="padding:0 40px;">
+              <a href="{{ params.more_url }}" target="_blank" style="display:inline-block;font-family:'Bricolage Grotesque','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:20px;font-weight:600;letter-spacing:-0.015em;color:#1C5848;text-decoration:none;border-bottom:2px solid #1C5848;padding-bottom:3px;">
+                {% if params.total_count - params.displayed_count == 1 %}A další 1 nabídka{% elif params.total_count - params.displayed_count >= 2 and params.total_count - params.displayed_count <= 4 %}A další {{ params.total_count - params.displayed_count }} nabídky{% else %}A další {{ params.total_count - params.displayed_count }} nabídek{% endif %}&nbsp;→
+              </a>
+            </td>
+          </tr>
+          <tr><td style="height:48px;line-height:48px;font-size:0;">&nbsp;</td></tr>
+          {% else %}
+          <tr><td style="height:8px;line-height:8px;font-size:0;">&nbsp;</td></tr>
+          {% endif %}
+
+          <!-- ─────────────────────────────────────────── -->
+          <!-- FOOTER                                       -->
+          <!-- ─────────────────────────────────────────── -->
+          <tr>
+            <td class="gutter" style="padding:32px 40px 0 40px;background:#F9F4EA;border-top:1px solid #E8DDC9;">
+              <p style="margin:0;font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:13px;line-height:24px;color:#241F18;font-weight:500;">
+                <a href="{{ params.manage_url }}" target="_blank" style="color:#241F18;text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px;">Spravovat hlídač</a>
+                <span style="color:#C9BFA8;padding:0 8px;">·</span>
+                <a href="{{ params.pause_url }}" target="_blank" style="color:#241F18;text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px;">Pozastavit</a>
+                <span style="color:#C9BFA8;padding:0 8px;">·</span>
+                <a href="{{ params.unsubscribe_url }}" target="_blank" style="color:#241F18;text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px;">Odhlásit</a>
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="gutter" style="padding:18px 40px 36px 40px;background:#F9F4EA;">
+              <p style="margin:0 0 8px 0;font-family:'Figtree',Helvetica,Arial,sans-serif;font-size:12px;line-height:20px;color:#6E6657;">
+                Tento e-mail jsi dostal, protože máš na <a href="{{ params.app_url }}" target="_blank" style="color:#1C5848;text-decoration:underline;text-underline-offset:2px;">bytomat.cz</a> aktivního Hlídače pro adresu <span style="color:#241F18;font-weight:500;">{{ params.recipient_email }}</span>.
+              </p>
+              <p style="margin:0;font-family:'Bricolage Grotesque','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;line-height:18px;letter-spacing:0.04em;color:#A89B82;">
+                Bytomat.cz · Praha, Česko
               </p>
             </td>
           </tr>
 
         </table>
-        <!-- /Email container -->
 
       </td>
     </tr>
   </table>
-  <!-- /Outer wrapper -->
 
 </body>
 </html>

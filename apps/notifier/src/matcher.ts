@@ -1,4 +1,4 @@
-import { and, count, desc, gt } from "drizzle-orm";
+import { and, gt, sql } from "drizzle-orm";
 import {
   type Db,
   listings,
@@ -8,56 +8,77 @@ import {
 import type { ListingFilters } from "@flat-finder/types";
 import type { WatchdogRow } from "@flat-finder/db";
 
-const MAX_LISTINGS_PER_EMAIL = 20;
-
 export interface MatchResult {
-  total: number;
+  /** Up to 20 listings, newest first. */
   listings: ListingRow[];
+  /** True if the underlying LIMIT 21 query came back full (>20 candidates). */
+  hasMore: boolean;
 }
 
 /**
- * Find listings matching a watchdog's filters that were created after the
- * last notification (or after the watchdog was created if never notified).
+ * Find listings matching a watchdog's filters that:
+ *
+ *   1. were created after the cutoff (perf prefilter — last_notified_at
+ *      or created_at), AND
+ *   2. have NOT yet been emailed to this canonical email (anti-join on
+ *      `watchdog_notifications.cluster_key`, which is the actual
+ *      correctness boundary — re-clustering and cross-portal duplicates
+ *      collapse to the same key).
+ *
+ * Single round-trip with `LIMIT 21` so the worker can answer "are there
+ * more than 20 matches?" without a separate COUNT query.
+ *
+ * Wraps in a transaction with a 3s `statement_timeout` so a pathological
+ * filter (regex on amenities, etc.) can't take down the whole cycle —
+ * mirrors the pattern at packages/db/src/queries/listings.ts:177-186.
  */
 export async function findMatchingListings(
   db: Db,
   watchdog: WatchdogRow,
 ): Promise<MatchResult> {
-  // Cutoff: last_notified_at, or created_at for never-notified watchdogs
-  const cutoff = watchdog.last_notified_at ?? watchdog.created_at ?? "1970-01-01 00:00:00";
+  const cutoff =
+    watchdog.last_notified_at ??
+    watchdog.created_at ??
+    "1970-01-01 00:00:00";
 
-  // Parse the watchdog filters (stored as JSONB)
   const filters: ListingFilters =
     (watchdog.filters as ListingFilters | null) ?? {};
 
-  // Build the base conditions from the watchdog's filters
-  // buildWhereConditions already adds is_active = true by default
+  // buildWhereConditions enforces is_active = true AND is_canonical = true.
+  // Cluster_key dedup handles cross-portal duplicates fully; we still email
+  // canonical rows only so the link target is the chosen primary listing.
   const baseConditions = buildWhereConditions(filters);
+  const whereExpr = and(...baseConditions, gt(listings.created_at, cutoff))!;
 
-  // Add the cutoff condition: only listings created after the cutoff
-  const allConditions = [...baseConditions, gt(listings.created_at, cutoff)];
+  return await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL statement_timeout = '3000'`);
 
-  const where = and(...allConditions);
+    // Drizzle exposes the underlying table reference via `${listings}` so
+    // the query planner can still pick our composite indexes. The
+    // anti-join expression COALESCEs cluster_id → singleton fallback so a
+    // listing without a cluster still dedups against itself.
+    const result = await tx.execute<ListingRow>(sql`
+      SELECT l.*
+      FROM ${listings} l
+      LEFT JOIN watchdog_notifications wn
+        ON wn.email_canonical = ${watchdog.email_canonical}
+       AND wn.cluster_key = COALESCE('cluster:' || l.cluster_id, 'singleton:' || l.id::text)
+      WHERE ${whereExpr}
+        AND wn.cluster_key IS NULL
+      ORDER BY l.created_at DESC
+      LIMIT 21
+    `);
 
-  // Count total matches
-  const [totalResult] = await db
-    .select({ count: count() })
-    .from(listings)
-    .where(where);
+    // postgres-js's tx.execute returns the rows array directly. Some
+    // drivers wrap it in `{ rows }` — guard against that defensively.
+    const rows: ListingRow[] = Array.isArray(result)
+      ? (result as ListingRow[])
+      : ((result as unknown as { rows?: ListingRow[] }).rows ?? []);
 
-  const total = totalResult?.count ?? 0;
-
-  if (total === 0) {
-    return { total: 0, listings: [] };
-  }
-
-  // Fetch up to MAX_LISTINGS_PER_EMAIL listings, newest first
-  const rows = await db
-    .select()
-    .from(listings)
-    .where(where)
-    .orderBy(desc(listings.created_at))
-    .limit(MAX_LISTINGS_PER_EMAIL);
-
-  return { total, listings: rows };
+    const hasMore = rows.length > 20;
+    return {
+      listings: hasMore ? rows.slice(0, 20) : rows,
+      hasMore,
+    };
+  });
 }
