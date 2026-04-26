@@ -19,6 +19,14 @@ export const watchdogs = pgTable(
     active: boolean("active").default(true),
     created_at: timestamp("created_at", { mode: "string" }).defaultNow(),
     last_notified_at: timestamp("last_notified_at", { mode: "string" }),
+    /**
+     * Soft-delete marker. NOT NULL = the watchdog has been deleted from
+     * the user's perspective (no more emails, hidden from their list).
+     * The row stays in the DB for audit/history. Combined with
+     * active=false on soft-delete so the partial unique index frees the
+     * email_canonical for a fresh signup.
+     */
+    deleted_at: timestamp("deleted_at", { mode: "string" }),
   },
   (table) => [
     index("idx_watchdogs_email").on(table.email),

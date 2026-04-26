@@ -1,4 +1,4 @@
-import { and, desc, eq, not } from "drizzle-orm";
+import { and, desc, eq, isNull, not, sql } from "drizzle-orm";
 import { watchdogs, type NewWatchdog, type WatchdogRow } from "../schema/watchdogs.js";
 import type { Db } from "../client.js";
 
@@ -24,6 +24,9 @@ export async function getWatchdogsByEmail(
 /**
  * Lookup-by-canonical, the GET endpoint's preferred path: ensures
  * `Foo@Gmail.com` and `foo@gmail.com` find the same row.
+ *
+ * Excludes soft-deleted rows — from the user's perspective those
+ * watchdogs no longer exist, so they don't show up in "Moji hlídači".
  */
 export async function getWatchdogsByCanonicalEmail(
   db: Db,
@@ -32,14 +35,22 @@ export async function getWatchdogsByCanonicalEmail(
   return db
     .select()
     .from(watchdogs)
-    .where(eq(watchdogs.email_canonical, emailCanonical))
+    .where(
+      and(
+        eq(watchdogs.email_canonical, emailCanonical),
+        isNull(watchdogs.deleted_at),
+      ),
+    )
     .orderBy(desc(watchdogs.created_at));
 }
 
 /**
- * Returns the active row for this canonical email, or null. Used by the
- * POST handler to short-circuit before INSERT (the partial unique index is
- * the ultimate guard for the TOCTOU window between this check and INSERT).
+ * Returns the active, non-deleted row for this canonical email, or null.
+ * Used by the POST handler to short-circuit before INSERT (the partial
+ * unique index is the ultimate guard for the TOCTOU window between this
+ * check and INSERT). Soft-deleted rows have `active = false` so the
+ * partial unique index already excludes them — but we add the explicit
+ * `deleted_at IS NULL` here for clarity / defense in depth.
  */
 export async function findActiveWatchdogByCanonical(
   db: Db,
@@ -52,6 +63,7 @@ export async function findActiveWatchdogByCanonical(
       and(
         eq(watchdogs.email_canonical, emailCanonical),
         eq(watchdogs.active, true),
+        isNull(watchdogs.deleted_at),
       ),
     )
     .limit(1);
@@ -59,7 +71,10 @@ export async function findActiveWatchdogByCanonical(
 }
 
 export async function getActiveWatchdogs(db: Db): Promise<WatchdogRow[]> {
-  return db.select().from(watchdogs).where(eq(watchdogs.active, true));
+  return db
+    .select()
+    .from(watchdogs)
+    .where(and(eq(watchdogs.active, true), isNull(watchdogs.deleted_at)));
 }
 
 export async function toggleWatchdog(
@@ -74,9 +89,20 @@ export async function toggleWatchdog(
   return result[0] ?? null;
 }
 
+/**
+ * Soft-delete: flip `active = false` AND stamp `deleted_at = now()`.
+ *
+ * From the user's perspective the watchdog is gone — no more emails,
+ * hidden from "Moji hlídači", email_canonical freed for fresh signup.
+ * The row stays in the DB so we can audit historical activity.
+ *
+ * Idempotent: a second call against an already-deleted row is a no-op
+ * but still returns true (the row exists).
+ */
 export async function deleteWatchdog(db: Db, id: number): Promise<boolean> {
   const result = await db
-    .delete(watchdogs)
+    .update(watchdogs)
+    .set({ active: false, deleted_at: sql`NOW()` })
     .where(eq(watchdogs.id, id))
     .returning({ id: watchdogs.id });
   return result.length > 0;
