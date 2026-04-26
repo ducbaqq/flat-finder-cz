@@ -57,15 +57,25 @@ export async function findMatchingListings(
     // the query planner can still pick our composite indexes. The
     // anti-join expression COALESCEs cluster_id → singleton fallback so a
     // listing without a cluster still dedups against itself.
+    //
+    // NOTE: do NOT alias `listings` as `l` here. `buildWhereConditions`
+    // emits column references qualified with the unaliased table name
+    // (`"listings"."is_active"` etc.), and Postgres takes the alias as
+    // a hard rename — under `FROM "listings" l`, "listings"."col" is
+    // out of scope and the query throws. Reference the table by its
+    // unaliased name end-to-end.
     const result = await tx.execute<ListingRow>(sql`
-      SELECT l.*
-      FROM ${listings} l
+      SELECT ${listings}.*
+      FROM ${listings}
       LEFT JOIN watchdog_notifications wn
         ON wn.email_canonical = ${watchdog.email_canonical}
-       AND wn.cluster_key = COALESCE('cluster:' || l.cluster_id, 'singleton:' || l.id::text)
+       AND wn.cluster_key = COALESCE(
+             'cluster:' || ${listings}.cluster_id,
+             'singleton:' || ${listings}.id::text
+           )
       WHERE ${whereExpr}
         AND wn.cluster_key IS NULL
-      ORDER BY l.created_at DESC
+      ORDER BY ${listings}.created_at DESC
       LIMIT 21
     `);
 
