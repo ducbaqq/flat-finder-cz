@@ -23,11 +23,15 @@ const envSchema = z.object({
   DB_SSLMODE: z.string().default("disable"),
 
   BREVO_API_KEY: z.string().default(""),
-  BREVO_TEMPLATE_ID: z.coerce.number().default(1),
+  // ID of the Brevo transactional template "Hlídač nemovitostí — nová
+  // nabídka" (created 2026-04-26). Source HTML lives in
+  // apps/notifier/src/templates/email_template.html — when the local
+  // template changes, re-upload to Brevo or use Option B's sync script.
+  BREVO_TEMPLATE_ID: z.coerce.number().default(2),
   BREVO_SENDER_EMAIL: z.string().default("hlidac@bytomat.com"),
   BREVO_SENDER_NAME: z.string().default("Bytomat"),
   REPORT_PROBLEM_EMAIL: z.string().default("realitni.produkt@gmail.com"),
-  APP_BASE_URL: z.string().default("https://flatfinder.cz"),
+  APP_BASE_URL: z.string().default("https://bytomat.com"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 
   // HMAC-SHA256 secret used to sign watchdog action tokens (manage / pause /
