@@ -14,6 +14,7 @@ import {
   fetchListing,
   SITE_URL,
 } from "@/lib/listing-server";
+import { SEO_NOINDEX } from "@/lib/seo";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -48,9 +49,12 @@ export async function generateMetadata({
   // Inactive listings are still reachable (users may share old URLs) but we
   // don't want them in the search index. The page UI renders a "no longer
   // active" banner; the robots meta here prevents indexing.
-  const robotsMeta = listing.is_active
-    ? { index: true, follow: true }
-    : { index: false, follow: false };
+  // SEO_NOINDEX (lib/seo.ts) shadows the active-listing branch too, so the
+  // global kill switch covers every listing detail page during pause windows.
+  const robotsMeta =
+    SEO_NOINDEX || !listing.is_active
+      ? { index: false, follow: false }
+      : { index: true, follow: true };
 
   return {
     title,

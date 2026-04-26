@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import AnalyticsListener from "@/components/analytics/AnalyticsListener";
+import { SEO_NOINDEX, NOINDEX_ROBOTS } from "@/lib/seo";
 import "./globals.css";
 
 const figtree = Figtree({
@@ -26,11 +27,14 @@ export const metadata: Metadata = {
     template: "%s | Bytomat.cz",
   },
   metadataBase: new URL("https://bytomat.com"),
-  // NOTE: robots defaults are now driven per-route. Listing detail pages
+  // robots defaults are normally driven per-route. Listing detail pages
   // override via generateMetadata({robots}); pages that should stay out
-  // of the index (e.g. /login) set it locally too. A site-wide
-  // noindex here would defeat the whole SEO surface that
-  // /listing/[id] + /sitemap.xml exist to create.
+  // of the index (e.g. /login) set it locally too. The SEO_NOINDEX
+  // kill-switch (apps/web/src/lib/seo.ts) shadows everything when on,
+  // forcing site-wide noindex for the "live but not yet ready for
+  // Google" window. Toggle by setting `SEO_NOINDEX=true` in .env on
+  // the droplet, then rebuild + restart web.
+  ...(SEO_NOINDEX ? { robots: NOINDEX_ROBOTS } : {}),
 };
 
 const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
