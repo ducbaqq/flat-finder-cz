@@ -20,6 +20,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import WatchdogForm from "./WatchdogForm";
 import WatchdogList from "./WatchdogList";
+import WatchdogSuccess from "./WatchdogSuccess";
 
 export default function WatchdogModal() {
   const watchdogModalOpen = useUiStore((s) => s.watchdogModalOpen);
@@ -79,6 +80,16 @@ export default function WatchdogModal() {
   const [localEmail, setLocalEmail] = useState("");
   const [toast, setToast] = useState("");
 
+  // Holds the just-saved watchdog so the modal can swap from the create
+  // form to a success screen without losing what the user just configured.
+  // Reset to `null` when the modal closes (any path) so reopening lands
+  // back on the form.
+  const [savedWatchdog, setSavedWatchdog] = useState<{
+    email: string;
+    label: string | null;
+    filters: ListingFilters;
+  } | null>(null);
+
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(""), 3000);
@@ -96,13 +107,26 @@ export default function WatchdogModal() {
       try {
         setWatchdogEmail(data.email);
         await createWatchdog(data);
-        showToast("Hlídač nemovitostí uložen!");
+        // Replace the toast confirmation with the in-modal success screen.
+        setSavedWatchdog({
+          email: data.email,
+          label: data.label?.trim() ? data.label.trim() : null,
+          filters: data.filters,
+        });
       } catch {
         showToast("Chyba při ukládání");
       }
     },
     [createWatchdog, setWatchdogEmail, showToast]
   );
+
+  // Single dismissal path used by both the success screen's OK button
+  // and the dialog's overlay/Esc/X. Reset success state BEFORE closing
+  // so reopening always starts on the form.
+  const handleClose = useCallback(() => {
+    setSavedWatchdog(null);
+    closeWatchdogModal();
+  }, [closeWatchdogModal]);
 
   const handleToggle = useCallback(
     async (id: number) => {
@@ -131,7 +155,7 @@ export default function WatchdogModal() {
     <>
       <Dialog
         open={watchdogModalOpen}
-        onOpenChange={(open) => !open && closeWatchdogModal()}
+        onOpenChange={(open) => !open && handleClose()}
       >
         {/*
           Cap the modal at 90 % of the dynamic viewport height (`100dvh`
@@ -155,39 +179,48 @@ export default function WatchdogModal() {
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs defaultValue="create" data-testid="watchdog-tabs">
-            <TabsList className="w-full">
-              <TabsTrigger value="create" className="flex-1" data-testid="watchdog-tab-create">
-                Nový hlídač nemovitostí
-              </TabsTrigger>
-              <TabsTrigger value="list" className="flex-1" data-testid="watchdog-tab-list">
-                {/* FIXME(czech-grammar) — dropping "nemovitostí" to avoid tab overflow; review */}
-                Moji hlídači{watchdogs.length > 0 && ` (${watchdogs.length})`}
-              </TabsTrigger>
-            </TabsList>
+          {savedWatchdog ? (
+            <WatchdogSuccess
+              email={savedWatchdog.email}
+              label={savedWatchdog.label}
+              filters={savedWatchdog.filters}
+              onClose={handleClose}
+            />
+          ) : (
+            <Tabs defaultValue="create" data-testid="watchdog-tabs">
+              <TabsList className="w-full">
+                <TabsTrigger value="create" className="flex-1" data-testid="watchdog-tab-create">
+                  Nový hlídač nemovitostí
+                </TabsTrigger>
+                <TabsTrigger value="list" className="flex-1" data-testid="watchdog-tab-list">
+                  {/* FIXME(czech-grammar) — dropping "nemovitostí" to avoid tab overflow; review */}
+                  Moji hlídači{watchdogs.length > 0 && ` (${watchdogs.length})`}
+                </TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="create" className="mt-4" data-testid="watchdog-create-panel">
-              <WatchdogForm
-                email={localEmail}
-                onEmailChange={setLocalEmail}
-                onEmailBlur={handleEmailBlur}
-                onSave={handleSave}
-                isCreating={isCreating}
-                currentFilters={currentFilters}
-              />
-            </TabsContent>
+              <TabsContent value="create" className="mt-4" data-testid="watchdog-create-panel">
+                <WatchdogForm
+                  email={localEmail}
+                  onEmailChange={setLocalEmail}
+                  onEmailBlur={handleEmailBlur}
+                  onSave={handleSave}
+                  isCreating={isCreating}
+                  currentFilters={currentFilters}
+                />
+              </TabsContent>
 
-            <TabsContent value="list" className="mt-4" data-testid="watchdog-list-panel">
-              <WatchdogList
-                email={localEmail}
-                onEmailChange={setLocalEmail}
-                onEmailBlur={handleEmailBlur}
-                watchdogs={watchdogs}
-                onToggle={handleToggle}
-                onDelete={handleDelete}
-              />
-            </TabsContent>
-          </Tabs>
+              <TabsContent value="list" className="mt-4" data-testid="watchdog-list-panel">
+                <WatchdogList
+                  email={localEmail}
+                  onEmailChange={setLocalEmail}
+                  onEmailBlur={handleEmailBlur}
+                  watchdogs={watchdogs}
+                  onToggle={handleToggle}
+                  onDelete={handleDelete}
+                />
+              </TabsContent>
+            </Tabs>
+          )}
         </DialogContent>
       </Dialog>
 
