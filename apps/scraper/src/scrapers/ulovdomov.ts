@@ -540,6 +540,33 @@ export class UlovDomovScraper extends BaseScraper {
       }
     }
 
+    // Size from parameters when the list-page `area` was missing or 0.
+    // The detail API exposes structured area params:
+    //   - `estateArea` → "Plocha pozemku" (land plot, e.g. "6070 m2")
+    //   - `usableArea` → "Užitná plocha" (building floor area, e.g. "55 m2")
+    // Priority depends on property type: land cares about plot size, every
+    // other type cares about usable area. Falls back to the other if the
+    // primary is 0 / missing.
+    if (listing.size_m2 == null) {
+      const order =
+        listing.property_type === "land"
+          ? ["estateArea", "usableArea"]
+          : ["usableArea", "estateArea"];
+      for (const key of order) {
+        const param = parameters[key];
+        if (typeof param !== "object" || param === null) continue;
+        const raw = (param as { value?: unknown }).value;
+        if (raw == null) continue;
+        const match = String(raw).match(/[\d.,]+/);
+        if (!match) continue;
+        const n = parseFloat(match[0].replace(",", "."));
+        if (!isNaN(n) && n > 0) {
+          listing.size_m2 = n;
+          break;
+        }
+      }
+    }
+
     if (Object.keys(extraParams).length > 0) {
       listing.additional_params = JSON.stringify(extraParams);
     }
