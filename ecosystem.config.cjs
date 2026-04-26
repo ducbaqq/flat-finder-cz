@@ -3,14 +3,13 @@
  *
  * SOURCE OF TRUTH. The droplet's copy must be replaced after major changes.
  * Until 2026-04-26 this file lived only on the droplet; it now lives in git
- * so future changes can be code-reviewed and deployed via `scp`.
+ * so future changes can be code-reviewed and deployed via `git pull`.
  *
  * --------------------------------------------------------------------------
  * Deploy procedure
  * --------------------------------------------------------------------------
- *   scp ecosystem.config.cjs root@167.172.176.70:/root/flat-finder-cz/
- *
  * Additive changes (e.g. new process, new env var):
+ *   git pull
  *   pm2 reload ecosystem.config.cjs
  *   pm2 save
  *
@@ -26,47 +25,44 @@
  *   pm2 save
  *
  * --------------------------------------------------------------------------
- * Process inventory
+ * Process inventory (matches running droplet config as of 2026-04-26)
  * --------------------------------------------------------------------------
- *   api       — Hono server on :4000 (heap bumped to 2048MB on 2026-04-11
- *               after the droplet upsize from 2GB → 4GB Premium AMD)
- *   web       — Next.js production server on :3000
- *   scraper   — tsx watch loop (5-min interval, --no-dashboard)
- *   notifier  — Hlídač nemovitostí saved-search notifier (5-min loop)
+ *   api       — Hono server on :4000, runs from compiled dist (heap 2048MB
+ *               after the 2026-04-11 droplet upsize 2GB→4GB Premium AMD).
+ *               Requires `npm run build -w apps/api` before pm2 restart.
+ *   web       — Next.js production server on :3000, direct next-binary
+ *               invocation (avoids npm wrapper overhead).
+ *               Requires `npm run build -w apps/web` before pm2 restart.
+ *   scraper   — npx-launched tsx watch loop (5-min interval, no dashboard).
+ *   notifier  — Hlídač nemovitostí saved-search notifier (5-min loop).
  */
 
 module.exports = {
   apps: [
     {
       name: "api",
-      script: "apps/api/src/index.ts",
-      interpreter: "tsx",
       cwd: "/root/flat-finder-cz",
+      script: "apps/api/dist/index.js",
       node_args: "--max-old-space-size=2048",
-      autorestart: true,
       env: {
         NODE_ENV: "production",
-        PORT: "4000",
+        PORT: 4000,
       },
     },
     {
       name: "web",
-      script: "npm",
-      args: "run start -w apps/web",
-      cwd: "/root/flat-finder-cz",
-      autorestart: true,
+      cwd: "/root/flat-finder-cz/apps/web",
+      script: "node_modules/.bin/next",
+      args: "start --port 3000 --hostname 0.0.0.0",
       env: {
         NODE_ENV: "production",
-        PORT: "3000",
       },
     },
     {
       name: "scraper",
-      script: "apps/scraper/src/index.ts",
-      interpreter: "tsx",
-      args: "--watch --no-dashboard",
       cwd: "/root/flat-finder-cz",
-      autorestart: true,
+      script: "/usr/bin/npx",
+      args: "tsx apps/scraper/src/index.ts --watch --no-dashboard",
       // Scraper holds 80–150 MB during incremental cycles; 512 MB is
       // generous headroom. If we trip this, something has leaked.
       max_memory_restart: "512M",
@@ -76,11 +72,10 @@ module.exports = {
     },
     {
       name: "notifier",
-      script: "apps/notifier/src/index.ts",
-      interpreter: "tsx",
-      // Locked product decision (2026-04-26): 5-minute notification loop.
-      args: "--loop --interval 300",
       cwd: "/root/flat-finder-cz",
+      script: "/usr/bin/npx",
+      // Locked product decision (2026-04-26): 5-minute notification loop.
+      args: "tsx apps/notifier/src/index.ts --loop --interval 300",
       autorestart: true,
       max_memory_restart: "300M",
       // Brevo POSTs can take a few seconds; give the in-flight request up
