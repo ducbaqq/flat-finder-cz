@@ -53,6 +53,14 @@ export function useWatchdogs() {
     watchdogs,
     activeCount,
     isLoading: query.isLoading,
+    /**
+     * True for any in-flight fetch — initial load AND background
+     * refetches. Used by the watchdog-list tab to show a loading state
+     * on the explicit "Zobrazit hlídače" button.
+     */
+    isFetching: query.isFetching,
+    /** Whether a search has actually been issued (an email committed). */
+    hasSearched: !!email && email.includes("@"),
     createWatchdog: createMutation.mutateAsync,
     isCreating: createMutation.isPending,
     toggleWatchdog: toggleMutation.mutateAsync,

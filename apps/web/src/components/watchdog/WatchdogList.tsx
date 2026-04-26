@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pause, Play, Trash2 } from "lucide-react";
+import { Loader2, Pause, Play, Search, Trash2 } from "lucide-react";
 import type { Watchdog } from "@flat-finder/types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,25 +24,40 @@ import { cn } from "@/lib/cn";
 interface WatchdogListProps {
   email: string;
   onEmailChange: (email: string) => void;
-  onEmailBlur: () => void;
+  onSearch: () => void;
   watchdogs: Watchdog[];
   onToggle: (id: number) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
+  /** True while the GET /watchdogs query is in flight. */
+  isFetching: boolean;
+  /** True once an email has been committed to the query (a search ran). */
+  hasSearched: boolean;
 }
 
 export default function WatchdogList({
   email,
   onEmailChange,
-  onEmailBlur,
+  onSearch,
   watchdogs,
   onToggle,
   onDelete,
+  isFetching,
+  hasSearched,
 }: WatchdogListProps) {
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
+  const trimmed = email.trim();
+  const isValidEmail = trimmed.length > 0 && trimmed.includes("@");
+  const buttonDisabled = !isValidEmail || isFetching;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!buttonDisabled) onSearch();
+  };
+
   return (
     <div className="space-y-4" data-testid="watchdog-list">
-      <div className="space-y-2">
+      <form onSubmit={handleSubmit} className="space-y-2">
         <Label htmlFor="watchdogListEmail">E-mail pro vyhledání</Label>
         <Input
           type="email"
@@ -50,17 +65,44 @@ export default function WatchdogList({
           placeholder="vas@email.cz"
           value={email}
           onChange={(e) => onEmailChange(e.target.value)}
-          onBlur={onEmailBlur}
+          disabled={isFetching}
           data-testid="watchdog-list-email"
         />
-      </div>
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={buttonDisabled}
+          data-testid="watchdog-list-search-submit"
+        >
+          {isFetching ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Načítám…
+            </>
+          ) : (
+            <>
+              <Search className="mr-2 h-4 w-4" />
+              Zobrazit hlídače
+            </>
+          )}
+        </Button>
+      </form>
 
       <div className="space-y-2" data-testid="watchdog-list-items">
-        {watchdogs.length === 0 ? (
-          <p className="py-4 text-center text-sm text-muted-foreground" data-testid="watchdog-list-empty">
-            {email && email.includes("@")
-              ? "Zatím nemáte žádné Hlídač nemovitostí." /* FIXME(czech-grammar) — accusative plural collision; review */
-              : "Zadejte e-mail výše pro zobrazení Hlídač nemovitostí." /* FIXME(czech-grammar) — genitive plural collision; review */}
+        {!hasSearched ? (
+          <p
+            className="py-4 text-center text-sm text-muted-foreground"
+            data-testid="watchdog-list-prompt"
+          >
+            Zadej e-mail výše a klikni na <span className="font-medium">Zobrazit hlídače</span>.
+          </p>
+        ) : watchdogs.length === 0 ? (
+          <p
+            className="py-4 text-center text-sm text-muted-foreground"
+            data-testid="watchdog-list-empty"
+          >
+            {/* FIXME(czech-grammar) — review accusative form once shipping. */}
+            Pro tento e-mail nemáme žádné aktivní hlídače.
           </p>
         ) : (
           watchdogs.map((w) => {

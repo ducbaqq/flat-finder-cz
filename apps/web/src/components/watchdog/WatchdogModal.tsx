@@ -75,6 +75,8 @@ export default function WatchdogModal() {
     isCreating,
     toggleWatchdog,
     deleteWatchdog,
+    isFetching: isFetchingWatchdogs,
+    hasSearched,
   } = useWatchdogs();
 
   const [localEmail, setLocalEmail] = useState("");
@@ -101,6 +103,19 @@ export default function WatchdogModal() {
       setWatchdogEmail(trimmed);
     }
   }, [localEmail, email, setWatchdogEmail]);
+
+  /**
+   * Explicit "Zobrazit hlídače" search trigger from the list tab — the
+   * tab no longer auto-fetches on input blur (was confusing because it
+   * gave no feedback). Commits the typed email to the hook, which fires
+   * the query.
+   */
+  const handleSearchWatchdogs = useCallback(() => {
+    const trimmed = localEmail.trim();
+    if (trimmed && trimmed.includes("@")) {
+      setWatchdogEmail(trimmed);
+    }
+  }, [localEmail, setWatchdogEmail]);
 
   const handleSave = useCallback(
     async (data: { email: string; filters: ListingFilters; label?: string }) => {
@@ -213,10 +228,12 @@ export default function WatchdogModal() {
                 <WatchdogList
                   email={localEmail}
                   onEmailChange={setLocalEmail}
-                  onEmailBlur={handleEmailBlur}
+                  onSearch={handleSearchWatchdogs}
                   watchdogs={watchdogs}
                   onToggle={handleToggle}
                   onDelete={handleDelete}
+                  isFetching={isFetchingWatchdogs}
+                  hasSearched={hasSearched}
                 />
               </TabsContent>
             </Tabs>
