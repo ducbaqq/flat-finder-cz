@@ -240,7 +240,10 @@ async function processWatchdog(
   const hasMore = totalCount > displayedListings.length;
 
   const filtersSummary = composeFilterSummary(filters, null);
-  const subject = composeSubject(displayedListings.length, filtersSummary);
+  // Subject uses the full total — matching the in-body headline. Earlier
+  // it used displayedListings.length which is capped at 10, so an inbox
+  // line for "367 matches" mistakenly read "10 nových nabídek".
+  const subject = composeSubject(totalCount, filtersSummary);
 
   const listingEntries: ListingEmailEntry[] = [];
   for (let i = 0; i < displayedListings.length; i++) {
