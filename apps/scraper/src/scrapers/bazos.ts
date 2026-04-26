@@ -225,8 +225,11 @@ export class BazosScraper extends BaseScraper {
       }
     }
 
-    // Full description from div.popis
-    const popisDiv = doc.querySelector("div.popis");
+    // Full description: bazos detail page uses <div class=popisdetail>
+    // (sometimes unquoted in source HTML). The legacy <div class=popis>
+    // selector — still used on list pages — kept as fallback.
+    const popisDiv =
+      doc.querySelector("div.popisdetail") ?? doc.querySelector("div.popis");
     if (popisDiv) {
       const fullDesc = popisDiv.textContent.trim();
       if (fullDesc && fullDesc.length > (listing.description?.length ?? 0)) {
