@@ -120,10 +120,52 @@ export const furnishingLabels: Record<string, string> = {
   unfurnished: "Neza\u0159\u00edzen\u00e9",
 };
 
+// Layout filter options. Display label vs canonical DB values.
+// "6+" expands to every disposition where the first digit is ≥ 6 — the DB
+// stores those as separate rows (6+kk, 6+1, ..., 9+3) rather than a single
+// "6+" sentinel. Atypický/Pokoj are stored lowercase, no diacritics, by
+// the shared normalizeLayout (apps/scraper/src/normalizer.ts).
+export const SIX_PLUS_LAYOUT_VALUES = [
+  "6+kk", "6+1", "6+2", "6+3",
+  "7+kk", "7+1", "7+2",
+  "8+kk", "8+1", "8+2",
+  "9+kk", "9+1", "9+2", "9+3",
+];
+
+export const layoutOptions: Array<{ label: string; values: string[] }> = [
+  { label: "1+kk", values: ["1+kk"] },
+  { label: "1+1", values: ["1+1"] },
+  { label: "2+kk", values: ["2+kk"] },
+  { label: "2+1", values: ["2+1"] },
+  { label: "3+kk", values: ["3+kk"] },
+  { label: "3+1", values: ["3+1"] },
+  { label: "4+kk", values: ["4+kk"] },
+  { label: "4+1", values: ["4+1"] },
+  { label: "5+kk", values: ["5+kk"] },
+  { label: "5+1", values: ["5+1"] },
+  { label: "6+", values: SIX_PLUS_LAYOUT_VALUES },
+  { label: "Atypický", values: ["atypicky"] },
+  { label: "Pokoj", values: ["pokoj"] },
+];
+
+function formatLayoutSummary(csv: string): string {
+  const set = new Set(csv.split(",").map((s) => s.trim()).filter(Boolean));
+  const labels: string[] = [];
+  if (SIX_PLUS_LAYOUT_VALUES.every((v) => set.has(v))) {
+    labels.push("6+");
+    for (const v of SIX_PLUS_LAYOUT_VALUES) set.delete(v);
+  }
+  for (const v of set) {
+    if (v === "atypicky") labels.push("Atypický");
+    else if (v === "pokoj") labels.push("Pokoj");
+    else labels.push(v);
+  }
+  return labels.join(", ");
+}
+
 export const amenityLabels: Record<string, string> = {
   balcony: "Balkón",
   lift: "Výtah",
-  elevator: "Výtah",
   parking: "Parkování",
   cellar: "Sklep",
   garden: "Zahrada",
@@ -178,7 +220,7 @@ export function getFilterSummaryTags(
     if (f.size_max) parts.push("do " + f.size_max);
     tags.push({ label: "Plocha", value: parts.join(" ") + " m\u00b2" });
   }
-  if (f.layout) tags.push({ label: "Dispozice", value: f.layout });
+  if (f.layout) tags.push({ label: "Dispozice", value: formatLayoutSummary(f.layout) });
   if (f.condition)
     tags.push({
       label: "Stav",

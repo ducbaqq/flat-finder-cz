@@ -1,32 +1,47 @@
 "use client";
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { layoutOptions } from "@/lib/utils";
 
 interface LayoutFilterProps {
   value: string;
   onChange: (value: string) => void;
 }
 
-const layouts = [
-  "1+kk", "1+1", "2+kk", "2+1", "3+kk", "3+1",
-  "4+kk", "4+1", "5+kk", "5+1", "6+",
-  "Atypický", "Pokoj",
-];
-
 export function LayoutFilter({ value, onChange }: LayoutFilterProps) {
-  const selected = value ? value.split(",") : [];
+  const selected = new Set(value ? value.split(",").filter(Boolean) : []);
+  const activeLabels = layoutOptions
+    .filter((opt) => opt.values.every((v) => selected.has(v)))
+    .map((opt) => opt.label);
+
+  const labelToValues = new Map(layoutOptions.map((opt) => [opt.label, opt.values]));
+
+  const handleChange = (newLabels: string[]) => {
+    const next = new Set<string>();
+    for (const label of newLabels) {
+      const vals = labelToValues.get(label);
+      if (vals) for (const v of vals) next.add(v);
+    }
+    onChange([...next].join(","));
+  };
 
   return (
     <ToggleGroup
       type="multiple"
-      value={selected}
-      onValueChange={(values) => onChange(values.join(","))}
+      value={activeLabels}
+      onValueChange={handleChange}
       className="flex flex-wrap gap-1"
       data-testid="filter-layout"
     >
-      {layouts.map((l) => (
-        <ToggleGroupItem key={l} value={l} className="text-xs" size="sm" data-testid={`filter-layout-${l}`}>
-          {l}
+      {layoutOptions.map((opt) => (
+        <ToggleGroupItem
+          key={opt.label}
+          value={opt.label}
+          className="text-xs"
+          size="sm"
+          data-testid={`filter-layout-${opt.label}`}
+        >
+          {opt.label}
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
