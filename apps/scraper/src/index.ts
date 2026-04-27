@@ -17,6 +17,9 @@
  *   tsx src/index.ts --no-dashboard              # disable live dashboard
  */
 
+import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
+import path from "node:path";
+
 import { getEnv } from "@flat-finder/config";
 import {
   createDb,
@@ -52,6 +55,26 @@ import { Dashboard } from "./dashboard.js";
 
 function ts(): string {
   return new Date().toLocaleTimeString("en-GB", { hour12: false });
+}
+
+// ---------------------------------------------------------------------------
+// Optional log file (`--log [path]`)
+// ---------------------------------------------------------------------------
+//
+// When the `--log` flag is set, a write stream is opened in main() and
+// stored here. The dashboard, the console-suppression hook, and the
+// non-dashboard per-source logger all check this and tee plain
+// (ANSI-stripped) lines to it. Default path: `logs/scrape-<ts>.log`.
+
+let logFileStream: WriteStream | null = null;
+const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
+
+export function writeLogFile(line: string): void {
+  if (!logFileStream) return;
+  // Strip ANSI color codes that might come from the dashboard's buffered
+  // log lines. The on-screen rendering keeps them; the file should be
+  // grep-friendly plain text.
+  logFileStream.write(line.replace(ANSI_PATTERN, "") + "\n");
 }
 
 /**
@@ -125,6 +148,8 @@ interface CliArgs {
   dedupe: boolean;
   interval: number;
   noDashboard: boolean;
+  /** Resolved log-file path (set when --log is given), or null. */
+  logFile: string | null;
 }
 
 interface SourceResult {
@@ -162,6 +187,7 @@ function parseArgs(): CliArgs {
     dedupe: false,
     interval: env.WATCHER_INTERVAL_S,
     noDashboard: false,
+    logFile: null,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -194,6 +220,20 @@ function parseArgs(): CliArgs {
       opts.dedupe = true;
     } else if (arg === "--no-dashboard") {
       opts.noDashboard = true;
+    } else if (arg === "--log") {
+      // Optional path argument: --log [path]. If the next token starts
+      // with '--' or doesn't exist, fall back to logs/scrape-<ts>.log.
+      const next = args[i + 1];
+      if (next && !next.startsWith("--")) {
+        opts.logFile = next;
+        i++;
+      } else {
+        const stamp = new Date()
+          .toISOString()
+          .replace(/[:.]/g, "-")
+          .slice(0, 19);
+        opts.logFile = path.join("logs", `scrape-${stamp}.log`);
+      }
     } else if (arg === "--interval" && i + 1 < args.length) {
       opts.interval = parseInt(args[++i], 10);
       if (isNaN(opts.interval) || opts.interval < 1) {
@@ -215,6 +255,10 @@ Options:
   --cleanup           Run TTL-based deactivation only (listings not scraped in 14 days)
   --dedupe            Cluster cross-source duplicates (geo + size + price + transaction_type matching)
   --no-dashboard      Disable the live terminal dashboard (auto-disabled for non-TTY)
+  --log [path]        Tee all log output to a file (plain text, ANSI stripped).
+                      Path is optional — defaults to logs/scrape-<timestamp>.log.
+                      Works with the dashboard: terminal stays interactive,
+                      file gets the same lines minus the ANSI redraws.
   --interval <secs>   Seconds between watcher cycles (default: ${env.WATCHER_INTERVAL_S})
   --help, -h          Show this help message
 
@@ -362,10 +406,19 @@ async function runSource(
   const t0 = performance.now();
   const dashboard = opts.dashboard;
 
-  // Log function: route to dashboard if active, otherwise console.log
+  // Log function: route to dashboard if active, otherwise console.log.
+  // Either way, also tee to the log file when `--log` is set so the file
+  // captures every per-source line in plain text.
   const log = dashboard
-    ? (msg: string) => dashboard.log(source, msg)
-    : (msg: string) => console.log(`${ts()} [${source}]`, msg);
+    ? (msg: string) => {
+        dashboard.log(source, msg);
+        writeLogFile(`${ts()} [${source}] ${msg}`);
+      }
+    : (msg: string) => {
+        const line = `${ts()} [${source}] ${msg}`;
+        console.log(line);
+        writeLogFile(line);
+      };
 
   log("Starting...");
   if (dashboard) dashboard.setStatus(source, "scanning");
@@ -828,6 +881,7 @@ function suppressConsole(dashboard: Dashboard): { restore: () => void } {
     } else {
       dashboard.log("runner", msg);
     }
+    writeLogFile(msg);
   };
 
   console.warn = (...args: unknown[]) => {
@@ -838,6 +892,7 @@ function suppressConsole(dashboard: Dashboard): { restore: () => void } {
     } else {
       dashboard.log("runner", msg);
     }
+    writeLogFile(msg);
   };
 
   return {
@@ -853,8 +908,25 @@ function suppressConsole(dashboard: Dashboard): { restore: () => void } {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  const { sources: sourcesArg, dryRun, watch, full, cleanup, dedupe, interval, noDashboard } = parseArgs();
+  const { sources: sourcesArg, dryRun, watch, full, cleanup, dedupe, interval, noDashboard, logFile } = parseArgs();
   const env = getEnv();
+
+  // Open the log file (if --log) before anything else so banners /
+  // startup messages also land in it.
+  if (logFile) {
+    const dir = path.dirname(logFile);
+    if (dir && dir !== ".") {
+      try { mkdirSync(dir, { recursive: true }); } catch {}
+    }
+    logFileStream = createWriteStream(logFile, { flags: "a" });
+    // Header so multiple runs in the same file are distinguishable.
+    logFileStream.write(
+      `\n=== ${new Date().toISOString()} pid=${process.pid} argv=${process.argv.slice(2).join(" ")} ===\n`,
+    );
+    // Pre-dashboard notice (always visible regardless of --no-dashboard
+    // or non-TTY): tells the user where the log lives.
+    process.stderr.write(`${ts()} [runner] Logging to ${logFile}\n`);
+  }
 
   const sources: SourceName[] =
     sourcesArg === "all" ? ALL_SOURCES : sourcesArg;
@@ -888,6 +960,12 @@ async function main(): Promise<void> {
 
   // Graceful shutdown -- exit with 0 so npm doesn't print errors
   let shouldStop = false;
+  const closeLogStream = () => {
+    if (logFileStream) {
+      try { logFileStream.end(); } catch {}
+      logFileStream = null;
+    }
+  };
   const onSignal = (signal: string) => {
     // Clean up dashboard terminal state before anything else
     if (dashboard) {
@@ -898,11 +976,13 @@ async function main(): Promise<void> {
     if (!watch) {
       // Non-watch mode: exit immediately on first signal
       console.log(`\n${ts()} [runner] Received ${signal}, exiting.`);
+      closeLogStream();
       process.exit(0);
     }
     if (shouldStop) {
       // Watch mode, second signal -> force exit
       console.log(`\n${ts()} [runner] Received ${signal} again, forcing exit.`);
+      closeLogStream();
       process.exit(0);
     }
     console.log(`\n${ts()} [runner] Received ${signal}, stopping after current cycle...`);
@@ -910,6 +990,8 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => onSignal("SIGINT"));
   process.on("SIGTERM", () => onSignal("SIGTERM"));
+  // Best-effort flush on natural process exit too.
+  process.on("exit", closeLogStream);
 
   const runOpts: RunSourceOpts = {
     watch,
