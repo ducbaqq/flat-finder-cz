@@ -3,6 +3,7 @@ import {
   verifyWatchdogToken,
   type WatchdogTokenAction,
 } from "@/lib/watchdog-tokens";
+import WatchdogManageTracking from "./WatchdogManageTracking";
 
 export const metadata: Metadata = {
   title: "Spravovat hlídač · Bytomat",
@@ -63,6 +64,7 @@ export default async function WatchdogManagePage({ searchParams }: PageProps) {
     typeof params.token === "string" ? params.token : undefined;
 
   let outcome: Outcome;
+  let watchdogId: number | null = null;
   if (!tokenRaw) {
     outcome = { kind: "no_token" };
   } else {
@@ -73,6 +75,7 @@ export default async function WatchdogManagePage({ searchParams }: PageProps) {
     if (!payload) {
       outcome = { kind: "invalid_token" };
     } else {
+      watchdogId = payload.watchdogId;
       outcome = await performAction(payload.watchdogId, payload.action);
     }
   }
@@ -138,6 +141,10 @@ export default async function WatchdogManagePage({ searchParams }: PageProps) {
         >
           {body}
         </p>
+        <WatchdogManageTracking
+          outcomeKind={outcome.kind}
+          watchdogId={watchdogId}
+        />
         <a
           href="https://bytomat.com/"
           style={{

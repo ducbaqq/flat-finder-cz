@@ -61,6 +61,14 @@ export const useUiStore = create<UiState>((set) => ({
         url.searchParams.delete("watchdog");
       }
       window.history.pushState(null, "", url.toString());
+      // Fire only on the open transition — closing produces a page_view
+      // already (the URL change drops `?watchdog=1`).
+      if (opening) {
+        // Lazy-import to avoid pulling analytics into the SSR store snapshot.
+        import("@/lib/analytics").then(({ trackEvent, getSurface }) => {
+          trackEvent("watchdog_modal_open", { surface: getSurface() });
+        });
+      }
       return { watchdogModalOpen: opening };
     }),
   closeWatchdogModal: () => {
