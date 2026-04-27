@@ -34,6 +34,14 @@ interface WatchdogFormProps {
   }) => Promise<void>;
   isCreating: boolean;
   currentFilters?: Record<string, string>;
+  /**
+   * Error returned by the most recent save attempt. When set, renders a
+   * clickable error block above the submit button. Click invokes
+   * `onErrorClick` so the parent can route the user somewhere useful
+   * (e.g. switching to the "Moji hlídači" tab on a duplicate-email 409).
+   */
+  saveError?: string;
+  onErrorClick?: () => void;
 }
 
 // Canonical lists — copied from FilterSidebar / its sub-components so the
@@ -150,6 +158,8 @@ export default function WatchdogForm({
   onSave,
   isCreating,
   currentFilters,
+  saveError,
+  onErrorClick,
 }: WatchdogFormProps) {
   const [localLabel, setLocalLabel] = useState("");
   const [emailError, setEmailError] = useState("");
@@ -845,6 +855,27 @@ export default function WatchdogForm({
           data-testid="watchdog-form-label"
         />
       </div>
+
+      {saveError && (
+        onErrorClick ? (
+          <button
+            type="button"
+            onClick={onErrorClick}
+            className="w-full rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
+            data-testid="watchdog-form-save-error"
+          >
+            {saveError}
+          </button>
+        ) : (
+          <p
+            className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            role="alert"
+            data-testid="watchdog-form-save-error"
+          >
+            {saveError}
+          </p>
+        )
+      )}
 
       <Button
         className="w-full"

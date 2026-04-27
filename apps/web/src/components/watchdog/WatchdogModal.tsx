@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Dog } from "lucide-react";
 import { useUiStore } from "@/store/ui-store";
 import { useWatchdogs } from "@/hooks/useWatchdogs";
+import { trackEvent, sha256, getSurface } from "@/lib/analytics";
 import type { ListingFilters } from "@flat-finder/types";
 
 // URL params that are NOT user-search filters and must NOT be persisted as
@@ -81,6 +82,13 @@ export default function WatchdogModal() {
 
   const [localEmail, setLocalEmail] = useState("");
   const [toast, setToast] = useState("");
+  const [activeTab, setActiveTab] = useState<"create" | "list">("create");
+  // Holds the API error from the most recent save attempt so the form
+  // can surface it (rather than the generic "Chyba při ukládání" toast
+  // that silently dropped the server's actual reason). Click handler on
+  // the rendered error sends the user to the "Moji hlídači" tab so they
+  // can act on the most common cause: duplicate-email 409.
+  const [saveError, setSaveError] = useState("");
 
   // Holds the just-saved watchdog so the modal can swap from the create
   // form to a success screen without losing what the user just configured.
@@ -119,6 +127,7 @@ export default function WatchdogModal() {
 
   const handleSave = useCallback(
     async (data: { email: string; filters: ListingFilters; label?: string }) => {
+      setSaveError("");
       try {
         setWatchdogEmail(data.email);
         await createWatchdog(data);
@@ -128,30 +137,72 @@ export default function WatchdogModal() {
           label: data.label?.trim() ? data.label.trim() : null,
           filters: data.filters,
         });
-      } catch {
-        showToast("Chyba při ukládání");
+        // Retention proxy event. Filter shape is summarized into booleans
+        // + count so GA4 reports stay readable; the raw filter values are
+        // already in `page_location`.
+        trackEvent("watchdog_create", {
+          surface: getSurface(),
+          filters_count: Object.keys(data.filters).length,
+          has_location: !!data.filters.location,
+          has_price_range:
+            data.filters.price_min != null || data.filters.price_max != null,
+          has_property_type: !!data.filters.property_type,
+        });
+      } catch (err) {
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : "Chyba při ukládání";
+        setSaveError(message);
       }
     },
-    [createWatchdog, setWatchdogEmail, showToast]
+    [createWatchdog, setWatchdogEmail]
   );
 
+  const handleErrorClick = useCallback(() => {
+    // The 409 duplicate-email message tells the user to delete or edit
+    // the existing watchdog — only actionable from the list tab. Switch
+    // tabs and commit the typed email so the list query fires
+    // immediately, mirroring the explicit "Zobrazit hlídače" path.
+    setSaveError("");
+    const trimmed = localEmail.trim();
+    if (trimmed && trimmed.includes("@")) {
+      setWatchdogEmail(trimmed);
+    }
+    setActiveTab("list");
+  }, [localEmail, setWatchdogEmail]);
+
   // Single dismissal path used by both the success screen's OK button
-  // and the dialog's overlay/Esc/X. Reset success state BEFORE closing
-  // so reopening always starts on the form.
+  // and the dialog's overlay/Esc/X. Reset success/error/tab state BEFORE
+  // closing so reopening always starts on the form, on the create tab,
+  // with no stale error.
   const handleClose = useCallback(() => {
     setSavedWatchdog(null);
+    setSaveError("");
+    setActiveTab("create");
     closeWatchdogModal();
   }, [closeWatchdogModal]);
 
   const handleToggle = useCallback(
     async (id: number) => {
+      // Capture the previous active state before toggling so we can fire
+      // pause vs resume distinctly. Falls back to "pause" if the row
+      // isn't found locally (shouldn't happen — list and handler share
+      // the same fetched payload).
+      const prev = watchdogs.find((w) => w.id === id);
+      const wasActive = prev?.active ?? true;
       try {
         await toggleWatchdog(id);
+        const idHash = await sha256(String(id));
+        trackEvent(wasActive ? "watchdog_pause" : "watchdog_resume", {
+          entry: "modal",
+          watchdog_id_hash: idHash,
+        });
       } catch (e) {
         console.error("Toggle failed", e);
       }
     },
-    [toggleWatchdog]
+    [toggleWatchdog, watchdogs]
   );
 
   const handleDelete = useCallback(
@@ -159,6 +210,11 @@ export default function WatchdogModal() {
       try {
         await deleteWatchdog(id);
         showToast("Hlídač nemovitostí smazán");
+        const idHash = await sha256(String(id));
+        trackEvent("watchdog_delete", {
+          entry: "modal",
+          watchdog_id_hash: idHash,
+        });
       } catch (e) {
         console.error("Delete failed", e);
       }
@@ -202,7 +258,11 @@ export default function WatchdogModal() {
               onClose={handleClose}
             />
           ) : (
-            <Tabs defaultValue="create" data-testid="watchdog-tabs">
+            <Tabs
+              value={activeTab}
+              onValueChange={(v) => setActiveTab(v as "create" | "list")}
+              data-testid="watchdog-tabs"
+            >
               <TabsList className="w-full">
                 <TabsTrigger value="create" className="flex-1" data-testid="watchdog-tab-create">
                   Nový hlídač nemovitostí
@@ -221,6 +281,8 @@ export default function WatchdogModal() {
                   onSave={handleSave}
                   isCreating={isCreating}
                   currentFilters={currentFilters}
+                  saveError={saveError}
+                  onErrorClick={handleErrorClick}
                 />
               </TabsContent>
 
